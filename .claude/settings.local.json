@@ -75,7 +75,9 @@
       "Bash(git commit -q -m 'Add Brevo HTTP email provider \\(works on Render\\); host logo via public URL; SMTP timeouts *)",
       "Bash(node -e \"require\\('./app'\\); console.log\\('✓ backend loads with RBAC + portal'\\)\")",
       "Bash(xargs kill -9)",
-      "Bash(FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GOOGLE_CLOUD_PROJECT=clarke-mechanical-crm PORT=8090 JWT_SECRET=test node server.js)"
+      "Bash(FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GOOGLE_CLOUD_PROJECT=clarke-mechanical-crm PORT=8090 JWT_SECRET=test node server.js)",
+      "Bash(pkill -9 -f \"firebase\")",
+      "Bash(pkill -9 -f \"cloud-firestore-emulator\")"
     ]
   }
 }

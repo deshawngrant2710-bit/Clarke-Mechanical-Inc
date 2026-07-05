@@ -1,6 +1,9 @@
 const express = require('express');
-const { db, findWhere, nameMap } = require('../lib/db');
+const { v4: uuid } = require('uuid');
+const { db, getById, findWhere, create, update, nameMap } = require('../lib/db');
 const { authMiddleware } = require('../middleware/auth');
+const { sendMail } = require('../lib/email');
+const settings = require('../lib/settings');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -64,6 +67,72 @@ router.get('/quotes', async (req, res) => {
   if (!ids.length) return res.json([]);
   const qNested = await Promise.all(ids.map(id => findWhere('quotes', 'customer_id', id)));
   res.json(qNested.flat().sort(byCreated));
+});
+
+// POST /portal/service-request — customer books a new service (creates a pending job).
+router.post('/service-request', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  if (!ids.length) return res.status(422).json({ error: "Your account isn't linked to a customer record yet." });
+  const { title, description, preferred_date } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Please describe the service you need' });
+
+  const customer = records[0];
+  const id = uuid();
+  const job = await create('jobs', id, {
+    title: title.trim(),
+    description: description ? description.trim() : null,
+    customer_id: customer.id,
+    technician_id: null,
+    status: 'pending',
+    priority: 'normal',
+    job_type: 'Service Request',
+    scheduled_date: preferred_date || null,
+    scheduled_time: null,
+    completed_date: null,
+    address: customer.address || null,
+    notes: `Requested via customer portal by ${req.user.name}`,
+  });
+
+  // Best-effort: notify the business a new request came in.
+  try {
+    const to = await settings.get('business_email');
+    if (to) {
+      const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+        <p><strong>New service request from ${customer.name}</strong></p>
+        <p><strong>Service:</strong> ${job.title}<br/>
+        ${job.description ? `<strong>Details:</strong> ${job.description}<br/>` : ''}
+        ${preferred_date ? `<strong>Preferred date:</strong> ${preferred_date}<br/>` : ''}
+        <strong>Contact:</strong> ${customer.email || ''} ${customer.phone || ''}<br/>
+        ${customer.address ? `<strong>Address:</strong> ${customer.address}` : ''}</p>
+        <p>Open the Jobs tab in Clarke Mechanical to schedule it.</p></div>`;
+      await sendMail({ type: 'service_request', to, toName: 'Clarke Mechanical', subject: `New service request — ${customer.name}`, html, customerId: customer.id, sentBy: 'Customer Portal' });
+    }
+  } catch (e) { console.error('[portal] notify failed:', e.message); }
+
+  res.status(201).json(job);
+});
+
+// POST /portal/quotes/:id/respond — accept or decline an estimate.
+router.post('/quotes/:id/respond', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const quote = await getById('quotes', req.params.id);
+  if (!quote || !ids.includes(quote.customer_id)) return res.status(404).json({ error: 'Quote not found' });
+  const decision = req.body.decision;
+  if (!['accepted', 'declined'].includes(decision)) return res.status(400).json({ error: 'Invalid decision' });
+  if (!['sent', 'draft'].includes(quote.status)) return res.status(400).json({ error: 'This estimate can no longer be changed' });
+  const saved = await update('quotes', req.params.id, { status: decision });
+  res.json(saved);
+});
+
+// PUT /portal/profile — customer updates their own contact details.
+router.put('/profile', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  if (!ids.length) return res.status(422).json({ error: "Your account isn't linked to a customer record yet." });
+  const { phone, address, city, state, zip } = req.body;
+  const saved = await update('customers', ids[0], {
+    phone: phone || null, address: address || null, city: city || null, state: state || null, zip: zip || null,
+  });
+  res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip });
 });
 
 module.exports = router;

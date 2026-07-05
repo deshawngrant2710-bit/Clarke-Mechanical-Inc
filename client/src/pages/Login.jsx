@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
-import { Mail, Lock, AlertCircle, User, Phone } from 'lucide-react';
+import { Mail, Lock, AlertCircle, User, Phone, Eye, EyeOff } from 'lucide-react';
 import Logo from '../components/Logo';
 import logoMark from '../assets/logo-mark.png';
 
 const emptyForm = { firstName: '', lastName: '', email: '', phone: '', password: '' };
 
-function Field({ label, icon: Icon, error, ...props }) {
+function Field({ label, icon: Icon, error, trailing, ...props }) {
   return (
     <div>
       <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
@@ -16,9 +16,10 @@ function Field({ label, icon: Icon, error, ...props }) {
         <Icon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           {...props}
-          className={`w-full pl-9 pr-3 py-2.5 border rounded-lg text-sm bg-white outline-none transition-all focus:ring-4 hover:border-slate-400
+          className={`w-full pl-9 ${trailing ? 'pr-10' : 'pr-3'} py-2.5 border rounded-lg text-sm bg-white outline-none transition-all focus:ring-4 hover:border-slate-400
             ${error ? 'border-red-400 focus:ring-red-500/15 focus:border-red-500' : 'border-slate-300 focus:ring-blue-500/15 focus:border-blue-500'}`}
         />
+        {trailing}
       </div>
     </div>
   );
@@ -29,6 +30,7 @@ export default function Login() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -163,10 +165,18 @@ export default function Login() {
                 value={form.phone} onChange={set('phone')} placeholder="(555) 000-0000" />
             )}
 
-            <Field label="Password" icon={Lock} type="password"
+            <Field label="Password" icon={Lock} type={showPassword ? 'text' : 'password'}
               autoComplete={isSignup ? 'new-password' : 'current-password'}
               value={form.password} onChange={set('password')}
-              placeholder={isSignup ? 'At least 6 characters' : '••••••••'} />
+              placeholder={isSignup ? 'At least 6 characters' : '••••••••'}
+              trailing={
+                <button type="button" onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5">
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              } />
 
             <button
               type="submit" disabled={loading}
