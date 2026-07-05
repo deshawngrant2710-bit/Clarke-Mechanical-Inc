@@ -26,6 +26,17 @@ router.post('/register', async (req, res) => {
     const hashed = bcrypt.hashSync(password, 10);
     await create('users', id, { name, email, password: hashed, role, phone: phone || null });
 
+    // Auto-link: ensure a customer record exists for this email so the portal works right away.
+    // (If the business already added them as a customer, that record links automatically — no duplicate.)
+    const existingCustomer = await findOne('customers', 'email', email);
+    if (!existingCustomer) {
+      await create('customers', uuid(), {
+        name, email, phone: phone || null,
+        address: null, city: null, state: null, zip: null,
+        notes: 'Self-registered via customer portal',
+      });
+    }
+
     const token = jwt.sign({ id, name, email, role }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id, name, email, role, phone } });
   } catch (e) {
