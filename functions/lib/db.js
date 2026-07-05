@@ -4,7 +4,15 @@ if (!admin.apps.length) {
   const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (sa) {
     // Render / any non-GCP host: authenticate with a service-account JSON string.
-    admin.initializeApp({ credential: admin.credential.cert(JSON.parse(sa)) });
+    try {
+      const parsed = JSON.parse(sa);
+      admin.initializeApp({ credential: admin.credential.cert(parsed), projectId: parsed.project_id });
+      console.log('[db] Firestore initialized for project', parsed.project_id);
+    } catch (e) {
+      // Don't crash the whole server on a bad key — boot anyway so /health works and the error is visible.
+      console.error('[db] FIREBASE_SERVICE_ACCOUNT is not valid JSON:', e.message);
+      admin.initializeApp();
+    }
   } else {
     // Emulator or GCP (Functions): Application Default Credentials.
     admin.initializeApp();
