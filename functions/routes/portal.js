@@ -30,11 +30,13 @@ router.get('/me', async (req, res) => {
     invoiceCount = invoices.length;
     balanceDue = invoices.filter(i => !['paid', 'cancelled'].includes(i.status)).reduce((s, i) => s + (i.total || 0), 0);
   }
+  const cfg = await settings.emailConfig();
   res.json({
     name: req.user.name, email: req.user.email, role: req.user.role,
     linked: records.length > 0,
     profile: records[0] || null,
     stats: { openJobs, invoiceCount, balanceDue },
+    business: cfg.business,
   });
 });
 
@@ -121,6 +123,26 @@ router.post('/quotes/:id/respond', async (req, res) => {
   if (!['accepted', 'declined'].includes(decision)) return res.status(400).json({ error: 'Invalid decision' });
   if (!['sent', 'draft'].includes(quote.status)) return res.status(400).json({ error: 'This estimate can no longer be changed' });
   const saved = await update('quotes', req.params.id, { status: decision });
+  res.json(saved);
+});
+
+// POST /portal/jobs/:id/cancel — cancel an unstarted service request.
+router.post('/jobs/:id/cancel', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const job = await getById('jobs', req.params.id);
+  if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
+  if (!['pending', 'scheduled'].includes(job.status)) return res.status(400).json({ error: 'This service can no longer be cancelled' });
+  const saved = await update('jobs', req.params.id, { status: 'cancelled' });
+  res.json(saved);
+});
+
+// PUT /portal/jobs/:id/reschedule — change the preferred date of an unstarted service.
+router.put('/jobs/:id/reschedule', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const job = await getById('jobs', req.params.id);
+  if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
+  if (!['pending', 'scheduled'].includes(job.status)) return res.status(400).json({ error: 'This service can no longer be rescheduled' });
+  const saved = await update('jobs', req.params.id, { scheduled_date: req.body.preferred_date || null });
   res.json(saved);
 });
 

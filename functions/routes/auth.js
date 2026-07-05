@@ -2,8 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
-const { db, findOne, create } = require('../lib/db');
-const { JWT_SECRET } = require('../middleware/auth');
+const { db, findOne, create, getById, update } = require('../lib/db');
+const { JWT_SECRET, authMiddleware } = require('../middleware/auth');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -64,6 +64,23 @@ router.post('/login', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// POST /api/auth/change-password — authenticated user changes their own password.
+router.post('/change-password', authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const user = await getById('users', req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!bcrypt.compareSync(currentPassword, user.password)) return res.status(401).json({ error: 'Current password is incorrect' });
+    await update('users', req.user.id, { password: bcrypt.hashSync(newPassword, 10) });
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Could not change password' });
   }
 });
 
