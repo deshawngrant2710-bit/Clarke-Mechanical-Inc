@@ -68,7 +68,11 @@
       "Bash(echo \"=== capitalized \\(what a phone autocaps to\\) ===\")",
       "Bash(curl -s -m 60 -w ' %{http_code}\\\\n' -X POST https://clarke-mechanical-inc.onrender.com/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"Admin@clarkemechanical.com\",\"password\":\"clarke2024\"}')",
       "Bash(echo \"=== with trailing space ===\")",
-      "Bash(git commit -q -m 'Normalize email \\(lowercase+trim\\) on login/register; block mobile autocap on email field *)"
+      "Bash(git commit -q -m 'Normalize email \\(lowercase+trim\\) on login/register; block mobile autocap on email field *)",
+      "Bash(node wipe-prod.js)",
+      "Bash(node -e \"require\\('./lib/email'\\); require\\('./app'\\); console.log\\('✓ email + app load clean'\\)\")",
+      "Bash(curl -s -o /dev/null -w \"email-logo.png -> %{http_code}\\\\n\" https://clarke-mechanical-inc.web.app/email-logo.png)",
+      "Bash(git commit -q -m 'Add Brevo HTTP email provider \\(works on Render\\); host logo via public URL; SMTP timeouts *)"
     ]
   }
 }

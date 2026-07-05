@@ -31,11 +31,16 @@ async function setMany(obj) {
 
 async function emailConfig() {
   const s = await getAll();
+  // Provider priority: Brevo HTTP API (works on Render) → SMTP → simulated.
+  const brevo = !!process.env.BREVO_API_KEY;
+  const smtp = !!(s.smtp_host && s.smtp_user);
+  const provider = brevo ? 'brevo' : smtp ? 'smtp' : 'none';
   return {
     from: s.email_from,
     business: { name: s.business_name, email: s.business_email, phone: s.business_phone },
     smtp: { host: s.smtp_host, port: Number(s.smtp_port) || 587, user: s.smtp_user, pass: s.smtp_pass },
-    configured: !!(s.smtp_host && s.smtp_user),
+    provider,
+    configured: provider !== 'none',
     reminders: { job: s.reminders_job_enabled === '1', overdue: s.reminders_overdue_enabled === '1' },
   };
 }

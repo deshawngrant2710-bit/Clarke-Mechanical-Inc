@@ -1,26 +1,18 @@
 const nodemailer = require('nodemailer');
-const path = require('path');
-const fs = require('fs');
 const { v4: uuid } = require('uuid');
 const { db } = require('./db');
 const settings = require('./settings');
 
-/* Inline brand images (cid:) */
-const LOGO_PATH = path.join(__dirname, '..', 'assets', 'email-logo.png');
-const MARK_PATH = path.join(__dirname, '..', 'assets', 'email-mark.png');
-function brandAttachments() {
-  const att = [];
-  if (fs.existsSync(LOGO_PATH)) att.push({ filename: 'clarke-logo.png', path: LOGO_PATH, cid: 'clarkelogo' });
-  if (fs.existsSync(MARK_PATH)) att.push({ filename: 'clarke-mark.png', path: MARK_PATH, cid: 'clarkemark' });
-  return att;
-}
+// Publicly-hosted brand images (work in Brevo HTTP API and all mail clients).
+const LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://clarke-mechanical-inc.web.app/email-logo.png';
+const MARK_URL = process.env.EMAIL_MARK_URL || 'https://clarke-mechanical-inc.web.app/email-mark.png';
 
 let cached = { key: null, transporter: null };
 function getTransporter(cfg) {
   const key = JSON.stringify(cfg.smtp) + cfg.configured;
   if (cached.key === key && cached.transporter) return cached.transporter;
-  const transporter = cfg.configured
-    ? nodemailer.createTransport({ host: cfg.smtp.host, port: cfg.smtp.port, secure: cfg.smtp.port === 465, auth: { user: cfg.smtp.user, pass: cfg.smtp.pass } })
+  const transporter = cfg.smtp.host
+    ? nodemailer.createTransport({ host: cfg.smtp.host, port: cfg.smtp.port, secure: cfg.smtp.port === 465, auth: { user: cfg.smtp.user, pass: cfg.smtp.pass }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000 })
     : nodemailer.createTransport({ jsonTransport: true });
   cached = { key, transporter };
   return transporter;
@@ -35,7 +27,7 @@ function shell(b, { heading, body, accent = '#1d4ed8' }) {
   <div style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
     <div style="max-width:600px;margin:0 auto;padding:24px 12px;">
       <div style="background:#ffffff;border:1px solid #e2e8f0;border-bottom:none;border-radius:16px 16px 0 0;padding:26px 32px 18px;text-align:center;">
-        <img src="cid:clarkelogo" alt="${b.name}" width="210" style="display:block;margin:0 auto;width:210px;max-width:72%;height:auto;" />
+        <img src="${LOGO_URL}" alt="${b.name}" width="210" style="display:block;margin:0 auto;width:210px;max-width:72%;height:auto;" />
       </div>
       <div style="height:6px;background:linear-gradient(90deg,#1e3a8a,${accent});font-size:0;line-height:0;">&nbsp;</div>
       <div style="background:#fff;padding:32px;border:1px solid #e2e8f0;border-top:none;">
@@ -43,7 +35,7 @@ function shell(b, { heading, body, accent = '#1d4ed8' }) {
         ${body}
       </div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:22px 32px;text-align:center;">
-        <img src="cid:clarkemark" alt="" width="34" height="34" style="width:34px;height:34px;margin-bottom:8px;" />
+        <img src="${MARK_URL}" alt="" width="34" height="34" style="width:34px;height:34px;margin-bottom:8px;" />
         <p style="margin:0;font-size:12px;color:#64748b;line-height:1.6;">
           <strong style="color:#334155;">${b.name}</strong> · ${b.phone}<br/>
           Questions? Reply to this email or contact <a href="mailto:${b.email}" style="color:#2563eb;">${b.email}</a>.
@@ -124,6 +116,22 @@ async function render(type, entity) {
   return templates[type](entity, cfg.business);
 }
 
+// Send via Brevo's transactional HTTP API (works on hosts that block SMTP).
+async function sendViaBrevo(cfg, { to, toName, subject, html }) {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      sender: { name: cfg.business.name, email: cfg.business.email },
+      to: [{ email: to, name: toName || to }],
+      replyTo: { email: cfg.business.email, name: cfg.business.name },
+      subject,
+      htmlContent: html,
+    }),
+  });
+  if (!res.ok) throw new Error(`Brevo ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}
+
 // Send + log to Firestore email_log.
 async function sendMail({ type, to, toName, subject, html, relatedId, customerId, sentBy }) {
   const id = uuid();
@@ -132,8 +140,15 @@ async function sendMail({ type, to, toName, subject, html, relatedId, customerId
   let error = null;
   try {
     if (!to) throw new Error('Recipient has no email address on file');
-    await getTransporter(cfg).sendMail({ from: cfg.from, to, subject, html, attachments: brandAttachments() });
-    status = cfg.configured ? 'sent' : 'simulated';
+    if (cfg.provider === 'brevo') {
+      await sendViaBrevo(cfg, { to, toName, subject, html });
+      status = 'sent';
+    } else if (cfg.provider === 'smtp') {
+      await getTransporter(cfg).sendMail({ from: cfg.from, to, subject, html });
+      status = 'sent';
+    } else {
+      status = 'simulated';
+    }
   } catch (e) {
     status = 'failed';
     error = e.message;

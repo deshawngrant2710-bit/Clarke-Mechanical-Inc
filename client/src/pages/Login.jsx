@@ -184,11 +184,6 @@ export default function Login() {
             </button>
           </p>
 
-          {!isSignup && (
-            <p className="text-xs text-slate-400 text-center mt-4">
-              Demo: admin@clarkemechanical.com · clarke2024
-            </p>
-          )}
         </div>
       </div>
     </div>
