@@ -1,10 +1,10 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireStaff);
 
 // List jobs with customer_name + technician_name attached.
 router.get('/', async (req, res) => {

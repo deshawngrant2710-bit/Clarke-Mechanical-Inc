@@ -1,9 +1,9 @@
 const express = require('express');
 const { list, nameMap } = require('../lib/db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireStaff);
 
 const today = () => new Date().toISOString().slice(0, 10);
 const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

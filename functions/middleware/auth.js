@@ -19,4 +19,24 @@ function adminOnly(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, adminOnly, JWT_SECRET };
+const STAFF = ['admin', 'office', 'dispatcher', 'technician'];
+
+// Allow only the given roles.
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({ error: 'You do not have access to this resource' });
+    }
+    next();
+  };
+}
+
+// Any staff role (i.e., not a customer).
+function requireStaff(req, res, next) {
+  if (!STAFF.includes(req.user?.role)) {
+    return res.status(403).json({ error: 'You do not have access to this resource' });
+  }
+  next();
+}
+
+module.exports = { authMiddleware, adminOnly, requireRole, requireStaff, STAFF, JWT_SECRET };

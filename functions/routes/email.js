@@ -1,11 +1,11 @@
 const express = require('express');
 const { db, getById, findWhere } = require('../lib/db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireStaff } = require('../middleware/auth');
 const { sendMail, render, isTemplate } = require('../lib/email');
 const settings = require('../lib/settings');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireStaff);
 
 router.get('/status', async (req, res) => {
   const cfg = await settings.emailConfig();

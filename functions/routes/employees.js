@@ -2,10 +2,10 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 const { db, list, getById, findOne, create, update, remove, findWhere } = require('../lib/db');
-const { authMiddleware, adminOnly } = require('../middleware/auth');
+const { authMiddleware, adminOnly, requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireStaff);
 
 const ROLES = ['customer', 'technician', 'dispatcher', 'office', 'admin'];
 const strip = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at };

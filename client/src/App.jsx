@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
@@ -15,10 +15,17 @@ import Quotes from './pages/Quotes';
 import Inventory from './pages/Inventory';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
+import Portal from './pages/Portal';
+import { canAccess, homeForRole } from './lib/roles';
 
 function Layout() {
   const { user } = useAuth();
+  const location = useLocation();
   if (!user) return <Navigate to="/login" replace />;
+  // Role guard: send users to their home if they hit a page they can't access.
+  if (!canAccess(user.role, location.pathname)) {
+    return <Navigate to={homeForRole(user.role)} replace />;
+  }
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />
@@ -33,7 +40,7 @@ function Layout() {
 
 function PublicRoute() {
   const { user } = useAuth();
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to={homeForRole(user.role)} replace />;
   return <Outlet />;
 }
 
@@ -59,6 +66,7 @@ export default function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/portal" element={<Portal />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

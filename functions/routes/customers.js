@@ -1,10 +1,10 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove, findWhere } = require('../lib/db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireStaff);
 
 // List customers with computed rollups (open jobs, lifetime revenue, balance, last service).
 router.get('/', async (req, res) => {

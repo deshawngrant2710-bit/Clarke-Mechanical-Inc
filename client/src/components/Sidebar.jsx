@@ -1,50 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import {
-  LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, LogOut, ClipboardList, Settings,
-} from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import Logo from './Logo';
-
-const groups = [
-  {
-    label: 'Overview',
-    items: [{ to: '/', icon: LayoutDashboard, label: 'Dashboard' }],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { to: '/customers', icon: Users, label: 'Customers' },
-      { to: '/jobs', icon: Briefcase, label: 'Jobs' },
-      { to: '/schedule', icon: Calendar, label: 'Schedule' },
-    ],
-  },
-  {
-    label: 'Billing',
-    items: [
-      { to: '/invoices', icon: FileText, label: 'Invoices' },
-      { to: '/quotes', icon: ClipboardList, label: 'Quotes' },
-    ],
-  },
-  {
-    label: 'Resources',
-    items: [
-      { to: '/inventory', icon: Package, label: 'Inventory' },
-      { to: '/employees', icon: UserCog, label: 'Team' },
-    ],
-  },
-];
-
-const adminGroup = {
-  label: 'System',
-  items: [{ to: '/settings', icon: Settings, label: 'Settings' }],
-};
+import { navGroupsForRole } from '../lib/roles';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const navGroups = user?.role === 'admin' ? [...groups, adminGroup] : groups;
+  const navGroups = navGroupsForRole(user?.role);
 
   function handleLogout() {
     logout();
