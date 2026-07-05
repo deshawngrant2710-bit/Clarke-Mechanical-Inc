@@ -62,13 +62,13 @@ export default function Login() {
       if (isSignup) {
         const { data } = await api.post('/auth/register', {
           name: `${form.firstName.trim()} ${form.lastName.trim()}`,
-          email: form.email.trim(),
+          email: form.email.trim().toLowerCase(),
           phone: form.phone.trim(),
           password: form.password,
         });
         login(data.token, data.user);
       } else {
-        const { data } = await api.post('/auth/login', { email: form.email, password: form.password });
+        const { data } = await api.post('/auth/login', { email: form.email.trim().toLowerCase(), password: form.password });
         login(data.token, data.user);
       }
       navigate('/');
@@ -155,6 +155,7 @@ export default function Login() {
             )}
 
             <Field label="Email address" icon={Mail} type="email" autoComplete="email"
+              autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email"
               value={form.email} onChange={set('email')} placeholder="you@clarkemechanical.com" />
 
             {isSignup && (

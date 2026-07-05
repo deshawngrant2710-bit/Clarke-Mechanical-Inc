@@ -11,7 +11,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // POST /api/auth/register — self-service signup, always role "customer".
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { name, password, phone } = req.body;
+    const email = (req.body.email || '').trim().toLowerCase();
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ error: 'First name, last name, email, phone, and password are required' });
     }
@@ -36,7 +37,8 @@ router.post('/register', async (req, res) => {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = (req.body.email || '').trim().toLowerCase();
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
     const user = await findOne('users', 'email', email);
