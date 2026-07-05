@@ -1,0 +1,22 @@
+# Render Blueprint — free web service for the Clarke Mechanical API.
+# Data lives in Firestore (free Spark tier); this service is just the compute.
+services:
+  - type: web
+    name: clarke-mechanical-api
+    runtime: node
+    plan: free
+    rootDir: functions
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: JWT_SECRET
+        sync: false            # set in Render dashboard
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false            # paste the service-account JSON (one line)
+      - key: BUSINESS_EMAIL
+        value: clarkemechanical@gmail.com
+      - key: BUSINESS_PHONE
+        value: (555) 555-0100
+      - key: EMAIL_FROM
+        value: Clarke Mechanical Inc. <clarkemechanical@gmail.com>

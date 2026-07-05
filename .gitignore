@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Builds
+client/dist/
+dist/
+
+# Env & secrets
+server/.env
+functions/.env
+functions/.env.*
+!functions/.env.example
+
+# SQLite (legacy server)
+server/clarke.db
+server/clarke.db-shm
+server/clarke.db-wal
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# OS
+.DS_Store

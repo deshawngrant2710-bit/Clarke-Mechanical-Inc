@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 545 228" role="img" aria-label="Clarke Mechanical Inc.">
+  <defs>
+    <!-- Blue ring gradient (bright top-left → deep navy bottom) -->
+    <linearGradient id="cm-ring" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#4dd0e1"/>
+      <stop offset="35%" stop-color="#1e88e5"/>
+      <stop offset="100%" stop-color="#0d3c82"/>
+    </linearGradient>
+    <!-- Red/orange arc gradient (top-right accent) -->
+    <linearGradient id="cm-redarc" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%"  stop-color="#e53935"/>
+      <stop offset="100%" stop-color="#f57c00"/>
+    </linearGradient>
+    <!-- Dark blue inner flame -->
+    <linearGradient id="cm-blfl" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%"   stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1a237e"/>
+    </linearGradient>
+    <!-- Center orange-yellow flame -->
+    <linearGradient id="cm-orgfl" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%"   stop-color="#fff176"/>
+      <stop offset="18%"  stop-color="#ffb300"/>
+      <stop offset="58%"  stop-color="#f4511e"/>
+      <stop offset="100%" stop-color="#bf360c"/>
+    </linearGradient>
+    <!-- Right red-orange flame -->
+    <linearGradient id="cm-redfl" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%"   stop-color="#ef5350"/>
+      <stop offset="100%" stop-color="#e64a19"/>
+    </linearGradient>
+    <!-- Text divider red→orange -->
+    <linearGradient id="cm-div" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#e53935"/>
+      <stop offset="100%" stop-color="#fb8c00"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ── OUTER RING (blue, full circle stroke) ── -->
+  <circle cx="104" cy="116" r="84" fill="none" stroke="url(#cm-ring)" stroke-width="22"/>
+
+  <!-- ── RED/ORANGE ARC — top-right quadrant on top of blue ring ── -->
+  <!-- Arc from 12 o'clock (104,32) clockwise to 3 o'clock (188,116) -->
+  <path d="M 104,32 A 84,84 0 0,1 188,116"
+        fill="none" stroke="url(#cm-redarc)" stroke-width="22" stroke-linecap="butt"/>
+
+  <!-- ── DARK BLUE LEFT FLAME ── -->
+  <path d="
+    M 60,172
+    C 46,142 50,96 68,56
+    C 74,40 80,20 88,18
+    C 96,15 100,34 108,62
+    C 115,84 114,132 108,172
+    Z
+  " fill="url(#cm-blfl)"/>
+
+  <!-- Blue flame highlight (lighter inner reflection) -->
+  <path d="
+    M 70,166
+    C 62,138 64,94 78,58
+    C 82,46 86,27 88,18
+    C 90,26 90,46 92,70
+    C 94,96 93,136 88,166
+    Z
+  " fill="#90caf9" opacity="0.55"/>
+
+  <!-- ── CENTER ORANGE-YELLOW FLAME (tallest) ── -->
+  <path d="
+    M 64,188
+    C 50,150 54,98 74,50
+    C 84,28 98,4 112,4
+    C 126,4 140,26 152,56
+    C 163,84 164,144 150,188
+    Z
+  " fill="url(#cm-orgfl)"/>
+
+  <!-- Yellow tip highlight on center flame -->
+  <path d="
+    M 106,42 C 104,28 107,12 112,4 C 112,18 110,32 108,48 Z
+  " fill="white" opacity="0.22"/>
+
+  <!-- ── RIGHT RED-ORANGE FLAME ── -->
+  <path d="
+    M 124,184
+    C 120,152 127,106 142,68
+    C 150,46 158,18 167,18
+    C 176,18 182,40 189,68
+    C 196,94 195,146 186,184
+    Z
+  " fill="url(#cm-redfl)"/>
+
+  <!-- ── TEXT SECTION ── -->
+
+  <!-- CLARKE (ultra bold) -->
+  <text x="228" y="95"
+        font-family="'Arial Black','Arial Bold',Impact,sans-serif"
+        font-size="76" font-weight="900"
+        fill="#111111">CLARKE</text>
+
+  <!-- Divider bar (red → orange) -->
+  <rect x="228" y="102" width="310" height="3.5" fill="url(#cm-div)" rx="1"/>
+
+  <!-- MECHANICAL -->
+  <text x="228" y="148"
+        font-family="'Arial Black','Arial Bold',Impact,sans-serif"
+        font-size="44" font-weight="900"
+        fill="#111111">MECHANICAL</text>
+
+  <!-- INC. superscript -->
+  <text x="456" y="127"
+        font-family="'Arial Black','Arial Bold',Impact,sans-serif"
+        font-size="22" font-weight="900"
+        fill="#111111">INC.</text>
+
+  <!-- HVAC subtitle -->
+  <text x="230" y="178"
+        font-family="Arial,Helvetica,sans-serif"
+        font-size="17.5" font-weight="400"
+        fill="#333333" letter-spacing="2.2">HVAC • HEATING • VENTILATION</text>
+</svg>
+
+  <!-- Flame group -->
+  <g transform="translate(6, 6)">
+    <!-- Blue outer/left flame -->
+    <path d="M44,100 C18,82 8,58 14,34 C18,44 26,50 28,50 
+             C22,34 28,18 36,8 
+             C36,22 34,34 44,44 
+             C46,30 44,18 50,8 
+             C62,22 60,40 52,54 
+             C58,44 66,50 64,66 
+             C58,84 52,96 44,100 Z" 
+          fill="#1a6fd4"/>
+    <!-- Blue highlight -->
+    <path d="M28,50 C22,38 26,26 32,18 C32,26 30,34 36,42 C38,34 36,24 40,16 C46,26 44,38 40,48 Z" 
+          fill="#2d8ef0" opacity="0.6"/>
+    
+    <!-- Orange/yellow center flame -->
+    <path d="M50,96 C32,80 30,62 38,48 
+             C40,58 46,62 46,62 
+             C42,50 48,38 54,30 
+             C54,42 52,50 58,58 
+             C62,46 60,36 64,28 
+             C72,40 70,56 62,68 
+             C66,58 72,64 70,76 
+             C64,90 56,98 50,96 Z" 
+          fill="#f97316"/>
+    <!-- Yellow inner flame -->
+    <path d="M52,92 C40,78 40,64 46,54 
+             C47,62 50,65 50,65 
+             C48,56 52,48 56,42 
+             C56,52 54,58 60,64 
+             C63,54 61,46 64,40 
+             C70,50 68,62 62,72 
+             C64,64 68,68 67,76 
+             C63,86 57,94 52,92 Z" 
+          fill="#fbbf24"/>
+    <!-- Red tip accent on blue flame -->
+    <path d="M36,8 C33,14 31,22 34,30 C38,22 40,14 36,8 Z" fill="#dc2626"/>
+    <!-- Red tip on orange flame -->
+    <path d="M64,28 C61,34 59,42 62,50 C66,42 68,34 64,28 Z" fill="#ef4444"/>
+  </g>
+
+  <!-- Vertical divider line -->
+  <line x1="102" y1="18" x2="102" y2="102" stroke="#d1d5db" stroke-width="1"/>
+
+  <!-- CLARKE text -->
+  <text x="116" y="52" 
+        font-family="Arial Black, 'Arial Bold', Gadget, sans-serif" 
+        font-size="32" font-weight="900" 
+        fill="#111827" letter-spacing="1">CLARKE</text>
+  
+  <!-- MECHANICAL INC text -->
+  <text x="117" y="71" 
+        font-family="Arial, sans-serif" 
+        font-size="16" font-weight="700" 
+        fill="#111827" letter-spacing="2">MECHANICAL<tspan font-size="10" dy="-4">INC.</tspan></text>
+
+  <!-- Blue underline -->
+  <line x1="117" y1="75" x2="308" y2="75" stroke="#1a6fd4" stroke-width="2"/>
+
+  <!-- Subtitle -->
+  <text x="117" y="90" 
+        font-family="Arial, sans-serif" 
+        font-size="10" font-weight="400"
+        fill="#4b5563" letter-spacing="1.5">HVAC • HEATING • VENTILATION</text>
+</svg>
