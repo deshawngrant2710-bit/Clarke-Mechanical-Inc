@@ -52,7 +52,9 @@
       "Bash(curl -s -m 30 -I https://clarke-mechanical-inc.onrender.com)",
       "Bash(curl -s -m 20 -v https://clarke-mechanical-inc.onrender.com/api/health)",
       "Bash(git add *)",
-      "Bash(git commit -q -m 'Harden Firestore init: don'\\\\''t crash on bad service-account JSON *)"
+      "Bash(git commit -q -m 'Harden Firestore init: don'\\\\''t crash on bad service-account JSON *)",
+      "Bash(git remote *)",
+      "Bash(git push *)"
     ]
   }
 }
