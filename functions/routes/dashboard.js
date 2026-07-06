@@ -9,8 +9,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 router.get('/', async (req, res) => {
-  const [customers, jobs, invoices, inventory, users] = await Promise.all([
-    list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'),
+  const [customers, jobs, invoices, inventory, users, reviews] = await Promise.all([
+    list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'),
   ]);
   const t = today();
   const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
@@ -78,6 +78,11 @@ router.get('/', async (req, res) => {
     })),
     jobsByStatus,
     revenueByMonth,
+    reviewCount: reviews.length,
+    avgRating: reviews.length ? reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length : 0,
+    recentReviews: [...reviews].sort(byCreated).slice(0, 5).map(r => ({
+      id: r.id, rating: r.rating, comment: r.comment, customer_name: r.customer_name, job_title: r.job_title, created_at: r.created_at,
+    })),
   });
 });
 

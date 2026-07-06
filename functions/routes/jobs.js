@@ -2,9 +2,26 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
 const { authMiddleware, requireStaff } = require('../middleware/auth');
+const { render, sendMail } = require('../lib/email');
 
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
+
+// Auto-email the customer when a job crosses into "scheduled" or "completed".
+async function notifyOnStatusChange(job, prevStatus) {
+  try {
+    if (!job.customer_id || job.status === prevStatus) return;
+    const map = { scheduled: 'job_confirmation', completed: 'job_completed' };
+    const type = map[job.status];
+    if (!type) return;
+    const customer = await getById('customers', job.customer_id);
+    if (!customer?.email) return;
+    const tech = job.technician_id ? await getById('users', job.technician_id) : null;
+    const entity = { ...job, customer_name: customer.name, technician_name: tech?.name };
+    const { subject, html } = await render(type, entity);
+    await sendMail({ type, to: customer.email, toName: customer.name, subject, html, relatedId: job.id, customerId: job.customer_id, sentBy: 'Automated' });
+  } catch (e) { console.error('[jobs] notify failed:', e.message); }
+}
 
 // List jobs with customer_name + technician_name attached.
 router.get('/', async (req, res) => {
@@ -55,6 +72,7 @@ router.put('/:id', async (req, res) => {
   for (const f of fields) if (f in req.body) patch[f] = req.body[f] ?? null;
   const saved = await update('jobs', req.params.id, patch);
   res.json(saved);
+  notifyOnStatusChange(saved, existing.status); // best-effort, after response
 });
 
 router.delete('/:id', async (req, res) => {

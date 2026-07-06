@@ -6,11 +6,25 @@ import { printDocument } from '../lib/printDoc';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
   UserCircle, Plus, Wrench, MapPin, ChevronDown, Check, X, Phone, Mail, Pencil,
-  Download, Ban, CalendarClock, Lock,
+  Download, Ban, CalendarClock, Lock, Star,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function Stars({ value, size = 14, onChange }) {
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button key={n} type={onChange ? 'button' : undefined} disabled={!onChange}
+          onClick={onChange ? () => onChange(n) : undefined}
+          className={onChange ? 'cursor-pointer' : 'cursor-default'}>
+          <Star size={size} className={n <= value ? 'fill-amber-400 text-amber-400' : 'fill-slate-200 text-slate-200'} />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const JOB_STEPS = [
   { key: 'pending', label: 'Requested' },
@@ -56,6 +70,7 @@ export default function Portal() {
   const [profileModal, setProfileModal] = useState(false);
   const [pwModal, setPwModal] = useState(false);
   const [rescheduleJob, setRescheduleJob] = useState(null);
+  const [reviewJob, setReviewJob] = useState(null);
 
   function load() {
     return Promise.all([
@@ -180,6 +195,19 @@ export default function Portal() {
                                 <Btn size="sm" variant="outline" className="!text-red-600 !border-red-200 hover:!bg-red-50" onClick={() => cancelJob(j.id)}><Ban size={14} /> Cancel</Btn>
                               </div>
                             )}
+                            {j.status === 'completed' && (
+                              j.review ? (
+                                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-slate-500">Your rating:</span>
+                                  <Stars value={j.review.rating} />
+                                  {j.review.comment && <span className="text-sm text-slate-500 italic">"{j.review.comment}"</span>}
+                                </div>
+                              ) : (
+                                <div className="mt-3">
+                                  <Btn size="sm" variant="outline" onClick={() => setReviewJob(j)}><Star size={14} /> Leave a review</Btn>
+                                </div>
+                              )
+                            )}
                           </div>
                         )}
                       </div>
@@ -300,7 +328,40 @@ export default function Portal() {
       <ProfileModal open={profileModal} onClose={() => setProfileModal(false)} profile={me?.profile} onDone={load} />
       <ChangePasswordModal open={pwModal} onClose={() => setPwModal(false)} />
       <RescheduleModal job={rescheduleJob} onClose={() => setRescheduleJob(null)} onDone={load} />
+      <ReviewModal job={reviewJob} onClose={() => setReviewJob(null)} onDone={load} />
     </div>
+  );
+}
+
+function ReviewModal({ job, onClose, onDone }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (job) { setRating(0); setComment(''); } }, [job]);
+  async function save() {
+    if (!rating) return toast.error('Please choose a star rating');
+    setSaving(true);
+    try {
+      await api.post('/portal/reviews', { job_id: job.id, rating, comment });
+      toast.success('Thanks for your feedback!');
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not submit review'); }
+    finally { setSaving(false); }
+  }
+  return (
+    <Modal open={!!job} onClose={onClose} title="Leave a Review" subtitle={job?.title} size="sm">
+      <div className="space-y-4">
+        <div className="flex flex-col items-center gap-2 py-2">
+          <Stars value={rating} size={34} onChange={setRating} />
+          <span className="text-xs text-slate-400">{rating ? `${rating} of 5 stars` : 'Tap to rate'}</span>
+        </div>
+        <Textarea label="Comments (optional)" value={comment} onChange={e => setComment(e.target.value)} placeholder="How was your experience?" />
+        <div className="flex justify-end gap-2">
+          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} loading={saving}>{saving ? 'Submitting…' : 'Submit Review'}</Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -2,7 +2,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { db, getById, findWhere, create, update, nameMap } = require('../lib/db');
 const { authMiddleware } = require('../middleware/auth');
-const { sendMail } = require('../lib/email');
+const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -43,15 +43,19 @@ router.get('/me', async (req, res) => {
 router.get('/jobs', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   if (!ids.length) return res.json([]);
-  const [jobsNested, techs] = await Promise.all([
+  const [jobsNested, techs, reviewsNested] = await Promise.all([
     Promise.all(ids.map(id => findWhere('jobs', 'customer_id', id))),
     nameMap('users'),
+    Promise.all(ids.map(id => findWhere('reviews', 'customer_id', id))),
   ]);
+  const reviewByJob = {};
+  reviewsNested.flat().forEach(r => { reviewByJob[r.job_id] = { rating: r.rating, comment: r.comment }; });
   const jobs = jobsNested.flat()
     .map(j => ({
       id: j.id, title: j.title, status: j.status, priority: j.priority, job_type: j.job_type,
       scheduled_date: j.scheduled_date, scheduled_time: j.scheduled_time, address: j.address,
       description: j.description, technician_name: techs[j.technician_id] || null, created_at: j.created_at,
+      review: reviewByJob[j.id] || null,
     }))
     .sort(byCreated);
   res.json(jobs);
@@ -111,7 +115,42 @@ router.post('/service-request', async (req, res) => {
     }
   } catch (e) { console.error('[portal] notify failed:', e.message); }
 
+  // Confirmation email to the customer.
+  try {
+    if (customer.email) {
+      const { subject, html } = await render('service_confirmation', { ...job, customer_name: customer.name });
+      await sendMail({ type: 'service_confirmation', to: customer.email, toName: customer.name, subject, html, relatedId: job.id, customerId: customer.id, sentBy: 'Automated' });
+    }
+  } catch (e) { console.error('[portal] confirmation failed:', e.message); }
+
   res.status(201).json(job);
+});
+
+// GET /portal/reviews — the customer's own reviews.
+router.get('/reviews', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  if (!ids.length) return res.json([]);
+  const nested = await Promise.all(ids.map(id => findWhere('reviews', 'customer_id', id)));
+  res.json(nested.flat().sort(byCreated));
+});
+
+// POST /portal/reviews — leave a review for one of your completed jobs.
+router.post('/reviews', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  if (!ids.length) return res.status(422).json({ error: "Your account isn't linked yet." });
+  const { job_id, rating, comment } = req.body;
+  const r = Number(rating);
+  if (!(r >= 1 && r <= 5)) return res.status(400).json({ error: 'Please choose a rating from 1 to 5' });
+  const job = await getById('jobs', job_id);
+  if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
+  if (job.status !== 'completed') return res.status(400).json({ error: 'You can only review completed services' });
+  const existing = await findWhere('reviews', 'job_id', job_id);
+  if (existing.length) return res.status(409).json({ error: "You've already reviewed this service" });
+  const saved = await create('reviews', uuid(), {
+    job_id, customer_id: job.customer_id, customer_name: records[0]?.name || req.user.name,
+    job_title: job.title, rating: r, comment: (comment || '').trim() || null,
+  });
+  res.status(201).json(saved);
 });
 
 // POST /portal/quotes/:id/respond — accept or decline an estimate.

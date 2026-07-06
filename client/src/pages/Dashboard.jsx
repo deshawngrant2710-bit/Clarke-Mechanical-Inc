@@ -6,7 +6,7 @@ import { DonutChart, AreaChart } from '../components/Charts';
 import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
-  Wrench, ArrowRight, Zap,
+  Wrench, ArrowRight, Zap, Star,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 
@@ -162,6 +162,35 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+
+      {/* Customer reviews */}
+      <Card className="mt-6">
+        <CardHeader title="Customer Reviews" icon={<Star size={16} />}
+          action={data.reviewCount > 0 && (
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+              <Star size={15} className="fill-amber-400 text-amber-400" /> {data.avgRating.toFixed(1)}
+              <span className="text-slate-400 font-normal">· {data.reviewCount} review{data.reviewCount !== 1 ? 's' : ''}</span>
+            </span>
+          )} />
+        {(!data.recentReviews || data.recentReviews.length === 0) ? (
+          <p className="text-sm text-slate-400 p-6 text-center">No reviews yet — customers can rate completed services from their portal.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {data.recentReviews.map(r => (
+              <div key={r.id} className="px-5 py-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-800">{r.customer_name}</p>
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map(n => <Star key={n} size={13} className={n <= r.rating ? 'fill-amber-400 text-amber-400' : 'fill-slate-200 text-slate-200'} />)}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400">{r.job_title}</p>
+                {r.comment && <p className="text-sm text-slate-600 mt-1 italic">"{r.comment}"</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

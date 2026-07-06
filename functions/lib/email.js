@@ -104,6 +104,20 @@ const templates = {
             <p style="margin:0;font-size:14px;color:#1e40af;font-weight:600;">📅 ${job.scheduled_date || ''}${job.scheduled_time ? ` at ${job.scheduled_time}` : ''}</p>
             ${job.technician_name ? `<p style="margin:4px 0 0;font-size:14px;color:#475569;">🔧 Technician: ${job.technician_name}</p>` : ''}</div>` + p('Please ensure someone is available to provide access. Thank you!') }) };
   },
+  job_completed(job, b) {
+    return { subject: 'Your service is complete — thank you!',
+      html: shell(b, { accent: '#047857', heading: 'Service complete ✅',
+        body: p(`Hi ${job.customer_name || 'there'},`) +
+          p(`We've completed <strong>${job.title}</strong>${job.completed_date ? ` on ${job.completed_date}` : ''}. Thank you for choosing Clarke Mechanical!`) +
+          p('We\'d love your feedback — log in to your account to leave a quick review of the service.') }) };
+  },
+  service_confirmation(job, b) {
+    return { subject: 'We received your service request',
+      html: shell(b, { heading: 'Request received 👍',
+        body: p(`Hi ${job.customer_name || 'there'},`) +
+          p(`Thanks — we've received your request for <strong>${job.title}</strong>${job.scheduled_date ? ` (preferred date: ${job.scheduled_date})` : ''}. Our team will reach out shortly to confirm a time.`) +
+          p('You can track its status anytime by logging into your account.') }) };
+  },
   test(_e, b) {
     return { subject: 'Clarke Mechanical — test email',
       html: shell(b, { heading: 'Your email is working! 🎉', body: p('This is a test message from your Clarke Mechanical settings. If you can read this, your business email is configured correctly.') }) };
