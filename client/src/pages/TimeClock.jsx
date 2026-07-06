@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
-import { Card, CardHeader, Btn, Modal, Empty, SkeletonPage, StatCard, Avatar } from '../components/UI';
+import { Card, CardHeader, Btn, Modal, Select, Empty, SkeletonPage, StatCard, Avatar } from '../components/UI';
 import { fileToProof } from '../lib/imageProof';
+import { getLocation, mapsLink } from '../lib/geo';
 import { useAuth } from '../context/AuthContext';
-import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock } from 'lucide-react';
+import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'; }
@@ -20,26 +21,22 @@ export default function TimeClock() {
   const isAdmin = user?.role === 'admin';
   const [active, setActive] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [clockInOpen, setClockInOpen] = useState(false);
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [proofView, setProofView] = useState(null);
-  const [busy, setBusy] = useState(false);
 
   function load() {
-    return Promise.all([api.get('/time/active'), api.get('/time')]).then(([a, e]) => {
-      setActive(a.data); setEntries(e.data); setLoading(false);
+    return Promise.all([api.get('/time/active'), api.get('/time'), api.get('/jobs')]).then(([a, e, j]) => {
+      setActive(a.data); setEntries(e.data);
+      setJobs(j.data.filter(job => !['completed', 'cancelled'].includes(job.status)));
+      setLoading(false);
     }).catch(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-
-  async function clockIn() {
-    setBusy(true);
-    try { await api.post('/time/clock-in'); toast.success('Clocked in'); await load(); }
-    catch (e) { toast.error(e.response?.data?.error || 'Could not clock in'); }
-    finally { setBusy(false); }
-  }
 
   async function viewProof(id) {
     try {
@@ -67,7 +64,7 @@ export default function TimeClock() {
             <div className="flex items-center gap-4">
               <span className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center animate-[pulse-ring_2s_infinite]"><Timer size={24} /></span>
               <div>
-                <p className="text-sm text-slate-500">Clocked in at {fmtTime(active.clock_in)}</p>
+                <p className="text-sm text-slate-500">Clocked in at {fmtTime(active.clock_in)}{active.job_title ? <> · <span className="text-slate-700 font-medium">{active.job_title}</span></> : ''}</p>
                 <p className="text-2xl font-bold text-slate-800 tabular-nums">{elapsed(active.clock_in, now)}</p>
               </div>
             </div>
@@ -82,7 +79,7 @@ export default function TimeClock() {
                 <p className="text-lg font-semibold text-slate-700">Ready to start your shift</p>
               </div>
             </div>
-            <Btn size="lg" onClick={clockIn} loading={busy}><LogIn size={18} /> Clock In</Btn>
+            <Btn size="lg" onClick={() => setClockInOpen(true)}><LogIn size={18} /> Clock In</Btn>
           </div>
         )}
       </Card>
@@ -104,6 +101,7 @@ export default function TimeClock() {
                 <tr className="border-b border-slate-200 bg-slate-50/60 text-left">
                   {isAdmin && <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Technician</th>}
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Job</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Clock In</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Clock Out</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Hours</th>
@@ -122,8 +120,21 @@ export default function TimeClock() {
                       </td>
                     )}
                     <td className="px-5 py-3 text-slate-600">{fmtDate(e.clock_in)}</td>
-                    <td className="px-5 py-3 text-slate-600">{fmtTime(e.clock_in)}</td>
-                    <td className="px-5 py-3">{e.clock_out ? <span className="text-slate-600">{fmtTime(e.clock_out)}</span> : <span className="text-xs font-medium text-emerald-600">In progress</span>}</td>
+                    <td className="px-5 py-3 text-slate-600">{e.job_title || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-600">{fmtTime(e.clock_in)}</span>
+                        {e.clock_in_location && <a href={mapsLink(e.clock_in_location)} target="_blank" rel="noreferrer" title="View clock-in location" className="text-blue-500 hover:text-blue-700"><MapPin size={13} /></a>}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      {e.clock_out ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-600">{fmtTime(e.clock_out)}</span>
+                          {e.clock_out_location && <a href={mapsLink(e.clock_out_location)} target="_blank" rel="noreferrer" title="View clock-out location" className="text-blue-500 hover:text-blue-700"><MapPin size={13} /></a>}
+                        </div>
+                      ) : <span className="text-xs font-medium text-emerald-600">In progress</span>}
+                    </td>
                     <td className="px-5 py-3 text-right font-medium text-slate-800">{e.hours != null ? `${e.hours.toFixed(2)}` : '—'}</td>
                     <td className="px-5 py-3 text-right">
                       {e.has_proof ? (
@@ -140,6 +151,7 @@ export default function TimeClock() {
         )}
       </Card>
 
+      <ClockInModal open={clockInOpen} onClose={() => setClockInOpen(false)} onDone={load} jobs={jobs} requireJob={user?.role === 'technician'} />
       <ClockOutModal open={clockOutOpen} onClose={() => setClockOutOpen(false)} onDone={load} />
 
       <Modal open={!!proofView} onClose={() => setProofView(null)} title="Proof of Work" size="lg">
@@ -148,6 +160,39 @@ export default function TimeClock() {
           : <img src={proofView?.proof} alt="proof of work" className="w-full rounded-lg border border-slate-200" />}
       </Modal>
     </div>
+  );
+}
+
+function ClockInModal({ open, onClose, onDone, jobs, requireJob }) {
+  const [jobId, setJobId] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) setJobId(''); }, [open]);
+  async function submit() {
+    if (requireJob && !jobId) return toast.error('Please select the job you\'re clocking in for');
+    setBusy(true);
+    const t = toast.loading('Getting your location…');
+    try {
+      const location = await getLocation();
+      await api.post('/time/clock-in', { job_id: jobId || null, location });
+      toast.success(location ? 'Clocked in — location recorded' : 'Clocked in (location unavailable)', { id: t });
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not clock in', { id: t }); }
+    finally { setBusy(false); }
+  }
+  return (
+    <Modal open={open} onClose={onClose} title="Clock In" subtitle="Start your shift" size="sm">
+      <div className="space-y-4">
+        <Select label={`Job${requireJob ? ' *' : ' (optional)'}`} value={jobId} onChange={e => setJobId(e.target.value)}>
+          <option value="">{requireJob ? 'Select a job…' : 'No specific job'}</option>
+          {jobs.map(j => <option key={j.id} value={j.id}>{j.title}{j.customer_name ? ` — ${j.customer_name}` : ''}</option>)}
+        </Select>
+        <p className="text-xs text-slate-500 flex items-center gap-1.5"><MapPin size={13} /> Your location will be recorded at clock-in. Please allow location access if prompted.</p>
+        <div className="flex justify-end gap-2">
+          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={submit} loading={busy}>{busy ? 'Clocking in…' : 'Clock In'}</Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -172,11 +217,13 @@ function ClockOutModal({ open, onClose, onDone }) {
   async function submit() {
     if (!proof) return toast.error('A photo of the work is required to clock out');
     setBusy(true);
+    const t = toast.loading('Getting your location…');
     try {
-      await api.post('/time/clock-out', proof);
-      toast.success('Clocked out — nice work!');
+      const location = await getLocation();
+      await api.post('/time/clock-out', { ...proof, location });
+      toast.success('Clocked out — nice work!', { id: t });
       onClose(); onDone();
-    } catch (e) { toast.error(e.response?.data?.error || 'Could not clock out'); }
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not clock out', { id: t }); }
     finally { setBusy(false); }
   }
 
