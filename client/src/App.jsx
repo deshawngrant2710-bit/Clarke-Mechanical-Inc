@@ -16,6 +16,7 @@ import Inventory from './pages/Inventory';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
+import TimeClock from './pages/TimeClock';
 import { canAccess, homeForRole } from './lib/roles';
 
 function Layout() {
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/employees" element={<Employees />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/portal" element={<Portal />} />
+            <Route path="/time-clock" element={<TimeClock />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

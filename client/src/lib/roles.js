@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'dispatcher', 'technician'];
@@ -17,6 +17,7 @@ export const NAV_GROUPS = [
       { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'office', 'dispatcher'] },
       { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: STAFF },
       { to: '/schedule', label: 'Schedule', icon: Calendar, roles: STAFF },
+      { to: '/time-clock', label: 'Time Clock', icon: Clock, roles: STAFF },
     ],
   },
   {
