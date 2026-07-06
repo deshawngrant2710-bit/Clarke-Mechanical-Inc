@@ -1,5 +1,5 @@
 const express = require('express');
-const { list, nameMap } = require('../lib/db');
+const { list, findWhere, nameMap } = require('../lib/db');
 const { authMiddleware, requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
@@ -8,7 +8,51 @@ router.use(authMiddleware, requireStaff);
 const today = () => new Date().toISOString().slice(0, 10);
 const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
+// Technicians get a personal, scoped dashboard — only their own jobs/schedule/hours,
+// and NO company financials, customer list, other technicians, or reviews.
+async function technicianDashboard(req, res) {
+  const uid = req.user.id;
+  const t = today();
+  const [jobs, customers, myTime] = await Promise.all([
+    list('jobs'), list('customers'), findWhere('time_entries', 'technician_id', uid),
+  ]);
+  const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
+  const mine = jobs.filter(j => j.technician_id === uid);
+  const active = mine.filter(j => !['completed', 'cancelled'].includes(j.status));
+  const shape = (j) => ({
+    id: j.id, title: j.title, status: j.status, priority: j.priority,
+    scheduled_date: j.scheduled_date, scheduled_time: j.scheduled_time, address: j.address,
+    customer_name: custName[j.customer_id] || null, job_type: j.job_type,
+  });
+
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+  const closed = myTime.filter(e => e.clock_out && e.hours != null);
+  const hoursToday = closed.filter(e => (e.clock_in || '').slice(0, 10) === t).reduce((s, e) => s + e.hours, 0);
+  const hoursWeek = closed.filter(e => (e.clock_in || '') >= weekAgo).reduce((s, e) => s + e.hours, 0);
+  const openShift = myTime.find(e => !e.clock_out) || null;
+
+  res.json({
+    scope: 'technician',
+    todayJobs: mine.filter(j => j.scheduled_date === t).length,
+    openJobs: active.length,
+    completedJobs: mine.filter(j => j.status === 'completed').length,
+    completedToday: mine.filter(j => j.status === 'completed' && j.completed_date === t).length,
+    emergencyJobs: active.filter(j => j.priority === 'urgent' || j.job_type === 'Emergency').length,
+    hoursToday: Math.round(hoursToday * 100) / 100,
+    hoursThisWeek: Math.round(hoursWeek * 100) / 100,
+    onShift: !!openShift,
+    todaysSchedule: mine.filter(j => j.scheduled_date === t)
+      .sort((a, b) => (a.scheduled_time || '').localeCompare(b.scheduled_time || '')).map(shape),
+    upcomingJobs: mine.filter(j => j.scheduled_date && j.scheduled_date > t && !['completed', 'cancelled'].includes(j.status))
+      .sort((a, b) => (a.scheduled_date + (a.scheduled_time || '')).localeCompare(b.scheduled_date + (b.scheduled_time || ''))).slice(0, 5).map(shape),
+    recentJobs: mine.filter(j => j.status === 'completed')
+      .sort((a, b) => (b.completed_date || b.created_at || '').localeCompare(a.completed_date || a.created_at || '')).slice(0, 5).map(shape),
+  });
+}
+
 router.get('/', async (req, res) => {
+  if (req.user.role === 'technician') return technicianDashboard(req, res);
+
   const [customers, jobs, invoices, inventory, users, reviews] = await Promise.all([
     list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'),
   ]);

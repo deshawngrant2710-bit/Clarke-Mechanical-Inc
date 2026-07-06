@@ -6,9 +6,11 @@ import { DonutChart, AreaChart } from '../components/Charts';
 import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
-  Wrench, ArrowRight, Zap, Star,
+  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin,
 } from 'lucide-react';
 import Logo from '../components/Logo';
+import PageHeader from '../components/PageHeader';
+import { useAuth } from '../context/AuthContext';
 
 const STATUS_COLORS = {
   scheduled: '#3b82f6', 'in-progress': '#8b5cf6', pending: '#f59e0b',
@@ -30,12 +32,15 @@ function QuickAction({ icon, label, onClick, color }) {
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
     api.get('/dashboard').then(r => setData(r.data)).catch(console.error);
   }, []);
 
-  if (!data) return <SkeletonPage stats={8} />;
+  if (!data) return <SkeletonPage stats={data?.scope === 'technician' ? 4 : 8} />;
+
+  if (data.scope === 'technician') return <TechnicianDashboard data={data} navigate={navigate} name={user?.name} />;
 
   const donutData = data.jobsByStatus
     .filter(s => s.count > 0)
@@ -191,6 +196,82 @@ export default function Dashboard() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  Technician dashboard — scoped to their own work only               */
+/* ================================================================== */
+function TechnicianDashboard({ data, navigate, name }) {
+  const first = (name || 'there').split(' ')[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const JobRow = ({ job, showDate }) => (
+    <div onClick={() => navigate(`/jobs/${job.id}`)}
+      className="flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/40 cursor-pointer transition-colors">
+      <div className="w-16 text-center shrink-0">
+        {showDate
+          ? <><p className="text-[10px] font-semibold text-slate-400 uppercase">{job.scheduled_date ? new Date(job.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' }) : ''}</p>
+              <p className="text-lg font-bold text-slate-700 leading-none">{job.scheduled_date ? new Date(job.scheduled_date + 'T00:00:00').getDate() : '—'}</p></>
+          : <p className="text-sm font-bold text-slate-800">{job.scheduled_time || '—'}</p>}
+      </div>
+      <div className="w-px h-9 bg-slate-200" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-800 truncate">{job.title}</p>
+        <p className="text-xs text-slate-500 flex items-center gap-1 truncate">
+          {job.customer_name || 'No customer'}{job.address && <> · <MapPin size={10} /> {job.address}</>}
+        </p>
+      </div>
+      <Badge status={job.status} />
+    </div>
+  );
+
+  return (
+    <div className="animate-fade-in">
+      <PageHeader title={`${greeting}, ${first}`} subtitle="Here's your day at a glance" icon={<Wrench size={20} />}>
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${data.onShift ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+          <span className={`w-2 h-2 rounded-full ${data.onShift ? 'bg-emerald-500 animate-[pulse-ring_2s_infinite]' : 'bg-slate-400'}`} />
+          {data.onShift ? 'On the clock' : 'Off the clock'}
+        </span>
+      </PageHeader>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Today's Jobs" value={data.todayJobs} icon={<CalendarDays size={18} />} color="blue" />
+        <StatCard label="Open Jobs" value={data.openJobs} icon={<Briefcase size={18} />} color="orange" sub={data.emergencyJobs ? `${data.emergencyJobs} urgent` : ''} />
+        <StatCard label="Completed Today" value={data.completedToday} icon={<CheckCircle size={18} />} color="green" sub={`${data.completedJobs} all-time`} />
+        <StatCard label="Hours Today" value={data.hoursToday} decimals={1} icon={<Timer size={18} />} color="purple" sub={`${data.hoursThisWeek}h this week`} />
+      </div>
+
+      <Card className="p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4"><Zap size={16} className="text-blue-500" /><h2 className="text-card-title text-slate-800">Quick Actions</h2></div>
+        <div className="grid grid-cols-3 gap-3">
+          <QuickAction icon={<Clock size={18} />} label="Time Clock" color="bg-emerald-50 text-emerald-600" onClick={() => navigate('/time-clock')} />
+          <QuickAction icon={<CalendarDays size={18} />} label="My Schedule" color="bg-blue-50 text-blue-600" onClick={() => navigate('/schedule')} />
+          <QuickAction icon={<Briefcase size={18} />} label="All My Jobs" color="bg-orange-50 text-orange-600" onClick={() => navigate('/jobs')} />
+        </div>
+      </Card>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader title="Today's Schedule" icon={<CalendarDays size={16} />} />
+          <div className="divide-y divide-slate-100">
+            {data.todaysSchedule.length === 0
+              ? <p className="text-sm text-slate-400 p-6 text-center">No jobs scheduled for today 🎉</p>
+              : data.todaysSchedule.map(j => <JobRow key={j.id} job={j} />)}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Upcoming Jobs" icon={<ArrowRight size={16} />} />
+          <div className="divide-y divide-slate-100">
+            {data.upcomingJobs.length === 0
+              ? <p className="text-sm text-slate-400 p-6 text-center">Nothing upcoming</p>
+              : data.upcomingJobs.map(j => <JobRow key={j.id} job={j} showDate />)}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
