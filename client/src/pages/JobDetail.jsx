@@ -2,9 +2,10 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
+import SignaturePad from '../components/SignaturePad';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
 const TIMELINE = ['pending', 'scheduled', 'in-progress', 'completed'];
@@ -20,7 +21,23 @@ export default function JobDetail() {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [emailing, setEmailing] = useState('');
+  const [signModal, setSignModal] = useState(false);
+  const [signName, setSignName] = useState('');
+  const [signing, setSigning] = useState(false);
+  const padRef = useRef(null);
   const fileRef = useRef();
+
+  async function captureSignoff() {
+    if (!signName.trim()) return toast.error('Enter the customer name');
+    if (padRef.current?.isEmpty()) return toast.error('Please have the customer sign');
+    setSigning(true);
+    try {
+      await api.post(`/jobs/${id}/signoff`, { signed_by: signName.trim(), signature: padRef.current.toDataURL() });
+      toast.success('Signature captured');
+      setSignModal(false); setSignName(''); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not save signature'); }
+    finally { setSigning(false); }
+  }
 
   function load() {
     Promise.all([api.get(`/jobs/${id}`), api.get('/customers'), api.get('/employees')])
@@ -142,6 +159,27 @@ export default function JobDetail() {
           {job.notes && (
             <Card><CardHeader title="Notes" /><p className="p-5 text-sm text-slate-700 whitespace-pre-wrap">{job.notes}</p></Card>
           )}
+
+          {/* Customer sign-off */}
+          <Card>
+            <CardHeader title="Customer Sign-off" icon={<PenLine size={15} />} />
+            <div className="p-5">
+              {job.signed_at ? (
+                <div>
+                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Signed by {job.signed_by}</p>
+                  <p className="text-xs text-slate-500 mb-2">{new Date(job.signed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                  {job.signature && <img src={job.signature} alt="signature" className="h-16 bg-white border border-slate-200 rounded" />}
+                </div>
+              ) : job.status === 'completed' ? (
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-sm text-amber-700">Awaiting customer sign-off.</p>
+                  <Btn size="sm" onClick={() => { setSignName(job.customer_name || ''); setSignModal(true); }}><PenLine size={14} /> Capture signature</Btn>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">Available once the job is marked completed.</p>
+              )}
+            </div>
+          </Card>
         </div>
 
         <div className="lg:col-span-2">
@@ -212,6 +250,21 @@ export default function JobDetail() {
           <div className="flex justify-end gap-2 pt-2">
             <Btn variant="outline" onClick={() => setEditModal(false)}>Cancel</Btn>
             <Btn onClick={handleSave} loading={saving}>{saving ? 'Saving…' : 'Save Changes'}</Btn>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={signModal} onClose={() => setSignModal(false)} title="Capture Customer Sign-off" subtitle={job.title}>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">Hand the device to the customer to confirm the work is complete.</p>
+          <Input label="Customer name" value={signName} onChange={e => setSignName(e.target.value)} placeholder={job.customer_name || 'Full name'} />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Signature</label>
+            <SignaturePad ref={padRef} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Btn variant="outline" onClick={() => setSignModal(false)}>Cancel</Btn>
+            <Btn onClick={captureSignoff} loading={signing}>{signing ? 'Saving…' : 'Save Signature'}</Btn>
           </div>
         </div>
       </Modal>

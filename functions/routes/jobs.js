@@ -75,6 +75,18 @@ router.put('/:id', async (req, res) => {
   notifyOnStatusChange(saved, existing.status); // best-effort, after response
 });
 
+// POST /jobs/:id/signoff — staff captures the customer's signature on-site.
+router.post('/:id/signoff', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const { signature, signed_by } = req.body;
+  if (!signature) return res.status(400).json({ error: 'Signature is required' });
+  const saved = await update('jobs', req.params.id, {
+    signature, signed_by: signed_by || 'Customer', signed_at: new Date().toISOString(),
+  });
+  res.json(saved);
+});
+
 router.delete('/:id', async (req, res) => {
   const photos = await findWhere('job_photos', 'job_id', req.params.id);
   await Promise.all(photos.map(p => db.collection('job_photos').doc(p.id).delete()));

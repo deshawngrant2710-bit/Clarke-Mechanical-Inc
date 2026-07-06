@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea } from '../components/UI';
 import { printDocument } from '../lib/printDoc';
+import SignaturePad from '../components/SignaturePad';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
   UserCircle, Plus, Wrench, MapPin, ChevronDown, Check, X, Phone, Mail, Pencil,
-  Download, Ban, CalendarClock, Lock, Star,
+  Download, Ban, CalendarClock, Lock, Star, PenLine,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -71,6 +72,7 @@ export default function Portal() {
   const [pwModal, setPwModal] = useState(false);
   const [rescheduleJob, setRescheduleJob] = useState(null);
   const [reviewJob, setReviewJob] = useState(null);
+  const [signoffJob, setSignoffJob] = useState(null);
 
   function load() {
     return Promise.all([
@@ -196,17 +198,31 @@ export default function Portal() {
                               </div>
                             )}
                             {j.status === 'completed' && (
-                              j.review ? (
-                                <div className="mt-3 flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-slate-500">Your rating:</span>
-                                  <Stars value={j.review.rating} />
-                                  {j.review.comment && <span className="text-sm text-slate-500 italic">"{j.review.comment}"</span>}
-                                </div>
-                              ) : (
-                                <div className="mt-3">
+                              <div className="mt-3 space-y-3">
+                                {/* Sign-off */}
+                                {j.signed_at ? (
+                                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                                    <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle size={14} /> Signed off by {j.signed_by}</p>
+                                    <p className="text-xs text-slate-500">{new Date(j.signed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                                    {j.signature && <img src={j.signature} alt="signature" className="mt-2 h-14 bg-white border border-slate-200 rounded" />}
+                                  </div>
+                                ) : (
+                                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 flex-wrap">
+                                    <p className="text-sm text-amber-800">Please confirm this work was completed to your satisfaction.</p>
+                                    <Btn size="sm" onClick={() => setSignoffJob(j)}><PenLine size={14} /> Sign off</Btn>
+                                  </div>
+                                )}
+                                {/* Review */}
+                                {j.review ? (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs text-slate-500">Your rating:</span>
+                                    <Stars value={j.review.rating} />
+                                    {j.review.comment && <span className="text-sm text-slate-500 italic">"{j.review.comment}"</span>}
+                                  </div>
+                                ) : (
                                   <Btn size="sm" variant="outline" onClick={() => setReviewJob(j)}><Star size={14} /> Leave a review</Btn>
-                                </div>
-                              )
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -329,7 +345,42 @@ export default function Portal() {
       <ChangePasswordModal open={pwModal} onClose={() => setPwModal(false)} />
       <RescheduleModal job={rescheduleJob} onClose={() => setRescheduleJob(null)} onDone={load} />
       <ReviewModal job={reviewJob} onClose={() => setReviewJob(null)} onDone={load} />
+      <SignoffModal job={signoffJob} defaultName={me?.name} onClose={() => setSignoffJob(null)} onDone={load} />
     </div>
+  );
+}
+
+function SignoffModal({ job, defaultName, onClose, onDone }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const padRef = useRef(null);
+  useEffect(() => { if (job) setName(defaultName || ''); }, [job, defaultName]);
+  async function submit() {
+    if (!name.trim()) return toast.error('Please type your name');
+    if (padRef.current?.isEmpty()) return toast.error('Please sign in the box');
+    setSaving(true);
+    try {
+      await api.post(`/portal/jobs/${job.id}/signoff`, { signed_by: name.trim(), signature: padRef.current.toDataURL() });
+      toast.success('Signed off — thank you!');
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not sign off'); }
+    finally { setSaving(false); }
+  }
+  return (
+    <Modal open={!!job} onClose={onClose} title="Sign Off on Completed Work" subtitle={job?.title}>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">By signing below, you confirm the work described above was completed to your satisfaction.</p>
+        <Input label="Your name" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Signature</label>
+          <SignaturePad ref={padRef} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={submit} loading={saving}>{saving ? 'Submitting…' : 'Confirm & Sign Off'}</Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

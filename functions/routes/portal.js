@@ -56,6 +56,7 @@ router.get('/jobs', async (req, res) => {
       scheduled_date: j.scheduled_date, scheduled_time: j.scheduled_time, address: j.address,
       description: j.description, technician_name: techs[j.technician_id] || null, created_at: j.created_at,
       review: reviewByJob[j.id] || null,
+      signed_by: j.signed_by || null, signed_at: j.signed_at || null, signature: j.signature || null,
     }))
     .sort(byCreated);
   res.json(jobs);
@@ -124,6 +125,22 @@ router.post('/service-request', async (req, res) => {
   } catch (e) { console.error('[portal] confirmation failed:', e.message); }
 
   res.status(201).json(job);
+});
+
+// POST /portal/jobs/:id/signoff — customer signs off on completed work.
+router.post('/jobs/:id/signoff', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  const job = await getById('jobs', req.params.id);
+  if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
+  if (job.status !== 'completed') return res.status(400).json({ error: 'You can only sign off on completed services' });
+  if (job.signed_at) return res.status(409).json({ error: 'This service has already been signed off' });
+  const { signature, signed_by } = req.body;
+  if (!signature) return res.status(400).json({ error: 'Please provide your signature' });
+  await update('jobs', req.params.id, {
+    signature, signed_by: (signed_by || records[0]?.name || req.user.name), signed_at: new Date().toISOString(),
+  });
+  const saved = await getById('jobs', req.params.id);
+  res.json({ id: saved.id, signed_by: saved.signed_by, signed_at: saved.signed_at });
 });
 
 // GET /portal/reviews — the customer's own reviews.
