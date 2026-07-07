@@ -1,10 +1,10 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove } = require('../lib/db');
-const { authMiddleware, requireStaff } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware, requireStaff);
+router.use(authMiddleware, requireRole ('admin', 'office'));
 
 const FIELDS = ['name', 'sku', 'description', 'category', 'quantity', 'min_quantity', 'unit_price', 'supplier', 'location'];
 
