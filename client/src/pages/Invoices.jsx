@@ -6,7 +6,7 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -23,6 +23,7 @@ export default function Invoices() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [reminding, setReminding] = useState(false);
   const navigate = useNavigate();
 
   function load() {
@@ -30,6 +31,16 @@ export default function Invoices() {
       .then(([inv, cust]) => { setInvoices(inv.data); setCustomers(cust.data); setLoading(false); });
   }
   useEffect(load, []);
+
+  async function remindOverdue() {
+    if (!confirm('Email a payment reminder to every overdue customer?')) return;
+    setReminding(true);
+    try {
+      const { data } = await api.post('/billing/invoices/remind-overdue');
+      toast.success(`Sent ${data.sent} reminder${data.sent === 1 ? '' : 's'}`);
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not send reminders'); }
+    finally { setReminding(false); }
+  }
 
   const filtered = invoices.filter(i => {
     const q = search.toLowerCase();
@@ -82,6 +93,7 @@ export default function Invoices() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Invoices" subtitle={`${invoices.length} invoices`} icon={<FileText size={20} />}>
+        {stats.overdue > 0 && <Btn variant="outline" onClick={remindOverdue} loading={reminding}><BellRing size={15} /> Remind {stats.overdue} Overdue</Btn>}
         <Btn onClick={() => setModal(true)}><Plus size={16} /> New Invoice</Btn>
       </PageHeader>
 

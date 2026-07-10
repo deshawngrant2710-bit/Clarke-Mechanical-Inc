@@ -26,6 +26,14 @@ export default function Jobs() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
+  async function assignTech(job, technician_id) {
+    try {
+      await api.put(`/jobs/${job.id}`, { ...job, technician_id: technician_id || null });
+      toast.success(technician_id ? 'Technician assigned' : 'Unassigned');
+      load();
+    } catch { toast.error('Could not assign technician'); }
+  }
+
   function load() {
     Promise.all([api.get('/jobs'), api.get('/customers'), api.get('/employees')])
       .then(([j, c, e]) => { setJobs(j.data); setCustomers(c.data); setEmployees(e.data); setLoading(false); });
@@ -112,12 +120,13 @@ export default function Jobs() {
                 </Cell>
                 <Cell><span className="text-sm text-slate-600">{job.customer_name || <span className="text-slate-300">—</span>}</span></Cell>
                 <Cell>
-                  {job.technician_name ? (
-                    <div className="flex items-center gap-2">
-                      <Avatar name={job.technician_name} className="w-7 h-7 text-[10px]" />
-                      <span className="text-sm text-slate-600">{job.technician_name}</span>
-                    </div>
-                  ) : <span className="text-xs text-slate-400 flex items-center gap-1"><Wrench size={12} /> Unassigned</span>}
+                  <div onClick={e => e.stopPropagation()}>
+                    <select value={job.technician_id || ''} onChange={e => assignTech(job, e.target.value)}
+                      className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-blue-500 hover:border-slate-300 max-w-[150px] cursor-pointer">
+                      <option value="">Unassigned</option>
+                      {employees.filter(u => u.role === 'technician').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </div>
                 </Cell>
                 <Cell><Badge status={job.priority} /></Cell>
                 <Cell>

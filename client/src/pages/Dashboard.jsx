@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
-import { StatCard, Card, CardHeader, Badge, Avatar, SkeletonPage } from '../components/UI';
+import { StatCard, Card, CardHeader, Badge, Avatar, SkeletonPage, Btn } from '../components/UI';
+
+// Open today's stops as a multi-stop route in Google Maps.
+function openRoute(jobs) {
+  const stops = (jobs || []).filter(j => j.address).map(j => encodeURIComponent(j.address));
+  if (stops.length) window.open(`https://www.google.com/maps/dir/${stops.join('/')}`, '_blank', 'noreferrer');
+}
 import { DonutChart, AreaChart } from '../components/Charts';
 import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
-  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation,
+  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation, MessagesSquare,
 } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import Logo from '../components/Logo';
@@ -43,6 +49,15 @@ export default function Dashboard() {
 
   if (data.scope === 'technician') return <TechnicianDashboard data={data} navigate={navigate} name={user?.name} />;
 
+  const na = data.needsAttention || {};
+  const naItems = [
+    { label: 'Unassigned jobs', count: na.unassignedJobs, to: '/jobs', Icon: Briefcase },
+    { label: 'Overdue invoices', count: na.overdueInvoices, to: '/invoices', Icon: AlertTriangle },
+    { label: 'Pending estimates', count: na.pendingQuotes, to: '/quotes', Icon: Receipt },
+    { label: 'New service requests', count: na.newRequests, to: '/jobs', Icon: Zap },
+    { label: 'Waiting live chats', count: na.waitingChats, to: '/support', Icon: MessagesSquare },
+  ].filter(i => i.count > 0);
+
   const donutData = data.jobsByStatus
     .filter(s => s.count > 0)
     .map(s => ({ label: s.status.replace('-', ' '), value: s.count, color: STATUS_COLORS[s.status] || '#94a3b8' }));
@@ -74,6 +89,20 @@ export default function Dashboard() {
         <StatCard label="Avg. Ticket" value={data.avgTicket} prefix="$" decimals={2} icon={<Receipt size={18} />} color="purple" />
         <StatCard label="Outstanding" value={data.outstandingAmount} prefix="$" decimals={2} icon={<AlertTriangle size={18} />} color="red" sub={`${data.overdueInvoices} overdue`} onClick={() => navigate('/invoices')} />
       </div>
+
+      {naItems.length > 0 && (
+        <Card className="p-5 mb-6">
+          <div className="flex items-center gap-2 mb-3"><AlertTriangle size={16} className="text-amber-500" /><h2 className="text-card-title text-slate-800">Needs attention</h2></div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {naItems.map(i => (
+              <button key={i.label} onClick={() => navigate(i.to)} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-left transition-colors">
+                <span className="flex items-center gap-2 text-sm text-slate-700"><i.Icon size={15} className="text-slate-400" /> {i.label}</span>
+                <span className="min-w-6 h-6 px-1.5 flex items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xs font-bold">{i.count}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Charts row */}
       <div className="grid lg:grid-cols-3 gap-6 mb-6">
@@ -268,7 +297,10 @@ function TechnicianDashboard({ data, navigate, name }) {
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader title="Today's Schedule" icon={<CalendarDays size={16} />} />
+          <CardHeader title="Today's Schedule" icon={<CalendarDays size={16} />}
+            action={data.todaysSchedule.some(j => j.address) && (
+              <Btn size="sm" variant="outline" onClick={() => openRoute(data.todaysSchedule)}><MapPin size={14} /> Route</Btn>
+            )} />
           <div className="divide-y divide-slate-100">
             {data.todaysSchedule.length === 0
               ? <p className="text-sm text-slate-400 p-6 text-center">No jobs scheduled for today 🎉</p>

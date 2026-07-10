@@ -35,10 +35,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const job = await getById('jobs', req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
-  const [customer, tech, photos] = await Promise.all([
+  const [customer, tech, photos, parts] = await Promise.all([
     job.customer_id ? getById('customers', job.customer_id) : null,
     job.technician_id ? getById('users', job.technician_id) : null,
     findWhere('job_photos', 'job_id', req.params.id),
+    findWhere('job_parts', 'job_id', req.params.id),
   ]);
   res.json({
     ...job,
@@ -47,6 +48,7 @@ router.get('/:id', async (req, res) => {
     customer_email: customer?.email || null,
     technician_name: tech?.name || null,
     photos,
+    parts: parts.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')),
   });
 });
 
@@ -92,6 +94,84 @@ router.delete('/:id', async (req, res) => {
   await Promise.all(photos.map(p => db.collection('job_photos').doc(p.id).delete()));
   await remove('jobs', req.params.id);
   res.json({ success: true });
+});
+
+// GET /jobs/:id/photos/:photoId — the base64 image/PDF for a job photo (staff).
+router.get('/:id/photos/:photoId', async (req, res) => {
+  const photo = await getById('job_photos', req.params.photoId);
+  if (!photo || photo.job_id !== req.params.id) return res.status(404).json({ error: 'Photo not found' });
+  res.json({ proof: photo.proof || null, proof_type: photo.proof_type || 'image', caption: photo.caption || null });
+});
+
+// POST /jobs/:id/photos — attach a photo or PDF (base64, same pattern as inspections).
+router.post('/:id/photos', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const { proof, proof_type, caption } = req.body || {};
+  if (!proof) return res.status(400).json({ error: 'A photo or PDF is required' });
+  const saved = await create('job_photos', uuid(), {
+    job_id: req.params.id, proof, proof_type: proof_type || 'image',
+    caption: caption || null, source: 'staff', created_at: new Date().toISOString(),
+  });
+  res.status(201).json({ id: saved.id, caption: saved.caption, proof_type: saved.proof_type, created_at: saved.created_at });
+});
+
+// DELETE /jobs/:id/photos/:photoId — remove a job photo.
+router.delete('/:id/photos/:photoId', async (req, res) => {
+  await db.collection('job_photos').doc(req.params.photoId).delete();
+  res.json({ ok: true });
+});
+
+// POST /jobs/:id/en-route — the technician taps "on my way"; the customer is emailed.
+router.post('/:id/en-route', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const now = new Date().toISOString();
+  await update('jobs', job.id, { en_route_at: now });
+  try {
+    const customer = job.customer_id ? await getById('customers', job.customer_id) : null;
+    if (customer?.email) {
+      const tech = job.technician_id ? await getById('users', job.technician_id) : null;
+      const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+        <p>Good news${customer.name ? `, ${customer.name}` : ''} — your technician${tech?.name ? ` ${tech.name}` : ''} is on the way for <strong>${job.title}</strong>.</p>
+        ${job.address ? `<p><strong>Location:</strong> ${job.address}</p>` : ''}
+        <p>See you soon!</p></div>`;
+      await sendMail({ type: 'job_en_route', to: customer.email, toName: customer.name, subject: `Your technician is on the way — ${job.title}`, html, relatedId: job.id, customerId: job.customer_id, sentBy: tech?.name || 'Automated' });
+    }
+  } catch (e) { console.error('[jobs] en-route notify failed:', e.message); }
+  res.json({ ok: true, en_route_at: now });
+});
+
+// Parts / materials used on a job.
+router.post('/:id/parts', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const name = (req.body?.name || '').toString().trim();
+  if (!name) return res.status(400).json({ error: 'Part name is required' });
+  const qty = Number(req.body.quantity) || 1;
+  const saved = await create('job_parts', uuid(), {
+    job_id: req.params.id,
+    name,
+    quantity: qty,
+    unit_price: (req.body.unit_price != null && req.body.unit_price !== '') ? Number(req.body.unit_price) : null,
+    note: req.body.note || null,
+    added_by: req.user.name,
+    created_at: new Date().toISOString(),
+  });
+  // Auto-deduct from inventory if the part matches a stock item (by name or SKU).
+  try {
+    const inv = await list('inventory');
+    const match = inv.find(it =>
+      (it.name && it.name.trim().toLowerCase() === name.toLowerCase()) ||
+      (it.sku && req.body.sku && it.sku === req.body.sku));
+    if (match) await update('inventory', match.id, { quantity: Math.max(0, (match.quantity || 0) - qty) });
+  } catch (e) { console.error('[jobs] inventory deduct:', e.message); }
+  res.status(201).json(saved);
+});
+
+router.delete('/:id/parts/:partId', async (req, res) => {
+  await db.collection('job_parts').doc(req.params.partId).delete();
+  res.json({ ok: true });
 });
 
 module.exports = router;

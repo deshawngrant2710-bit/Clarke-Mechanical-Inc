@@ -11,6 +11,7 @@ router.get('/', async (req, res) => {
   const s = await settings.getAll();
   res.json({
     business_name: s.business_name, business_email: s.business_email, business_phone: s.business_phone,
+    business_hours: s.business_hours, default_tax_rate: s.default_tax_rate,
     email_from: s.email_from, smtp_host: s.smtp_host, smtp_port: s.smtp_port, smtp_user: s.smtp_user,
     smtp_pass_set: !!s.smtp_pass,
     reminders_job_enabled: s.reminders_job_enabled === '1',
@@ -20,7 +21,7 @@ router.get('/', async (req, res) => {
 });
 
 router.put('/', async (req, res) => {
-  const textKeys = ['business_name', 'business_email', 'business_phone', 'email_from', 'smtp_host', 'smtp_port', 'smtp_user'];
+  const textKeys = ['business_name', 'business_email', 'business_phone', 'business_hours', 'default_tax_rate', 'email_from', 'smtp_host', 'smtp_port', 'smtp_user'];
   const patch = {};
   for (const k of textKeys) if (k in req.body) patch[k] = req.body[k];
   if ('reminders_job_enabled' in req.body) patch.reminders_job_enabled = req.body.reminders_job_enabled ? '1' : '0';

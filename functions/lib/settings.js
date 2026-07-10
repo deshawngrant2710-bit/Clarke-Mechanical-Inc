@@ -6,6 +6,8 @@ const DEFAULTS = {
   business_email: process.env.BUSINESS_EMAIL || 'service@clarkemechanical.com',
   business_phone: process.env.BUSINESS_PHONE || '(555) 555-0100',
   email_from: process.env.EMAIL_FROM || 'Clarke Mechanical Inc. <no-reply@clarkemechanical.com>',
+  business_hours: 'Mon–Fri · 8:00 AM – 6:00 PM',
+  default_tax_rate: '0.0875',
   smtp_host: process.env.SMTP_HOST || '',
   smtp_port: process.env.SMTP_PORT || '587',
   smtp_user: process.env.SMTP_USER || '',
@@ -37,7 +39,7 @@ async function emailConfig() {
   const provider = brevo ? 'brevo' : smtp ? 'smtp' : 'none';
   return {
     from: s.email_from,
-    business: { name: s.business_name, email: s.business_email, phone: s.business_phone },
+    business: { name: s.business_name, email: s.business_email, phone: s.business_phone, hours: s.business_hours },
     smtp: { host: s.smtp_host, port: Number(s.smtp_port) || 587, user: s.smtp_user, pass: s.smtp_pass },
     provider,
     configured: provider !== 'none',

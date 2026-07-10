@@ -2,6 +2,8 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { render, sendMail } = require('../lib/email');
+const settings = require('../lib/settings');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
@@ -52,13 +54,14 @@ router.get('/invoices/:id', async (req, res) => {
 });
 
 router.post('/invoices', async (req, res) => {
-  const { customer_id, job_id, status, issue_date, due_date, items = [], tax_rate = 0.0875, notes } = req.body;
+  const { customer_id, job_id, status, issue_date, due_date, items = [], tax_rate, notes } = req.body;
+  const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, tax_rate);
+  const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
   const invoice_number = await nextNumber('invoices', 'INV');
   const saved = await create('invoices', uuid(), {
     invoice_number, customer_id: customer_id || null, job_id: job_id || null, status: status || 'draft',
-    issue_date: issue_date || null, due_date: due_date || null, subtotal, tax_rate, tax_amount, total,
+    issue_date: issue_date || null, due_date: due_date || null, subtotal, tax_rate: rate, tax_amount, total,
     notes: notes || null, items: lineItems,
   });
   res.status(201).json(saved);
@@ -102,13 +105,14 @@ router.get('/quotes/:id', async (req, res) => {
 });
 
 router.post('/quotes', async (req, res) => {
-  const { customer_id, status, issue_date, expiry_date, items = [], tax_rate = 0.0875, notes } = req.body;
+  const { customer_id, status, issue_date, expiry_date, items = [], tax_rate, notes } = req.body;
+  const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, tax_rate);
+  const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
   const quote_number = await nextNumber('quotes', 'QUO');
   const saved = await create('quotes', uuid(), {
     quote_number, customer_id: customer_id || null, status: status || 'draft', issue_date: issue_date || null,
-    expiry_date: expiry_date || null, subtotal, tax_rate, tax_amount, total, notes: notes || null, items: lineItems,
+    expiry_date: expiry_date || null, subtotal, tax_rate: rate, tax_amount, total, notes: notes || null, items: lineItems,
   });
   res.status(201).json(saved);
 });
@@ -145,6 +149,51 @@ router.post('/invoices/:id/payments', async (req, res) => {
   const paid = payments.reduce((s, p) => s + (p.amount || 0), 0);
   if (paid >= invoice.total) await update('invoices', req.params.id, { status: 'paid' });
   res.status(201).json(await getById('payments', id));
+});
+
+// GET /billing/config — office-accessible billing defaults (e.g. tax rate for new docs).
+router.get('/config', async (req, res) => {
+  const rate = await settings.get('default_tax_rate');
+  res.json({ default_tax_rate: Number(rate) || 0.0875 });
+});
+
+// POST /billing/invoices/remind-overdue — email every overdue customer at once.
+router.post('/invoices/remind-overdue', async (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const invoices = await list('invoices');
+  const overdue = invoices.filter(i => !['paid', 'cancelled'].includes(i.status) && i.due_date && i.due_date < today);
+  let sent = 0;
+  for (const invoice of overdue) {
+    const customer = invoice.customer_id ? await getById('customers', invoice.customer_id) : null;
+    if (!customer?.email) continue;
+    try {
+      const payments = await findWhere('payments', 'invoice_id', invoice.id);
+      const amountPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
+      const { subject, html } = await render('invoice_reminder', { ...invoice, customer_name: customer.name, amountPaid });
+      await sendMail({ type: 'invoice_reminder', to: customer.email, toName: customer.name, subject, html, relatedId: invoice.id, customerId: invoice.customer_id, sentBy: req.user.name });
+      sent++;
+    } catch (e) { console.error('[billing] bulk remind:', e.message); }
+  }
+  res.json({ ok: true, sent, total: overdue.length });
+});
+
+// POST /billing/invoices/:id/remind — email the customer a payment reminder.
+router.post('/invoices/:id/remind', async (req, res) => {
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+  const customer = invoice.customer_id ? await getById('customers', invoice.customer_id) : null;
+  if (!customer?.email) return res.status(400).json({ error: 'This customer has no email on file.' });
+  const payments = await findWhere('payments', 'invoice_id', invoice.id);
+  const amountPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  try {
+    const entity = { ...invoice, customer_name: customer.name, amountPaid };
+    const { subject, html } = await render('invoice_reminder', entity);
+    await sendMail({ type: 'invoice_reminder', to: customer.email, toName: customer.name, subject, html, relatedId: invoice.id, customerId: invoice.customer_id, sentBy: req.user.name });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[billing] reminder failed:', e.message);
+    res.status(502).json({ error: 'Could not send the reminder.' });
+  }
 });
 
 module.exports = router;

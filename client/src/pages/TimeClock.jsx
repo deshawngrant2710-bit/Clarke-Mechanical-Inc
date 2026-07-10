@@ -53,6 +53,18 @@ export default function TimeClock() {
     .filter(e => e.clock_out && new Date(e.clock_in).toDateString() === new Date().toDateString())
     .reduce((s, e) => s + (e.hours || 0), 0);
 
+  // "My hours": this week's total + a 7-day breakdown, from my entries.
+  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); weekStart.setHours(0, 0, 0, 0);
+  const weekHours = myEntries.filter(e => e.clock_in && new Date(e.clock_in) >= weekStart).reduce((s, e) => s + (e.hours || 0), 0);
+  const days7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+    const key = d.toDateString();
+    const h = myEntries.filter(e => e.clock_in && new Date(e.clock_in).toDateString() === key).reduce((s, e) => s + (e.hours || 0), 0);
+    days7.push({ label: d.toLocaleDateString('en-US', { weekday: 'short' }), key, hours: h });
+  }
+  const maxH = Math.max(1, ...days7.map(d => d.hours));
+
   return (
     <div className="animate-fade-in">
       <PageHeader title="Time Clock" subtitle="Clock in and out of your shifts" icon={<Clock size={20} />} />
@@ -84,11 +96,32 @@ export default function TimeClock() {
         )}
       </Card>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard label="Hours Today" value={todayHours} decimals={1} icon={<Timer size={18} />} color="blue" />
+        <StatCard label="This Week" value={weekHours} decimals={1} icon={<CalendarClock size={18} />} color="green" />
         <StatCard label="My Shifts" value={myEntries.length} icon={<CalendarClock size={18} />} color="purple" />
-        <StatCard label={active ? 'Status' : 'Status'} value={active ? 'On the clock' : 'Off'} animate={false} icon={<Clock size={18} />} color={active ? 'green' : 'slate'} />
+        <StatCard label="Status" value={active ? 'On the clock' : 'Off'} animate={false} icon={<Clock size={18} />} color={active ? 'green' : 'slate'} />
       </div>
+
+      {!isAdmin && (
+        <Card className="p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2"><Timer size={16} className="text-blue-500" /><h2 className="text-card-title text-slate-800">My hours</h2></div>
+            <span className="text-sm text-slate-500">Last 7 days: <span className="font-bold text-slate-800">{days7.reduce((s, d) => s + d.hours, 0).toFixed(1)}h</span></span>
+          </div>
+          <div className="flex items-end justify-between gap-2 h-28">
+            {days7.map(d => (
+              <div key={d.key} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                <span className="text-[10px] font-medium text-slate-600 h-3">{d.hours ? d.hours.toFixed(1) : ''}</span>
+                <div className="w-full flex items-end justify-center flex-1">
+                  <div className="w-6 rounded-t bg-blue-500/80" style={{ height: d.hours ? `${Math.max(6, Math.round((d.hours / maxH) * 100))}%` : '0%' }} />
+                </div>
+                <span className="text-[10px] text-slate-400">{d.label}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card>
         <CardHeader title={isAdmin ? 'All Timesheets' : 'My Timesheet'} icon={<CalendarClock size={16} />} />

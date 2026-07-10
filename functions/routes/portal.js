@@ -61,6 +61,7 @@ router.get('/jobs', async (req, res) => {
       description: j.description, technician_name: techs[j.technician_id] || null, created_at: j.created_at,
       review: reviewByJob[j.id] || null,
       signed_by: j.signed_by || null, signed_at: j.signed_at || null, signature: j.signature || null,
+      en_route_at: j.en_route_at || null,
       photos: photosByJob[j.id] || [],
     }))
     .sort(byCreated);

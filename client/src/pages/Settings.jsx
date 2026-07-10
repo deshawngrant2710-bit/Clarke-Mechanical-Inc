@@ -107,6 +107,9 @@ export default function Settings() {
             <Input label="Business name" value={data.business_name} onChange={set('business_name')} />
             <Input label="Public email" icon={<Mail size={15} />} value={data.business_email} onChange={set('business_email')} hint="Shown in email footers & reply-to" />
             <Input label="Phone" value={data.business_phone} onChange={set('business_phone')} />
+            <Input label="Business hours" value={data.business_hours || ''} onChange={set('business_hours')} hint="Shown to customers in the portal" />
+            <Input label="Default tax rate (%)" type="number" step="0.01" value={(Number(data.default_tax_rate || 0) * 100).toFixed(2)}
+              onChange={e => setData(d => ({ ...d, default_tax_rate: String((Number(e.target.value) || 0) / 100) }))} hint="Applied to new invoices & estimates" />
             <Input label="From address" value={data.email_from} onChange={set('email_from')} hint={'e.g. Clarke Mechanical <no-reply@…>'} />
           </div>
         </Card>

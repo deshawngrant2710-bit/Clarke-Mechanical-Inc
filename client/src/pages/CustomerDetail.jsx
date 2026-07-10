@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Modal, Input, Textarea, Badge, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation } from 'lucide-react';
+import { directionsLink } from '../lib/geo';
 import toast from 'react-hot-toast';
 
 const EMAIL_LABEL = {
@@ -92,6 +93,14 @@ export default function CustomerDetail() {
               {customer.email && <div className="flex items-center gap-2.5 text-slate-600"><Mail size={14} className="text-slate-400" />{customer.email}</div>}
               {location && <div className="flex items-start gap-2.5 text-slate-600"><MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" /><span>{location}</span></div>}
               {!customer.phone && !customer.email && !location && <p className="text-slate-400">No contact info on file</p>}
+              {(customer.phone || customer.email || location) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {customer.phone && <a href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"><Phone size={12} /> Call</a>}
+                  {customer.phone && <a href={`sms:${customer.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><MessageSquare size={12} /> Text</a>}
+                  {customer.email && <a href={`mailto:${customer.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"><Mail size={12} /> Email</a>}
+                  {location && <a href={directionsLink(location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Navigation size={12} /> Directions</a>}
+                </div>
+              )}
             </div>
           </Card>
           {customer.notes && (

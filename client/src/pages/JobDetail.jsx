@@ -2,11 +2,12 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { directionsLink } from '../lib/geo';
 import { propertyLabel, equipmentLabel } from '../lib/inspectionForms';
+import { fileToProof } from '../lib/imageProof';
 import { useAuth } from '../context/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 
@@ -30,6 +31,9 @@ export default function JobDetail() {
   const [notesDraft, setNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [jobInspections, setJobInspections] = useState([]);
+  const [enRouting, setEnRouting] = useState(false);
+  const [partForm, setPartForm] = useState({ name: '', quantity: '1', unit_price: '', note: '' });
+  const [addingPart, setAddingPart] = useState(false);
   const [emailing, setEmailing] = useState('');
   const [signModal, setSignModal] = useState(false);
   const [signName, setSignName] = useState('');
@@ -92,6 +96,26 @@ export default function JobDetail() {
     } catch { toast.error('Could not update status'); }
     finally { setSaving(false); }
   }
+  async function enRoute() {
+    setEnRouting(true);
+    try { await api.post(`/jobs/${id}/en-route`); toast.success('Customer notified you’re on the way'); }
+    catch (e) { toast.error(e.response?.data?.error || 'Could not notify the customer'); }
+    finally { setEnRouting(false); }
+  }
+  async function addPart() {
+    if (!partForm.name.trim()) return toast.error('Enter a part or material name');
+    setAddingPart(true);
+    try {
+      await api.post(`/jobs/${id}/parts`, partForm);
+      setPartForm({ name: '', quantity: '1', unit_price: '', note: '' });
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not add that'); }
+    finally { setAddingPart(false); }
+  }
+  async function removePart(pid) {
+    try { await api.delete(`/jobs/${id}/parts/${pid}`); load(); }
+    catch { toast.error('Could not remove'); }
+  }
   async function addNote() {
     const text = notesDraft.trim();
     if (!text) return;
@@ -108,14 +132,27 @@ export default function JobDetail() {
     finally { setSavingNotes(false); }
   }
   async function handlePhotoUpload(e) {
-    const files = e.target.files;
-    if (!files.length) return;
-    const fd = new FormData();
-    Array.from(files).forEach(f => fd.append('photos', f));
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
     try {
-      await api.post(`/jobs/${id}/photos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast.success(`${files.length} photo(s) uploaded`); load();
-    } catch { toast.error('Upload failed'); }
+      const { proof, proof_type } = await fileToProof(file);
+      await api.post(`/jobs/${id}/photos`, { proof, proof_type });
+      toast.success('Photo uploaded'); load();
+    } catch (err) { toast.error(err.message || 'Upload failed'); }
+  }
+  async function removePhoto(pid) {
+    if (!confirm('Remove this photo?')) return;
+    try { await api.delete(`/jobs/${id}/photos/${pid}`); load(); }
+    catch { toast.error('Could not remove'); }
+  }
+  async function createInvoice() {
+    try {
+      const items = (job.parts || []).map(p => ({ description: p.name, quantity: p.quantity || 1, unit_price: p.unit_price || 0 }));
+      const { data } = await api.post('/billing/invoices', { customer_id: job.customer_id, job_id: id, items, status: 'draft' });
+      toast.success('Invoice created from this job');
+      navigate(`/invoices/${data.id}`);
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not create invoice'); }
   }
   async function notify(type, label) {
     setEmailing(type);
@@ -159,16 +196,22 @@ export default function JobDetail() {
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {isTech ? (
-              !cancelled && nextStatus && (
-                <Btn onClick={() => updateStatus(nextStatus)} loading={saving}>
-                  {nextStatus === 'completed' ? <CheckCircle2 size={15} /> : nextStatus === 'in-progress' ? <Wrench size={15} /> : <Calendar size={15} />}
-                  {NEXT_STATUS_LABEL[nextStatus]}
-                </Btn>
-              )
+              <>
+                {!cancelled && job.status !== 'completed' && job.customer_email && (
+                  <Btn variant="outline" onClick={enRoute} loading={enRouting}><Navigation size={15} /> On my way</Btn>
+                )}
+                {!cancelled && nextStatus && (
+                  <Btn onClick={() => updateStatus(nextStatus)} loading={saving}>
+                    {nextStatus === 'completed' ? <CheckCircle2 size={15} /> : nextStatus === 'in-progress' ? <Wrench size={15} /> : <Calendar size={15} />}
+                    {NEXT_STATUS_LABEL[nextStatus]}
+                  </Btn>
+                )}
+              </>
             ) : (
               <>
                 <Btn variant="outline" onClick={() => notify('job_confirmation', 'Confirmation')} loading={emailing === 'job_confirmation'}><MailCheck size={15} /> Send Confirmation</Btn>
                 <Btn variant="outline" onClick={() => notify('job_reminder', 'Reminder')} loading={emailing === 'job_reminder'}><BellRing size={15} /> Send Reminder</Btn>
+                {job.customer_id && <Btn variant="outline" onClick={createInvoice}><FileText size={15} /> Create Invoice</Btn>}
                 <Btn variant="outline" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
                 <Btn variant="danger" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
               </>
@@ -316,18 +359,27 @@ export default function JobDetail() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader title={`Photos (${job.photos?.length || 0})`} icon={<Camera size={15} />}
-              action={<><input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoUpload} />
+              action={<><input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handlePhotoUpload} />
                 <Btn size="sm" onClick={() => fileRef.current?.click()}><Upload size={14} /> Upload</Btn></>} />
             <div className="p-5">
               {!job.photos?.length ? (
-                <Empty icon={<Camera size={24} />} title="No photos yet" message="Upload before & after photos to document this job."
+                <Empty icon={<Camera size={24} />} title="No photos yet" message="Upload before & after photos, or photos the customer sent, to document this job."
                   action={<Btn size="sm" variant="outline" onClick={() => fileRef.current?.click()}>Upload First Photo</Btn>} />
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {job.photos.map(p => (
-                    <a key={p.id} href={`/uploads/${p.filename}`} target="_blank" rel="noreferrer" className="group relative rounded-xl overflow-hidden">
-                      <img src={`/uploads/${p.filename}`} alt={p.original_name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300" />
-                    </a>
+                    <div key={p.id} className="group relative rounded-xl overflow-hidden border border-slate-200">
+                      {p.proof_type === 'pdf' ? (
+                        <a href={p.proof} target="_blank" rel="noreferrer" download className="h-32 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50">
+                          <Camera size={22} /><span className="text-xs mt-1">Open PDF</span>
+                        </a>
+                      ) : (
+                        <a href={p.proof} target="_blank" rel="noreferrer" className="block">
+                          <img src={p.proof} alt={p.caption || 'job photo'} className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300" />
+                        </a>
+                      )}
+                      <button onClick={() => removePhoto(p.id)} className="absolute top-1 right-1 p-1 rounded-md bg-white/90 text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={13} /></button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -351,6 +403,37 @@ export default function JobDetail() {
                   ))}
                 </div>
               )}
+            </div>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader title={`Parts & Materials (${job.parts?.length || 0})`} icon={<Package size={15} />} />
+            <div className="p-5 space-y-3">
+              {job.parts?.length > 0 ? (
+                <div className="divide-y divide-slate-100 -mt-2">
+                  {job.parts.map(p => (
+                    <div key={p.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-800 truncate">{p.name}{p.quantity > 1 && <span className="text-slate-400"> × {p.quantity}</span>}</p>
+                        {(p.note || p.unit_price != null) && <p className="text-xs text-slate-400">{p.unit_price != null ? `$${Number(p.unit_price).toFixed(2)} ea` : ''}{p.unit_price != null && p.note ? ' · ' : ''}{p.note || ''}</p>}
+                      </div>
+                      <button onClick={() => removePart(p.id)} className="p-1.5 text-slate-400 hover:text-red-600 shrink-0"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">No parts logged yet.</p>
+              )}
+              <div className="space-y-2 pt-1">
+                <Input label="Part / material" value={partForm.name} onChange={e => setPartForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Capacitor 45/5 MFD" />
+                <div className="flex gap-2">
+                  <Input label="Qty" type="number" min="1" className="w-20" value={partForm.quantity} onChange={e => setPartForm(f => ({ ...f, quantity: e.target.value }))} />
+                  <Input label="Unit $ (optional)" type="number" min="0" className="flex-1" value={partForm.unit_price} onChange={e => setPartForm(f => ({ ...f, unit_price: e.target.value }))} placeholder="Cost each" />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Btn size="sm" onClick={addPart} loading={addingPart} disabled={!partForm.name.trim()}><Plus size={14} /> Add part</Btn>
+              </div>
             </div>
           </Card>
         </div>

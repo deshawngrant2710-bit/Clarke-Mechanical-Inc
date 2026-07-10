@@ -110,6 +110,14 @@ export default function InspectionDetail() {
     try { await api.delete(`/inspections/${id}`); toast.success('Deleted'); navigate('/inspections'); }
     catch (e) { toast.error(e.response?.data?.error || 'Could not delete'); }
   }
+  function createEstimate() {
+    const desc = recommendations?.trim() || `Recommended work — ${propertyLabel(property)} ${equipmentLabel(equipment)} inspection`;
+    navigate('/quotes', { state: { prefill: {
+      customer_id: insp.customer_id || '',
+      items: [{ description: desc, quantity: 1, unit_price: 0 }],
+      notes: `From ${propertyLabel(property)} ${equipmentLabel(equipment)} inspection`,
+    } } });
+  }
 
   const setAnswer = (key, answer) => setChecklist(p => ({ ...p, [key]: { ...p[key], answer } }));
   const setItemNote = (key, note) => setChecklist(p => ({ ...p, [key]: { ...p[key], note } }));
@@ -138,6 +146,7 @@ export default function InspectionDetail() {
           </div>
           <div className="flex items-center gap-2">
             <Badge status={submitted ? 'completed' : 'pending'} />
+            {canDelete && <Btn variant="outline" size="sm" onClick={createEstimate}><FileText size={14} /> Create Estimate</Btn>}
             {canDelete && <Btn variant="danger" size="sm" onClick={handleDelete}><Trash2 size={14} /> Delete</Btn>}
           </div>
         </div>

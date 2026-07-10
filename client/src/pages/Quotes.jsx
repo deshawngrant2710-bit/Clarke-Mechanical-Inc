@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -14,6 +15,8 @@ const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Dat
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Quotes() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [quotes, setQuotes] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,25 @@ export default function Quotes() {
       .then(([q, c]) => { setQuotes(q.data); setCustomers(c.data); setLoading(false); });
   }
   useEffect(load, []);
+
+  // Prefill + open the New Quote modal when arriving from an inspection.
+  useEffect(() => {
+    if (location.state?.prefill) {
+      setForm({ ...emptyForm(), ...location.state.prefill });
+      setModal(true);
+    }
+  }, []);
+
+  async function convertToInvoice(e, q) {
+    e.stopPropagation();
+    try {
+      const { data } = await api.post('/billing/invoices', {
+        customer_id: q.customer_id, items: q.items || [], status: 'draft', notes: `Converted from estimate ${q.quote_number}`,
+      });
+      toast.success('Invoice created from estimate');
+      navigate(`/invoices/${data.id}`);
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not convert to invoice'); }
+  }
 
   const filtered = quotes.filter(q =>
     q.quote_number?.toLowerCase().includes(search.toLowerCase()) ||
@@ -108,6 +130,7 @@ export default function Quotes() {
                 <Cell align="right"><Badge status={q.status} /></Cell>
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1">
+                    {q.status === 'accepted' && <button onClick={e => convertToInvoice(e, q)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><FileText size={15} /></button>}
                     <button onClick={e => handleEmail(e, q.id)} title="Email quote to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
                     <button onClick={e => handleDelete(e, q.id)} title="Delete quote" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                   </div>

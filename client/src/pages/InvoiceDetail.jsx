@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Spinner } from '../components/UI';
-import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail } from 'lucide-react';
+import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing } from 'lucide-react';
 import Logo from '../components/Logo';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -29,6 +29,12 @@ export default function InvoiceDetail() {
   async function emailReceipt() {
     setEmailing(true);
     try { await sendEmail('receipt', id, 'Receipt'); } catch { /* toast handled */ }
+    finally { setEmailing(false); }
+  }
+  async function sendReminder() {
+    setEmailing(true);
+    try { await api.post(`/billing/invoices/${id}/remind`); toast.success('Payment reminder sent'); }
+    catch (e) { toast.error(e.response?.data?.error || 'Could not send reminder'); }
     finally { setEmailing(false); }
   }
 
@@ -150,6 +156,7 @@ export default function InvoiceDetail() {
             <div className="space-y-2">
               <Btn variant="outline" className="w-full" onClick={emailInvoice} loading={emailing}><Mail size={15} /> Email Invoice to Customer</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
+              {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}
               {invoice.status !== 'paid' && <Btn className="w-full" onClick={() => setPayModal(true)}><DollarSign size={16} /> Record Payment</Btn>}
               {invoice.status === 'paid' && <>
                 <div className="text-center py-2 text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg flex items-center justify-center gap-1.5"><CheckCircle2 size={15} /> Paid in full</div>

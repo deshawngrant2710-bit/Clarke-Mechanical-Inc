@@ -21,6 +21,7 @@ app.use('/api/portal', require('./routes/portal'));
 app.use('/api/time', require('./routes/time'));
 app.use('/api/inspections', require('./routes/inspections'));
 app.use('/api/support', require('./routes/support'));
+app.use('/api/reports', require('./routes/reports'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

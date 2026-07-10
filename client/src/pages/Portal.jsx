@@ -9,7 +9,7 @@ import Logo from '../components/Logo';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
   UserCircle, Plus, Wrench, MapPin, ChevronDown, Check, X, Phone, Mail, Pencil,
-  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send, CreditCard, Eye, Camera, Receipt,
+  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send, CreditCard, Eye, Camera, Receipt, Navigation,
 } from 'lucide-react';
 import { fileToProof } from '../lib/imageProof';
 import toast from 'react-hot-toast';
@@ -322,6 +322,9 @@ export default function Portal() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            {j.en_route_at && !['completed', 'cancelled'].includes(j.status) && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold"><Navigation size={10} /> On the way</span>
+                            )}
                             <Badge status={j.status} />
                             <ChevronDown size={16} className={`text-slate-400 transition-transform ${expanded === j.id ? 'rotate-180' : ''}`} />
                           </div>
@@ -517,7 +520,7 @@ export default function Portal() {
                 <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-sm text-slate-500">
                   {me.business.phone && <span className="flex items-center gap-1.5"><Phone size={13} className="text-slate-400" />{me.business.phone}</span>}
                   {me.business.email && <span className="flex items-center gap-1.5"><Mail size={13} className="text-slate-400" />{me.business.email}</span>}
-                  <span className="flex items-center gap-1.5"><Clock size={13} className="text-slate-400" />{BUSINESS_HOURS}</span>
+                  <span className="flex items-center gap-1.5"><Clock size={13} className="text-slate-400" />{me.business?.hours || BUSINESS_HOURS}</span>
                 </div>
               </div>
             </Card>
