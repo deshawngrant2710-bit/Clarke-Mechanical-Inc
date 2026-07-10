@@ -246,7 +246,7 @@ router.post('/invoices/:id/create-intent', async (req, res) => {
     const body = new URLSearchParams();
     body.set('amount', String(amountCents));
     body.set('currency', 'usd');
-    body.set('automatic_payment_methods[enabled]', 'true');
+    body.set('payment_method_types[]', 'card');
     body.set('metadata[invoice_id]', invoice.id);
     body.set('description', `Invoice ${invoice.invoice_number || invoice.id} — customer portal`);
 
