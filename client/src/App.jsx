@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { Menu } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
+import Logo from './components/Logo';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
@@ -13,6 +16,8 @@ import Invoices from './pages/Invoices';
 import InvoiceDetail from './pages/InvoiceDetail';
 import Quotes from './pages/Quotes';
 import Inventory from './pages/Inventory';
+import Inspections from './pages/Inspections';
+import InspectionDetail from './pages/InspectionDetail';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
@@ -22,6 +27,9 @@ import { canAccess, homeForRole } from './lib/roles';
 function Layout() {
   const { user } = useAuth();
   const location = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
   if (!user) return <Navigate to="/login" replace />;
   // Role guard: send users to their home if they hit a page they can't access.
   if (!canAccess(user.role, location.pathname)) {
@@ -29,12 +37,22 @@ function Layout() {
   }
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar />
-      <main className="flex-1 min-w-0 p-6 lg:p-8">
-        <div className="mx-auto max-w-[1400px]">
-          <Outlet />
-        </div>
-      </main>
+      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Mobile top bar */}
+        <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 h-14 px-4 bg-white border-b border-slate-200">
+          <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
+            <Menu size={22} />
+          </button>
+          <Logo variant="icon" height={26} />
+          <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
+        </header>
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-[1400px]">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
@@ -65,6 +83,8 @@ export default function App() {
             <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/quotes" element={<Quotes />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/inspections" element={<Inspections />} />
+            <Route path="/inspections/:id" element={<InspectionDetail />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/portal" element={<Portal />} />

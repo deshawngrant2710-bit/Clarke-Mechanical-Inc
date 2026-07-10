@@ -12,3 +12,8 @@ export function getLocation(timeout = 8000) {
 }
 
 export const mapsLink = (loc) => (loc ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}` : null);
+
+// Turn-by-turn directions to a job address. Opens the device's default maps app
+// (Google Maps in-browser, Apple Maps on iOS) with the address as destination.
+export const directionsLink = (address) =>
+  (address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` : null);

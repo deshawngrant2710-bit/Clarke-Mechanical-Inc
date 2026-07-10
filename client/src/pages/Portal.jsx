@@ -7,11 +7,21 @@ import SignaturePad from '../components/SignaturePad';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
   UserCircle, Plus, Wrench, MapPin, ChevronDown, Check, X, Phone, Mail, Pencil,
-  Download, Ban, CalendarClock, Lock, Star, PenLine,
+  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Shown in the Help & Support card. Edit to match your real hours.
+const BUSINESS_HOURS = 'Mon–Fri · 8:00 AM – 6:00 PM  ·  24/7 emergency service';
+
+const FAQ = [
+  { q: 'How do I schedule a service?', a: 'Tap "Request Service" at the top of your portal, describe what you need, and pick a preferred date. We\'ll confirm your appointment by email.' },
+  { q: 'How do I pay an invoice?', a: 'Open the "My Invoices" tab to see any balance due and download a PDF. To pay, contact our office using the details in Help & Support below.' },
+  { q: 'What should I do in an emergency?', a: 'For a heating or cooling emergency, call our 24/7 line right away using the "Call us" button in Help & Support.' },
+  { q: 'Can I reschedule or cancel a visit?', a: 'Yes — open the "My Services" tab, expand the job, and use Reschedule or Cancel on any upcoming visit.' },
+];
 
 function Stars({ value, size = 14, onChange }) {
   return (
@@ -65,6 +75,10 @@ export default function Portal() {
   const [invoices, setInvoices] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [tab, setTab] = useState('jobs');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const chatEndRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [reqModal, setReqModal] = useState(false);
@@ -98,13 +112,40 @@ export default function Portal() {
     catch (e) { toast.error(e.response?.data?.error || 'Could not cancel'); }
   }
 
+  async function sendChat() {
+    const text = chatInput.trim();
+    if (!text || chatSending) return;
+    const outgoing = [...chatMessages, { role: 'user', text }];
+    setChatMessages(outgoing);
+    setChatInput('');
+    setChatSending(true);
+    try {
+      const r = await api.post('/portal/assistant', { message: text, history: chatMessages });
+      setChatMessages([...outgoing, { role: 'assistant', text: r.data.reply }]);
+    } catch (e) {
+      setChatMessages([...outgoing, { role: 'assistant', text: e.response?.data?.error || 'Sorry, I couldn’t reach the assistant right now. Please try again.' }]);
+    } finally {
+      setChatSending(false);
+    }
+  }
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, chatSending]);
+
   if (loading) return <Spinner />;
 
   const tabs = [
     { id: 'jobs', label: 'My Services', count: jobs.length },
     { id: 'invoices', label: 'My Invoices', count: invoices.length },
     { id: 'quotes', label: 'My Estimates', count: quotes.length },
+    { id: 'help', label: 'Help & Support' },
+    { id: 'faq', label: 'FAQ' },
+    { id: 'assistant', label: 'Assistant' },
   ];
+
+  const today = new Date().toISOString().slice(0, 10);
+  const nextAppt = [...jobs]
+    .filter(j => j.scheduled_date && j.scheduled_date >= today && !['completed', 'cancelled'].includes(j.status))
+    .sort((a, b) => (a.scheduled_date + (a.scheduled_time || '')).localeCompare(b.scheduled_date + (b.scheduled_time || '')))[0] || null;
 
   return (
     <div className="animate-fade-in">
@@ -125,6 +166,21 @@ export default function Portal() {
         </Card>
       ) : (
         <>
+          {nextAppt && (
+            <Card className="p-4 mb-6 border-l-4 border-blue-500 bg-blue-50/40">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 shrink-0"><Calendar size={18} /></div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Next appointment</p>
+                  <p className="text-sm font-medium text-slate-800 truncate">
+                    {nextAppt.title} · {new Date(nextAppt.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}{nextAppt.scheduled_time ? ` at ${nextAppt.scheduled_time}` : ''}
+                  </p>
+                </div>
+                <span className="ml-auto shrink-0"><Badge status={nextAppt.status} /></span>
+              </div>
+            </Card>
+          )}
+
           {/* Contact card */}
           <Card className="p-5 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -140,14 +196,16 @@ export default function Portal() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <StatCard label="Active Services" value={me.stats.openJobs} icon={<Briefcase size={18} />} color="blue" />
             <StatCard label="Invoices" value={me.stats.invoiceCount} icon={<FileText size={18} />} color="purple" />
-            <StatCard label="Balance Due" value={me.stats.balanceDue} prefix="$" decimals={2} icon={<DollarSign size={18} />} color={me.stats.balanceDue > 0 ? 'orange' : 'green'} />
+            <button type="button" onClick={() => setTab('invoices')} className="text-left w-full transition-transform hover:-translate-y-0.5" title="View invoices">
+              <StatCard label="Balance Due" value={me.stats.balanceDue} prefix="$" decimals={2} icon={<DollarSign size={18} />} color={me.stats.balanceDue > 0 ? 'orange' : 'green'} sub={me.stats.balanceDue > 0 ? 'Tap to view invoices' : ''} />
+            </button>
           </div>
 
-          <div className="flex gap-1 mb-4 bg-white border border-slate-200 rounded-lg p-1 w-fit">
+          <div className="flex gap-1 mb-4 bg-white border border-slate-200 rounded-lg p-1 w-fit flex-wrap">
             {tabs.map(t => (
               <button key={t.id} onClick={() => { setTab(t.id); setExpanded(null); }}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
-                {t.label} <span className="opacity-70">({t.count})</span>
+                {t.label}{t.count != null && <span className="opacity-70"> ({t.count})</span>}
               </button>
             ))}
           </div>
@@ -335,6 +393,82 @@ export default function Portal() {
                   })}
                 </div>
               )}
+            </Card>
+          )}
+
+          {tab === 'help' && me.business && (
+            <Card>
+              <CardHeader title="Help & Support" icon={<HelpCircle size={15} />} />
+              <div className="p-5">
+                <p className="text-sm text-slate-500 mb-4">Questions about a service, invoice, or appointment? Reach our team:</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {me.business.phone && (
+                    <>
+                      <a href={`tel:${me.business.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-semibold hover:bg-emerald-100 transition-colors"><Phone size={14} /> Call us</a>
+                      <a href={`sms:${me.business.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 transition-colors"><MessageSquare size={14} /> Text us</a>
+                    </>
+                  )}
+                  {me.business.email && <a href={`mailto:${me.business.email}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition-colors"><Mail size={14} /> Email us</a>}
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-sm text-slate-500">
+                  {me.business.phone && <span className="flex items-center gap-1.5"><Phone size={13} className="text-slate-400" />{me.business.phone}</span>}
+                  {me.business.email && <span className="flex items-center gap-1.5"><Mail size={13} className="text-slate-400" />{me.business.email}</span>}
+                  <span className="flex items-center gap-1.5"><Clock size={13} className="text-slate-400" />{BUSINESS_HOURS}</span>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {tab === 'faq' && (
+            <Card>
+              <CardHeader title="Frequently Asked Questions" icon={<HelpCircle size={15} />} />
+              <div className="px-5 pb-2 divide-y divide-slate-100">
+                {FAQ.map((item, i) => (
+                  <details key={i} className="group py-3">
+                    <summary className="flex items-center justify-between cursor-pointer list-none text-sm font-medium text-slate-800">
+                      {item.q}
+                      <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <p className="mt-2 text-sm text-slate-600 leading-relaxed">{item.a}</p>
+                  </details>
+                ))}
+              </div>
+            </Card>
+          )}
+          {tab === 'assistant' && (
+            <Card>
+              <CardHeader title="Ask our assistant" icon={<Sparkles size={15} />} />
+              <div className="flex flex-col h-[26rem]">
+                <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                  {chatMessages.length === 0 && (
+                    <div className="text-center text-sm text-slate-400 mt-8">
+                      <Sparkles size={26} className="mx-auto mb-2 text-blue-400" />
+                      <p className="font-medium text-slate-500">Hi! I can help with questions about your HVAC service, scheduling, billing, or general heating &amp; cooling tips.</p>
+                      <p className="mt-1">Ask me anything to get started.</p>
+                    </div>
+                  )}
+                  {chatMessages.map((m, i) => (
+                    <div key={i} className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${m.role === 'user' ? 'ml-auto bg-blue-600 text-white rounded-br-sm' : 'mr-auto bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
+                      {m.text}
+                    </div>
+                  ))}
+                  {chatSending && (
+                    <div className="mr-auto bg-slate-100 text-slate-400 text-sm px-3.5 py-2.5 rounded-2xl rounded-bl-sm">Typing…</div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="border-t border-slate-100 p-3 flex items-center gap-2">
+                  <input
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                    placeholder="Type your question…"
+                    className="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500"
+                  />
+                  <Btn onClick={sendChat} loading={chatSending} disabled={!chatInput.trim()}><Send size={15} /> Send</Btn>
+                </div>
+                <p className="text-[11px] text-slate-400 text-center pb-2 px-3">The assistant can make mistakes and can’t access your account. For account-specific help, contact the office.</p>
+              </div>
             </Card>
           )}
         </>

@@ -8,7 +8,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // Roles a user can hold. Everyone self-registers as "customer"; only an admin can reassign.
-const ROLES = ['customer', 'technician', 'dispatcher', 'office', 'admin'];
+const ROLES = ['customer', 'technician', 'office', 'admin'];
 
 router.get('/', (req, res) => {
   const users = db.prepare('SELECT id, name, email, role, phone, created_at FROM users ORDER BY name ASC').all();

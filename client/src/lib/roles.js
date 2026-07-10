@@ -1,9 +1,9 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck,
 } from 'lucide-react';
 
-export const STAFF = ['admin', 'office', 'dispatcher', 'technician'];
+export const STAFF = ['admin', 'office', 'technician'];
 
 // Single source of truth for nav + access control. `roles` = who may see/reach each item.
 export const NAV_GROUPS = [
@@ -14,9 +14,10 @@ export const NAV_GROUPS = [
   {
     label: 'Operations',
     items: [
-      { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'office', 'dispatcher'] },
+      { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'office'] },
       { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: STAFF },
       { to: '/schedule', label: 'Schedule', icon: Calendar, roles: STAFF },
+      { to: '/inspections', label: 'Inspections', icon: ClipboardCheck, roles: STAFF },
       { to: '/time-clock', label: 'Time Clock', icon: Clock, roles: STAFF },
     ],
   },
@@ -30,7 +31,7 @@ export const NAV_GROUPS = [
   {
     label: 'Resources',
     items: [
-      { to: '/inventory', label: 'Inventory', icon: Package, roles: ['admin', 'office', 'technician'] },
+      { to: '/inventory', label: 'Inventory', icon: Package, roles: ['admin', 'office'] },
       { to: '/employees', label: 'Team', icon: UserCog, roles: ['admin'] },
     ],
   },

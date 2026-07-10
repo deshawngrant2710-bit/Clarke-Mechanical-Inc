@@ -7,11 +7,10 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const empty = { name: '', email: '', password: '', role: 'customer', phone: '' };
-const ROLES = ['customer', 'technician', 'dispatcher', 'office', 'admin'];
+const ROLES = ['customer', 'technician', 'office', 'admin'];
 const ROLE_STYLE = {
   customer: 'bg-slate-100 text-slate-600',
   technician: 'bg-blue-100 text-blue-700',
-  dispatcher: 'bg-orange-100 text-orange-700',
   office: 'bg-emerald-100 text-emerald-700',
   admin: 'bg-violet-100 text-violet-700',
 };
@@ -35,7 +34,7 @@ export default function Employees() {
     total: users.length,
     customers: users.filter(u => u.role === 'customer').length,
     technicians: users.filter(u => u.role === 'technician').length,
-    staff: users.filter(u => ['admin', 'office', 'dispatcher'].includes(u.role)).length,
+    staff: users.filter(u => ['admin', 'office'].includes(u.role)).length,
   };
 
   const filtered = users.filter(u => {
@@ -81,7 +80,6 @@ export default function Employees() {
     { id: 'all', label: 'All' },
     { id: 'customer', label: 'Customers' },
     { id: 'technician', label: 'Technicians' },
-    { id: 'dispatcher', label: 'Dispatchers' },
     { id: 'office', label: 'Office' },
     { id: 'admin', label: 'Admins' },
   ];

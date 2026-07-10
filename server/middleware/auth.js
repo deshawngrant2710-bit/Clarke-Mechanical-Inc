@@ -23,4 +23,14 @@ function adminOnly(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, adminOnly };
+// Allow only the given roles.
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({ error: 'You do not have access to this resource' });
+    }
+    next();
+  };
+}
+
+module.exports = { authMiddleware, adminOnly, requireRole };

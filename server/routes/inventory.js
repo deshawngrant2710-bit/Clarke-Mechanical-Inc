@@ -1,10 +1,10 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, requireRole('admin', 'office'));
 
 router.get('/', (req, res) => {
   const { low_stock } = req.query;

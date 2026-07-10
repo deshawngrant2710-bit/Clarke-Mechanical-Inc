@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import { Mail, Lock, AlertCircle, User, Phone, Eye, EyeOff } from 'lucide-react';
 import Logo from '../components/Logo';
-import logoMark from '../assets/logo-mark.png';
 
 const emptyForm = { firstName: '', lastName: '', email: '', phone: '', password: '' };
 
@@ -84,36 +83,8 @@ export default function Login() {
   return (
     <div className="min-h-screen flex">
       {/* Left brand panel */}
-      <div className="hidden lg:flex flex-col justify-between w-[45%] bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-12 relative overflow-hidden">
-        {/* Logo watermark background */}
-        <img
-          src={logoMark}
-          alt=""
-          aria-hidden="true"
-          className="absolute -right-24 -bottom-20 w-[600px] max-w-none opacity-[0.09] pointer-events-none select-none rotate-6"
-        />
-        <div className="absolute -right-24 top-16 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl" />
-        <div className="absolute -left-16 bottom-0 w-80 h-80 rounded-full bg-blue-500/10 blur-3xl" />
-        <div className="relative bg-white/95 rounded-2xl shadow-xl px-6 py-4 w-fit">
-          <Logo variant="full" height={48} />
-        </div>
-        <div className="relative">
-          <h1 className="text-4xl font-bold text-white leading-tight tracking-tight">
-            The command center for<br />modern HVAC operations.
-          </h1>
-          <p className="text-slate-300 mt-4 max-w-md">
-            Manage customers, dispatch jobs, track inventory, and get paid faster — all in one place.
-          </p>
-          <div className="flex gap-8 mt-10">
-            {[['Faster', 'dispatch'], ['Real-time', 'tracking'], ['Fewer', 'no-shows']].map(([a, b]) => (
-              <div key={a}>
-                <p className="text-2xl font-bold text-white">{a}</p>
-                <p className="text-sm text-slate-400">{b}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-        <p className="relative text-xs text-slate-500">© {new Date().getFullYear()} Clarke Mechanical Inc.</p>
+      <div className="hidden lg:flex items-center justify-center w-[45%] bg-white p-12 border-r border-slate-200">
+        <Logo variant="full" height={96} />
       </div>
 
       {/* Right form */}

@@ -2,24 +2,34 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
+import { directionsLink } from '../lib/geo';
+import { propertyLabel, equipmentLabel } from '../lib/inspectionForms';
+import { useAuth } from '../context/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
 const TIMELINE = ['pending', 'scheduled', 'in-progress', 'completed'];
 const TIMELINE_LABEL = { pending: 'Created', scheduled: 'Scheduled', 'in-progress': 'In Progress', completed: 'Completed' };
 
+const NEXT_STATUS_LABEL = { scheduled: 'Mark Scheduled', 'in-progress': 'Start Job', completed: 'Mark Complete' };
+
 export default function JobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isTech = user?.role === 'technician';
   const [job, setJob] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [editModal, setEditModal] = useState(false);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [jobInspections, setJobInspections] = useState([]);
   const [emailing, setEmailing] = useState('');
   const [signModal, setSignModal] = useState(false);
   const [signName, setSignName] = useState('');
@@ -41,7 +51,21 @@ export default function JobDetail() {
 
   function load() {
     Promise.all([api.get(`/jobs/${id}`), api.get('/customers'), api.get('/employees')])
-      .then(([j, c, e]) => { setJob(j.data); setForm(j.data); setCustomers(c.data); setEmployees(e.data); });
+      .then(([j, c, e]) => { setJob(j.data); setForm(j.data); setNotesDraft(''); setCustomers(c.data); setEmployees(e.data); });
+    api.get('/inspections').then(r => setJobInspections(r.data.filter(x => x.job_id === id))).catch(() => {});
+  }
+
+  async function createInspectionForJob() {
+    try {
+      const { data } = await api.post('/inspections', {
+        job_id: id,
+        customer_id: job?.customer_id || null,
+        property_type: 'residential',
+        equipment_type: 'boiler',
+        info: job?.address ? { site_address: job.address } : {},
+      });
+      navigate(`/inspections/${data.id}`);
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not start inspection'); }
   }
   useEffect(load, [id]);
 
@@ -58,6 +82,30 @@ export default function JobDetail() {
     if (!confirm('Delete this job?')) return;
     await api.delete(`/jobs/${id}`);
     toast.success('Deleted'); navigate('/jobs');
+  }
+  async function updateStatus(newStatus) {
+    setSaving(true);
+    try {
+      await api.put(`/jobs/${id}`, { ...job, status: newStatus });
+      toast.success(`Marked ${TIMELINE_LABEL[newStatus]}`);
+      load();
+    } catch { toast.error('Could not update status'); }
+    finally { setSaving(false); }
+  }
+  async function addNote() {
+    const text = notesDraft.trim();
+    if (!text) return;
+    const meta = `${user?.name || 'Technician'} · ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
+    const entry = `${meta}\n${text}`;
+    const updated = job.notes ? `${entry}\n\n---\n${job.notes}` : entry;
+    setSavingNotes(true);
+    try {
+      await api.put(`/jobs/${id}`, { ...job, notes: updated });
+      toast.success('Note added');
+      setNotesDraft('');
+      load();
+    } catch { toast.error('Could not add note'); }
+    finally { setSavingNotes(false); }
   }
   async function handlePhotoUpload(e) {
     const files = e.target.files;
@@ -79,6 +127,17 @@ export default function JobDetail() {
 
   const cancelled = job.status === 'cancelled';
   const activeIdx = TIMELINE.indexOf(job.status);
+  const nextStatus = activeIdx >= 0 && activeIdx < TIMELINE.length - 1 ? TIMELINE[activeIdx + 1] : null;
+  const noteEntries = (job.notes || '')
+    .split('\n\n---\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(chunk => {
+      const nl = chunk.indexOf('\n');
+      const first = nl === -1 ? chunk : chunk.slice(0, nl);
+      const rest = nl === -1 ? '' : chunk.slice(nl + 1);
+      return first.includes(' · ') && rest ? { meta: first, body: rest } : { meta: null, body: chunk };
+    });
 
   return (
     <div className="animate-fade-in">
@@ -99,10 +158,21 @@ export default function JobDetail() {
             <p className="text-xs text-slate-400 mt-1 font-mono">Job #{id.slice(0, 8).toUpperCase()}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            <Btn variant="outline" onClick={() => notify('job_confirmation', 'Confirmation')} loading={emailing === 'job_confirmation'}><MailCheck size={15} /> Send Confirmation</Btn>
-            <Btn variant="outline" onClick={() => notify('job_reminder', 'Reminder')} loading={emailing === 'job_reminder'}><BellRing size={15} /> Send Reminder</Btn>
-            <Btn variant="outline" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
-            <Btn variant="danger" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
+            {isTech ? (
+              !cancelled && nextStatus && (
+                <Btn onClick={() => updateStatus(nextStatus)} loading={saving}>
+                  {nextStatus === 'completed' ? <CheckCircle2 size={15} /> : nextStatus === 'in-progress' ? <Wrench size={15} /> : <Calendar size={15} />}
+                  {NEXT_STATUS_LABEL[nextStatus]}
+                </Btn>
+              )
+            ) : (
+              <>
+                <Btn variant="outline" onClick={() => notify('job_confirmation', 'Confirmation')} loading={emailing === 'job_confirmation'}><MailCheck size={15} /> Send Confirmation</Btn>
+                <Btn variant="outline" onClick={() => notify('job_reminder', 'Reminder')} loading={emailing === 'job_reminder'}><BellRing size={15} /> Send Reminder</Btn>
+                <Btn variant="outline" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
+                <Btn variant="danger" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
+              </>
+            )}
           </div>
         </div>
 
@@ -140,10 +210,42 @@ export default function JobDetail() {
                   <button className="text-blue-600 hover:underline font-medium" onClick={() => navigate(`/customers/${job.customer_id}`)}>{job.customer_name}</button>
                 </div>
               )}
+              {job.customer_phone && (
+                <div className="flex items-center gap-2 pl-6">
+                  <a
+                    href={`tel:${job.customer_phone.replace(/[^\d+]/g, '')}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+                  >
+                    <Phone size={12} /> Call
+                  </a>
+                  <a
+                    href={`sms:${job.customer_phone.replace(/[^\d+]/g, '')}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors"
+                  >
+                    <MessageSquare size={12} /> Text
+                  </a>
+                  <span className="text-xs text-slate-400">{job.customer_phone}</span>
+                </div>
+              )}
               {(job.scheduled_date || job.scheduled_time) && (
                 <div className="flex items-center gap-2.5 text-slate-600"><Calendar size={14} className="text-slate-400" />{job.scheduled_date}{job.scheduled_time ? ` at ${job.scheduled_time}` : ''}</div>
               )}
-              {job.address && <div className="flex items-start gap-2.5 text-slate-600"><MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" />{job.address}</div>}
+              {job.address && (
+                <div className="flex items-start gap-2.5 text-slate-600">
+                  <MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <p>{job.address}</p>
+                    <a
+                      href={directionsLink(job.address)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors"
+                    >
+                      <Navigation size={12} /> Directions
+                    </a>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2.5 pt-3 border-t border-slate-100">
                 {job.technician_name ? (
                   <><Avatar name={job.technician_name} className="w-8 h-8 text-xs" /><div><p className="text-sm font-medium text-slate-800">{job.technician_name}</p><p className="text-xs text-slate-400">Assigned technician</p></div></>
@@ -156,8 +258,37 @@ export default function JobDetail() {
           {job.description && (
             <Card><CardHeader title="Description" /><p className="p-5 text-sm text-slate-700 whitespace-pre-wrap">{job.description}</p></Card>
           )}
-          {job.notes && (
-            <Card><CardHeader title="Notes" /><p className="p-5 text-sm text-slate-700 whitespace-pre-wrap">{job.notes}</p></Card>
+          {(isTech || noteEntries.length > 0) && (
+            <Card>
+              <CardHeader title={`Notes${noteEntries.length ? ` (${noteEntries.length})` : ''}`} />
+              <div className="p-5 space-y-4">
+                {isTech && (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={notesDraft}
+                      onChange={e => setNotesDraft(e.target.value)}
+                      rows={3}
+                      placeholder="Add a note — work performed, what you found, or parts needed for a return visit…"
+                    />
+                    <div className="flex justify-end">
+                      <Btn size="sm" onClick={addNote} loading={savingNotes} disabled={!notesDraft.trim()}>Add Note</Btn>
+                    </div>
+                  </div>
+                )}
+                {noteEntries.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {noteEntries.map((entry, idx) => (
+                      <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        {entry.meta && <p className="text-xs font-semibold text-slate-500 mb-1">{entry.meta}</p>}
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{entry.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  isTech && <p className="text-sm text-slate-400">No notes yet.</p>
+                )}
+              </div>
+            </Card>
           )}
 
           {/* Customer sign-off */}
@@ -197,6 +328,26 @@ export default function JobDetail() {
                     <a key={p.id} href={`/uploads/${p.filename}`} target="_blank" rel="noreferrer" className="group relative rounded-xl overflow-hidden">
                       <img src={`/uploads/${p.filename}`} alt={p.original_name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300" />
                     </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader title={`Inspections (${jobInspections.length})`} icon={<ClipboardCheck size={15} />}
+              action={<Btn size="sm" onClick={createInspectionForJob}><Plus size={14} /> New</Btn>} />
+            <div className="p-5">
+              {jobInspections.length === 0 ? (
+                <p className="text-sm text-slate-400">No inspections for this job yet. Start one to capture a checklist and site photos.</p>
+              ) : (
+                <div className="divide-y divide-slate-100 -my-1">
+                  {jobInspections.map(insp => (
+                    <button key={insp.id} onClick={() => navigate(`/inspections/${insp.id}`)}
+                      className="w-full flex items-center justify-between gap-3 py-3 px-2 -mx-2 rounded-lg text-left hover:bg-slate-50 transition-colors">
+                      <span className="text-sm text-slate-700 truncate">{propertyLabel(insp.property_type)} · {equipmentLabel(insp.equipment_type)}</span>
+                      <Badge status={insp.status === 'submitted' ? 'completed' : 'pending'} />
+                    </button>
                   ))}
                 </div>
               )}

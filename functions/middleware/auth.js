@@ -19,7 +19,7 @@ function adminOnly(req, res, next) {
   next();
 }
 
-const STAFF = ['admin', 'office', 'dispatcher', 'technician'];
+const STAFF = ['admin', 'office', 'technician'];
 
 // Allow only the given roles.
 function requireRole(...roles) {

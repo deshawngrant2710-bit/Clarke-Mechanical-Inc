@@ -51,7 +51,7 @@ router.get('/', (req, res) => {
     SELECT u.id, u.name, u.role,
       (SELECT COUNT(*) FROM jobs j WHERE j.technician_id = u.id AND j.status = 'in-progress') as active_jobs,
       (SELECT COUNT(*) FROM jobs j WHERE j.technician_id = u.id AND j.scheduled_date = date('now')) as today_jobs
-    FROM users u WHERE u.role IN ('technician','dispatcher') ORDER BY u.name ASC
+    FROM users u WHERE u.role = 'technician' ORDER BY u.name ASC
   `).all();
 
   const jobsByStatus = db.prepare("SELECT status, COUNT(*) as count FROM jobs GROUP BY status").all();

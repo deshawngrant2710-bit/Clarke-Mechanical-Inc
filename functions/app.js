@@ -19,6 +19,7 @@ app.use('/api/email', require('./routes/email'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/portal', require('./routes/portal'));
 app.use('/api/time', require('./routes/time'));
+app.use('/api/inspections', require('./routes/inspections'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

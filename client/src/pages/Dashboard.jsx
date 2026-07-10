@@ -6,8 +6,9 @@ import { DonutChart, AreaChart } from '../components/Charts';
 import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
-  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin,
+  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation,
 } from 'lucide-react';
+import { directionsLink } from '../lib/geo';
 import Logo from '../components/Logo';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
@@ -224,6 +225,18 @@ function TechnicianDashboard({ data, navigate, name }) {
           {job.customer_name || 'No customer'}{job.address && <> · <MapPin size={10} /> {job.address}</>}
         </p>
       </div>
+      {job.address && (
+        <a
+          href={directionsLink(job.address)}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title="Get directions"
+          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors"
+        >
+          <Navigation size={13} /> <span className="hidden sm:inline">Directions</span>
+        </a>
+      )}
       <Badge status={job.status} />
     </div>
   );

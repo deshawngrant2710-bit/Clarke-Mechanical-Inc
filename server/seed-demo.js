@@ -15,7 +15,7 @@ console.log('Seeding demo data…');
 const techs = [
   ['Marcus Reyes', 'marcus@clarkemechanical.com', 'technician', '(555) 201-8890'],
   ['Danielle Cho', 'danielle@clarkemechanical.com', 'technician', '(555) 201-4471'],
-  ['Andre Whitfield', 'andre@clarkemechanical.com', 'dispatcher', '(555) 201-3320'],
+  ['Andre Whitfield', 'andre@clarkemechanical.com', 'technician', '(555) 201-3320'],
   ['Priya Natarajan', 'priya@clarkemechanical.com', 'office', '(555) 201-7712'],
 ];
 const techIds = [];
