@@ -50,23 +50,44 @@ router.get('/jobs', async (req, res) => {
   ]);
   const reviewByJob = {};
   reviewsNested.flat().forEach(r => { reviewByJob[r.job_id] = { rating: r.rating, comment: r.comment }; });
-  const jobs = jobsNested.flat()
+  const flat = jobsNested.flat();
+  const photosNested = await Promise.all(flat.map(j => findWhere('job_photos', 'job_id', j.id)));
+  const photosByJob = {};
+  flat.forEach((j, i) => { photosByJob[j.id] = (photosNested[i] || []).map(p => ({ id: p.id, caption: p.caption || null, proof_type: p.proof_type || 'image' })); });
+  const jobs = flat
     .map(j => ({
       id: j.id, title: j.title, status: j.status, priority: j.priority, job_type: j.job_type,
       scheduled_date: j.scheduled_date, scheduled_time: j.scheduled_time, address: j.address,
       description: j.description, technician_name: techs[j.technician_id] || null, created_at: j.created_at,
       review: reviewByJob[j.id] || null,
       signed_by: j.signed_by || null, signed_at: j.signed_at || null, signature: j.signature || null,
+      photos: photosByJob[j.id] || [],
     }))
     .sort(byCreated);
   res.json(jobs);
 });
 
+// GET /portal/jobs/:jobId/photos/:photoId — the base64 image/PDF for a job photo the customer owns.
+router.get('/jobs/:jobId/photos/:photoId', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const job = await getById('jobs', req.params.jobId);
+  if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Not found' });
+  const photo = await getById('job_photos', req.params.photoId);
+  if (!photo || photo.job_id !== req.params.jobId) return res.status(404).json({ error: 'Photo not found' });
+  res.json({ proof: photo.proof || null, proof_type: photo.proof_type || 'image' });
+});
+
 router.get('/invoices', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   if (!ids.length) return res.json([]);
-  const invNested = await Promise.all(ids.map(id => findWhere('invoices', 'customer_id', id)));
-  res.json(invNested.flat().sort(byCreated));
+  const invoices = (await Promise.all(ids.map(id => findWhere('invoices', 'customer_id', id)))).flat();
+  const paymentsByInvoice = await Promise.all(invoices.map(inv => findWhere('payments', 'invoice_id', inv.id)));
+  invoices.forEach((inv, i) => {
+    inv.payments = (paymentsByInvoice[i] || [])
+      .map(p => ({ amount: p.amount, method: p.method, reference: p.reference || null, paid_at: p.paid_at }))
+      .sort((a, b) => (a.paid_at || '').localeCompare(b.paid_at || ''));
+  });
+  res.json(invoices.sort(byCreated));
 });
 
 router.get('/quotes', async (req, res) => {
@@ -99,6 +120,16 @@ router.post('/service-request', async (req, res) => {
     address: customer.address || null,
     notes: `Requested via customer portal by ${req.user.name}`,
   });
+
+  // Optional photo the customer attached to show the problem.
+  if (req.body.photo) {
+    try {
+      await create('job_photos', uuid(), {
+        job_id: id, proof: req.body.photo, proof_type: req.body.photo_type || 'image',
+        caption: 'Submitted by customer', source: 'customer', created_at: new Date().toISOString(),
+      });
+    } catch (e) { console.error('[portal] request photo failed:', e.message); }
+  }
 
   // Best-effort: notify the business a new request came in.
   try {
@@ -206,11 +237,12 @@ router.put('/jobs/:id/reschedule', async (req, res) => {
 router.put('/profile', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   if (!ids.length) return res.status(422).json({ error: "Your account isn't linked to a customer record yet." });
-  const { phone, address, city, state, zip } = req.body;
+  const { phone, address, city, state, zip, email_opt_in, sms_opt_in } = req.body;
   const saved = await update('customers', ids[0], {
     phone: phone || null, address: address || null, city: city || null, state: state || null, zip: zip || null,
+    email_opt_in: email_opt_in !== false, sms_opt_in: !!sms_opt_in,
   });
-  res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip });
+  res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip, email_opt_in: saved.email_opt_in, sms_opt_in: saved.sms_opt_in });
 });
 
 // GET /portal/payment-config — the publishable Stripe key for the browser.

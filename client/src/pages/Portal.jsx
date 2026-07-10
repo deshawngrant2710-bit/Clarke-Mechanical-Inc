@@ -2,14 +2,16 @@ import { useEffect, useState, useRef } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea } from '../components/UI';
-import { printDocument } from '../lib/printDoc';
+import { printDocument, buildDocumentHtml } from '../lib/printDoc';
 import SignaturePad from '../components/SignaturePad';
 import PayInvoiceModal from '../components/PayInvoiceModal';
+import Logo from '../components/Logo';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
   UserCircle, Plus, Wrench, MapPin, ChevronDown, Check, X, Phone, Mail, Pencil,
-  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send, CreditCard,
+  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send, CreditCard, Eye, Camera, Receipt,
 } from 'lucide-react';
+import { fileToProof } from '../lib/imageProof';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -18,10 +20,13 @@ const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractio
 const BUSINESS_HOURS = 'Mon–Fri · 8:00 AM – 6:00 PM  ·  24/7 emergency service';
 
 const FAQ = [
-  { q: 'How do I schedule a service?', a: 'Tap "Request Service" at the top of your portal, describe what you need, and pick a preferred date. We\'ll confirm your appointment by email.' },
-  { q: 'How do I pay an invoice?', a: 'Open the "My Invoices" tab to see any balance due and download a PDF. To pay, contact our office using the details in Help & Support below.' },
-  { q: 'What should I do in an emergency?', a: 'For a heating or cooling emergency, call our 24/7 line right away using the "Call us" button in Help & Support.' },
-  { q: 'Can I reschedule or cancel a visit?', a: 'Yes — open the "My Services" tab, expand the job, and use Reschedule or Cancel on any upcoming visit.' },
+  { q: 'How do I request a service?', a: 'Tap "Request Service" at the top of your portal, describe what you need, and pick a preferred date. You\'ll get a confirmation email, and the request will appear under "My Services".' },
+  { q: 'How do I pay an invoice?', a: 'Open the "My Invoices" tab and expand an unpaid invoice, then tap "Pay now" to pay securely by card. Prefer cash? Choose "Pay with cash" and our office will reach out to arrange it. Once paid, the invoice updates to "Paid" automatically. You can also download a PDF of any invoice.' },
+  { q: 'Can I reschedule or cancel a visit?', a: 'Yes. Open the "My Services" tab, expand an upcoming job, and use Reschedule or Cancel.' },
+  { q: 'How do I accept or decline an estimate?', a: 'Open the "My Estimates" tab, expand the estimate to review the line items and total, and choose Accept or Decline. You can also download it as a PDF.' },
+  { q: 'How do I get help or reach a live agent?', a: 'Use the "Assistant" tab to ask a question anytime. If you\'d like a human, just ask to speak with an agent and you\'ll be connected to our team in the same chat. You can also call, text, or email us from "Help & Support".' },
+  { q: 'How do I sign off on completed work or leave a review?', a: 'When a job is marked complete, open it under "My Services" to add your signature, and you can leave a star rating and review there too.' },
+  { q: 'How do I update my contact info?', a: 'Tap "My Info" at the top of your portal to update your phone, address, and other details.' },
 ];
 
 function Stars({ value, size = 14, onChange }) {
@@ -44,6 +49,24 @@ const JOB_STEPS = [
   { key: 'in-progress', label: 'In Progress' },
   { key: 'completed', label: 'Completed' },
 ];
+
+function JobPhotoThumb({ jobId, photo }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    api.get(`/portal/jobs/${jobId}/photos/${photo.id}`).then(r => setData(r.data)).catch(() => {});
+  }, [jobId, photo.id]);
+  if (!data) return <div className="w-16 h-16 rounded-lg bg-slate-100 animate-pulse" />;
+  const isPdf = (data.proof_type || photo.proof_type) === 'pdf';
+  return isPdf ? (
+    <a href={data.proof} target="_blank" rel="noreferrer" download="photo.pdf" className="w-16 h-16 rounded-lg border border-slate-200 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50">
+      <FileText size={18} /><span className="text-[9px]">PDF</span>
+    </a>
+  ) : (
+    <a href={data.proof} target="_blank" rel="noreferrer" className="block">
+      <img src={data.proof} alt="job photo" className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
+    </a>
+  );
+}
 
 function JobTimeline({ status }) {
   if (status === 'cancelled') {
@@ -77,6 +100,7 @@ export default function Portal() {
   const [quotes, setQuotes] = useState([]);
   const [tab, setTab] = useState('jobs');
   const [payInvoice, setPayInvoice] = useState(null);
+  const [viewDoc, setViewDoc] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
@@ -116,8 +140,8 @@ export default function Portal() {
     catch (e) { toast.error(e.response?.data?.error || 'Could not cancel'); }
   }
 
-  async function sendChat() {
-    const text = chatInput.trim();
+  async function sendChat(override) {
+    const text = (typeof override === 'string' ? override : chatInput).trim();
     if (!text || chatSending) return;
 
     // If the last live chat was closed, start fresh with the assistant.
@@ -302,6 +326,14 @@ export default function Portal() {
                               {j.technician_name && <p className="flex items-center gap-1.5"><Wrench size={12} className="text-slate-400" /> Technician: {j.technician_name}</p>}
                               {j.address && <p className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400" /> {j.address}</p>}
                             </div>
+                            {j.photos?.length > 0 && (
+                              <div className="mt-3">
+                                <p className="text-xs font-semibold text-slate-500 mb-1.5 flex items-center gap-1.5"><Camera size={12} /> Photos</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {j.photos.map(p => <JobPhotoThumb key={p.id} jobId={j.id} photo={p} />)}
+                                </div>
+                              </div>
+                            )}
                             {editable && (
                               <div className="flex gap-2 mt-3">
                                 <Btn size="sm" variant="outline" onClick={() => setRescheduleJob(j)}><CalendarClock size={14} /> Reschedule</Btn>
@@ -382,6 +414,10 @@ export default function Portal() {
                               {inv.status !== 'paid' && inv.status !== 'cancelled' && (
                                 <Btn size="sm" onClick={() => setPayInvoice(inv)}><CreditCard size={14} /> Pay now</Btn>
                               )}
+                              <Btn size="sm" variant="outline" onClick={() => setViewDoc({ kind: 'invoice', doc: inv })}><Eye size={14} /> View</Btn>
+                              {inv.status === 'paid' && (
+                                <Btn size="sm" variant="outline" onClick={() => setViewDoc({ kind: 'receipt', doc: inv })}><Receipt size={14} /> Receipt</Btn>
+                              )}
                               <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'invoice', doc: inv, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
                             </div>
                             <div className="w-48 space-y-0.5 text-sm">
@@ -434,6 +470,7 @@ export default function Portal() {
                               </tbody>
                             </table>
                             <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <Btn size="sm" variant="outline" onClick={() => setViewDoc({ kind: 'quote', doc: q })}><Eye size={14} /> View</Btn>
                               <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'quote', doc: q, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
                               {pending ? (
                                 <div className="flex gap-2">
@@ -494,58 +531,95 @@ export default function Portal() {
             </Card>
           )}
           {tab === 'assistant' && (
-            <Card>
-              <CardHeader title={supportChatId ? 'Chat with our team' : 'Ask our assistant'} icon={<Sparkles size={15} />} />
-              {supportChatId && (
-                <div className={`px-5 py-2 text-xs font-medium border-b flex items-center justify-between gap-3 ${supportStatus === 'closed' ? 'bg-slate-50 text-slate-500 border-slate-100' : supportStatus === 'live' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                  <span>
-                    {supportStatus === 'closed' ? 'This chat has been closed. Ask another question to start over.'
-                      : supportStatus === 'live' ? 'You’re connected with our team.'
-                      : 'Waiting for a team member to join… you can keep typing.'}
-                  </span>
-                  {supportStatus !== 'closed' && (
-                    <button onClick={leaveChat} className="shrink-0 font-semibold text-slate-500 hover:text-red-600 underline underline-offset-2">Leave chat</button>
-                  )}
+            <Card className="overflow-hidden">
+              {/* Chat header */}
+              <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500">
+                <div className="flex items-center justify-center w-9 h-9 rounded-full bg-white shrink-0 overflow-hidden p-1 shadow-sm">
+                  <Logo variant="icon" height={26} />
                 </div>
-              )}
-              <div className="flex flex-col h-[26rem]">
-                <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white leading-tight">
+                    {supportChatId ? (supportStatus === 'live' ? 'Clarke Mechanical — Live' : supportStatus === 'closed' ? 'Chat ended' : 'Connecting you…') : 'Clarke Assistant'}
+                  </p>
+                  <p className="text-[11px] text-blue-100 flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${supportStatus === 'closed' ? 'bg-slate-300' : 'bg-emerald-300'}`} />
+                    {supportChatId
+                      ? (supportStatus === 'live' ? 'A team member is with you' : supportStatus === 'closed' ? 'This chat has ended' : 'Waiting for a team member…')
+                      : 'Usually replies instantly'}
+                  </p>
+                </div>
+                {supportChatId && supportStatus !== 'closed' && (
+                  <button onClick={leaveChat} className="shrink-0 text-[11px] font-semibold text-white bg-white/15 hover:bg-white/25 rounded-full px-3 py-1 transition-colors">Leave chat</button>
+                )}
+              </div>
+
+              <div className="flex flex-col h-[30rem] bg-slate-50/60">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
                   {chatMessages.length === 0 && (
-                    <div className="text-center text-sm text-slate-400 mt-8">
-                      <Sparkles size={26} className="mx-auto mb-2 text-blue-400" />
-                      <p className="font-medium text-slate-500">Hi! I can help with questions about your HVAC service, scheduling, billing, or general heating &amp; cooling tips.</p>
-                      <p className="mt-1">Ask me anything — or ask for a person and I’ll connect you.</p>
+                    <div className="text-center mt-6 px-4">
+                      <div className="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden p-2"><Logo variant="icon" height={36} /></div>
+                      <p className="text-sm font-semibold text-slate-700">Hi{me?.name ? `, ${me.name.split(' ')[0]}` : ''}! How can we help?</p>
+                      <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">Ask about your service, scheduling, or billing — or ask for an agent and we’ll connect you.</p>
+                      <div className="flex flex-wrap justify-center gap-2 mt-4">
+                        {['How do I pay my invoice?', 'When is my next appointment?', 'I need to talk to an agent'].map(q => (
+                          <button key={q} onClick={() => sendChat(q)} disabled={chatSending}
+                            className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50">
+                            {q}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {chatMessages.map((m, i) => {
-                    if (m.role === 'system') return <p key={i} className="text-center text-xs text-slate-400 py-1">{m.text}</p>;
+                    if (m.role === 'system') return <p key={i} className="text-center text-[11px] text-slate-400 py-1">{m.text}</p>;
                     const isUser = m.role === 'user';
                     const isAgent = m.role === 'agent';
                     return (
-                      <div key={i} className={`max-w-[80%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
-                        {isAgent && <p className="text-[10px] font-semibold text-emerald-600 mb-0.5 ml-1">{m.who || 'Agent'}</p>}
-                        <div className={`px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : isAgent ? 'bg-emerald-50 text-emerald-900 border border-emerald-100 rounded-bl-sm' : 'bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
-                          {m.text}
+                      <div key={i} className={`flex items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
+                        {!isUser && (
+                          <div className={`flex items-center justify-center w-7 h-7 rounded-full shrink-0 ${isAgent ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                            {isAgent ? <UserCircle size={16} /> : <Sparkles size={14} />}
+                          </div>
+                        )}
+                        <div className="max-w-[78%]">
+                          {isAgent && <p className="text-[10px] font-semibold text-emerald-600 mb-0.5 ml-1">{m.who || 'Agent'}</p>}
+                          <div className={`px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap shadow-sm ${isUser ? 'bg-blue-600 text-white rounded-br-md' : isAgent ? 'bg-white text-slate-700 border border-emerald-100 rounded-bl-md' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-md'}`}>
+                            {m.text}
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                   {chatSending && !supportChatId && (
-                    <div className="mr-auto bg-slate-100 text-slate-400 text-sm px-3.5 py-2.5 rounded-2xl rounded-bl-sm">Typing…</div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-600 shrink-0"><Sparkles size={14} /></div>
+                      <div className="bg-white border border-slate-100 rounded-2xl rounded-bl-md px-3.5 py-3 shadow-sm">
+                        <span className="flex gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </div>
+                    </div>
                   )}
                   <div ref={chatEndRef} />
                 </div>
-                <div className="border-t border-slate-100 p-3 flex items-center gap-2">
-                  <input
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                    placeholder={supportStatus === 'closed' ? 'Ask a new question…' : supportChatId ? 'Message our team…' : 'Type your question…'}
-                    className="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500"
-                  />
-                  <Btn onClick={sendChat} loading={chatSending} disabled={!chatInput.trim()}><Send size={15} /> Send</Btn>
+                <div className="border-t border-slate-100 bg-white p-3">
+                  <div className="flex items-center gap-2 bg-slate-100 rounded-full pl-4 pr-1.5 py-1 focus-within:ring-2 focus-within:ring-blue-500/30">
+                    <input
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                      placeholder={supportStatus === 'closed' ? 'Ask a new question…' : supportChatId ? 'Message our team…' : 'Type your message…'}
+                      className="flex-1 bg-transparent text-sm outline-none py-1.5"
+                    />
+                    <button onClick={() => sendChat()} disabled={!chatInput.trim() || chatSending}
+                      className="flex items-center justify-center w-9 h-9 rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0">
+                      <Send size={16} />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 text-center mt-2">{supportChatId ? 'A team member will reply here.' : 'AI can make mistakes and can’t access your account. Ask for an agent anytime.'}</p>
                 </div>
-                <p className="text-[11px] text-slate-400 text-center pb-2 px-3">{supportChatId ? 'A team member will reply here. Replies may take a few minutes.' : 'The assistant can make mistakes and can’t access your account. Ask for a person anytime.'}</p>
               </div>
             </Card>
           )}
@@ -559,6 +633,20 @@ export default function Portal() {
       <ReviewModal job={reviewJob} onClose={() => setReviewJob(null)} onDone={load} />
       <SignoffModal job={signoffJob} defaultName={me?.name} onClose={() => setSignoffJob(null)} onDone={load} />
       {payInvoice && <PayInvoiceModal invoice={payInvoice} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
+      {viewDoc && (
+        <Modal open={!!viewDoc} onClose={() => setViewDoc(null)} size="xl"
+          title={`${viewDoc.kind === 'invoice' ? 'Invoice' : viewDoc.kind === 'receipt' ? 'Receipt' : 'Estimate'} ${viewDoc.doc.invoice_number || viewDoc.doc.quote_number || ''}`}>
+          <iframe
+            title="Document preview"
+            srcDoc={buildDocumentHtml({ kind: viewDoc.kind, doc: viewDoc.doc, business: me?.business, customer: me?.profile })}
+            className="w-full h-[68vh] rounded-lg border border-slate-200 bg-white"
+          />
+          <div className="flex justify-end gap-2 mt-4">
+            <Btn variant="outline" onClick={() => setViewDoc(null)}>Close</Btn>
+            <Btn onClick={() => printDocument({ kind: viewDoc.kind, doc: viewDoc.doc, business: me?.business, customer: me?.profile })}><Download size={14} /> Download PDF</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -631,14 +719,25 @@ function ReviewModal({ job, onClose, onDone }) {
 
 function ServiceRequestModal({ open, onClose, onDone }) {
   const [form, setForm] = useState({ title: '', description: '', preferred_date: '' });
+  const [photo, setPhoto] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  async function pickPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try { const p = await fileToProof(file); setPhoto({ ...p, name: file.name }); }
+    catch (err) { toast.error(err.message || 'Could not add that photo'); }
+  }
+
   async function submit() {
     if (!form.title.trim()) return toast.error('Please describe the service you need');
     setSaving(true);
     try {
-      await api.post('/portal/service-request', form);
+      await api.post('/portal/service-request', { ...form, photo: photo?.proof, photo_type: photo?.proof_type });
       toast.success("Request sent! We'll be in touch to schedule.");
       setForm({ title: '', description: '', preferred_date: '' });
+      setPhoto(null);
       onClose(); onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not send request'); }
     finally { setSaving(false); }
@@ -652,6 +751,24 @@ function ServiceRequestModal({ open, onClose, onDone }) {
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Anything that helps us prepare — symptoms, unit location, access notes…" />
         <Input label="Preferred date (optional)" type="date" value={form.preferred_date}
           onChange={e => setForm(f => ({ ...f, preferred_date: e.target.value }))} />
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Photo (optional)</label>
+          {photo ? (
+            <div className="flex items-center gap-3">
+              {photo.proof_type === 'image'
+                ? <img src={photo.proof} alt="attachment" className="w-14 h-14 rounded-lg object-cover border border-slate-200" />
+                : <div className="w-14 h-14 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400"><FileText size={20} /></div>}
+              <span className="text-sm text-slate-600 truncate flex-1">{photo.name}</span>
+              <button onClick={() => setPhoto(null)} className="text-xs font-medium text-red-600">Remove</button>
+            </div>
+          ) : (
+            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">
+              <Camera size={15} /> Add a photo
+              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={pickPhoto} />
+            </label>
+          )}
+          <p className="text-xs text-slate-400 mt-1">A picture of the unit or problem helps us prepare.</p>
+        </div>
         <div className="flex justify-end gap-2 pt-2">
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>
           <Btn onClick={submit} loading={saving}>{saving ? 'Sending…' : 'Send Request'}</Btn>
@@ -662,10 +779,10 @@ function ServiceRequestModal({ open, onClose, onDone }) {
 }
 
 function ProfileModal({ open, onClose, profile, onDone }) {
-  const [form, setForm] = useState({ phone: '', address: '', city: '', state: '', zip: '' });
+  const [form, setForm] = useState({ phone: '', address: '', city: '', state: '', zip: '', email_opt_in: true, sms_opt_in: false });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    if (open && profile) setForm({ phone: profile.phone || '', address: profile.address || '', city: profile.city || '', state: profile.state || '', zip: profile.zip || '' });
+    if (open && profile) setForm({ phone: profile.phone || '', address: profile.address || '', city: profile.city || '', state: profile.state || '', zip: profile.zip || '', email_opt_in: profile.email_opt_in !== false, sms_opt_in: !!profile.sms_opt_in });
   }, [open, profile]);
   async function save() {
     setSaving(true);
@@ -685,6 +802,17 @@ function ProfileModal({ open, onClose, profile, onDone }) {
           <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
           <Input label="State" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />
           <Input label="ZIP" value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} />
+        </div>
+        <div className="pt-1">
+          <p className="text-sm font-medium text-slate-700 mb-2">Notifications</p>
+          <label className="flex items-center gap-2.5 py-1.5 cursor-pointer">
+            <input type="checkbox" checked={form.email_opt_in} onChange={e => setForm(f => ({ ...f, email_opt_in: e.target.checked }))} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm text-slate-600">Email me about appointments, invoices, and updates</span>
+          </label>
+          <label className="flex items-center gap-2.5 py-1.5 cursor-pointer">
+            <input type="checkbox" checked={form.sms_opt_in} onChange={e => setForm(f => ({ ...f, sms_opt_in: e.target.checked }))} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm text-slate-600">Text me appointment reminders</span>
+          </label>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>
