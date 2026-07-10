@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -17,6 +17,7 @@ export const NAV_GROUPS = [
       { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'office'] },
       { to: '/support', label: 'Support', icon: MessagesSquare, roles: ['admin', 'office'] },
       { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: STAFF },
+      { to: '/dispatch', label: 'Dispatch', icon: Columns3, roles: ['admin', 'office'] },
       { to: '/schedule', label: 'Schedule', icon: Calendar, roles: STAFF },
       { to: '/inspections', label: 'Inspections', icon: ClipboardCheck, roles: STAFF },
       { to: '/time-clock', label: 'Time Clock', icon: Clock, roles: STAFF },
@@ -26,6 +27,7 @@ export const NAV_GROUPS = [
     label: 'Billing',
     items: [
       { to: '/invoices', label: 'Invoices', icon: FileText, roles: ['admin', 'office'] },
+      { to: '/payments', label: 'Payments', icon: CreditCard, roles: ['admin', 'office'] },
       { to: '/quotes', label: 'Quotes', icon: ClipboardList, roles: ['admin', 'office'] },
       { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'office'] },
     ],

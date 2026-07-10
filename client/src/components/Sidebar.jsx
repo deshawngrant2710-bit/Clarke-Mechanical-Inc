@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, X } from 'lucide-react';
+import { LogOut, X, Search } from 'lucide-react';
 import Logo from './Logo';
 import api from '../api/client';
 import { navGroupsForRole } from '../lib/roles';
@@ -29,6 +29,12 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     return () => { active = false; clearInterval(iv); };
   }, [user?.role]);
 
+  const [searchQ, setSearchQ] = useState('');
+  function doSearch(e) {
+    e.preventDefault();
+    if (searchQ.trim()) { navigate(`/search?q=${encodeURIComponent(searchQ.trim())}`); setSearchQ(''); onClose(); }
+  }
+
   function handleLogout() {
     logout();
     navigate('/login');
@@ -53,6 +59,16 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
             <X size={20} />
           </button>
         </div>
+
+        {user?.role !== 'customer' && (
+          <form onSubmit={doSearch} className="px-3 pt-3">
+            <div className="relative">
+              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…"
+                className="w-full pl-8 pr-2 py-2 rounded-lg bg-slate-800/70 text-sm text-white placeholder:text-slate-500 outline-none focus:bg-slate-800 border border-transparent focus:border-slate-700" />
+            </div>
+          </form>
+        )}
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto">

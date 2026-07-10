@@ -23,6 +23,9 @@ import Settings from './pages/Settings';
 import Portal from './pages/Portal';
 import Support from './pages/Support';
 import Reports from './pages/Reports';
+import Dispatch from './pages/Dispatch';
+import Payments from './pages/Payments';
+import SearchResults from './pages/SearchResults';
 import TimeClock from './pages/TimeClock';
 import { canAccess, homeForRole } from './lib/roles';
 
@@ -91,6 +94,9 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/support" element={<Support />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/dispatch" element={<Dispatch />} />
+            <Route path="/payments" element={<Payments />} />
+            <Route path="/search" element={<SearchResults />} />
             <Route path="/portal" element={<Portal />} />
             <Route path="/time-clock" element={<TimeClock />} />
           </Route>

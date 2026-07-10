@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { directionsLink } from '../lib/geo';
@@ -154,6 +154,46 @@ export default function JobDetail() {
       navigate(`/invoices/${data.id}`);
     } catch (e) { toast.error(e.response?.data?.error || 'Could not create invoice'); }
   }
+  async function scheduleFollowUp() {
+    const months = parseInt(window.prompt('Schedule a follow-up visit in how many months?', '6'), 10);
+    if (!months || months < 1) return;
+    const d = new Date(); d.setMonth(d.getMonth() + months);
+    const scheduled_date = d.toISOString().slice(0, 10);
+    try {
+      const { data } = await api.post('/jobs', {
+        title: job.title, description: job.description, customer_id: job.customer_id, technician_id: job.technician_id,
+        status: 'scheduled', priority: 'normal', job_type: job.job_type, scheduled_date, address: job.address,
+        notes: `Follow-up to ${job.title}`,
+      });
+      toast.success(`Follow-up scheduled for ${scheduled_date}`);
+      navigate(`/jobs/${data.id}`);
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not schedule follow-up'); }
+  }
+  function printWorkOrder() {
+    const e = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const parts = (job.parts || []).map(p => `<tr><td>${e(p.name)}</td><td style="text-align:right">${p.quantity}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#94a3b8">None logged</td></tr>';
+    const row = (label, val) => val ? `<tr><td style="color:#64748b;padding:4px 12px 4px 0;white-space:nowrap">${label}</td><td style="padding:4px 0">${e(val)}</td></tr>` : '';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Work Order</title>
+    <style>*{box-sizing:border-box}body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1e293b;margin:0;padding:40px;font-size:14px}
+    h1{color:#1d4ed8;font-size:24px;letter-spacing:2px;margin:0 0 4px}.sub{color:#64748b;margin-bottom:24px}
+    .box{border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px}.h{font-weight:700;margin-bottom:8px;color:#0f172a}
+    table{width:100%;border-collapse:collapse}.notes{white-space:pre-wrap;color:#334155}
+    .sign{margin-top:40px;display:flex;justify-content:space-between;gap:40px}.line{border-top:1px solid #94a3b8;padding-top:6px;color:#64748b;font-size:12px;flex:1}
+    @media print{body{padding:24px}}</style></head><body>
+    <h1>WORK ORDER</h1><div class="sub">Job #${e(id.slice(0, 8).toUpperCase())} · ${e(new Date().toLocaleDateString('en-US'))}</div>
+    <div class="box"><div class="h">${e(job.title)}</div><table>
+      ${row('Customer', job.customer_name)}${row('Phone', job.customer_phone)}${row('Address', job.address)}
+      ${row('Scheduled', [job.scheduled_date, job.scheduled_time].filter(Boolean).join(' '))}${row('Technician', job.technician_name)}${row('Type', job.job_type)}
+    </table></div>
+    ${job.description ? `<div class="box"><div class="h">Work to perform</div><div class="notes">${e(job.description)}</div></div>` : ''}
+    <div class="box"><div class="h">Parts &amp; materials</div><table><thead><tr><th style="text-align:left;color:#94a3b8;font-size:11px;text-transform:uppercase">Item</th><th style="text-align:right;color:#94a3b8;font-size:11px;text-transform:uppercase">Qty</th></tr></thead><tbody>${parts}</tbody></table></div>
+    <div class="box"><div class="h">Notes / findings</div><div style="min-height:60px"></div></div>
+    <div class="sign"><div class="line">Technician signature</div><div class="line">Customer signature</div></div>
+    <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) return alert('Please allow pop-ups to print.');
+    w.document.write(html); w.document.close();
+  }
   async function notify(type, label) {
     setEmailing(type);
     try { await sendEmail(type, id, label); } catch { /* toast handled */ }
@@ -212,6 +252,8 @@ export default function JobDetail() {
                 <Btn variant="outline" onClick={() => notify('job_confirmation', 'Confirmation')} loading={emailing === 'job_confirmation'}><MailCheck size={15} /> Send Confirmation</Btn>
                 <Btn variant="outline" onClick={() => notify('job_reminder', 'Reminder')} loading={emailing === 'job_reminder'}><BellRing size={15} /> Send Reminder</Btn>
                 {job.customer_id && <Btn variant="outline" onClick={createInvoice}><FileText size={15} /> Create Invoice</Btn>}
+                <Btn variant="outline" onClick={printWorkOrder}><Printer size={15} /> Work Order</Btn>
+                <Btn variant="outline" onClick={scheduleFollowUp}><Calendar size={15} /> Follow-up</Btn>
                 <Btn variant="outline" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
                 <Btn variant="danger" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
               </>

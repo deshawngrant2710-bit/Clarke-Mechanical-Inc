@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Modal, Input, Textarea, Badge, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import toast from 'react-hot-toast';
 
@@ -38,6 +38,34 @@ export default function CustomerDetail() {
     } catch { toast.error('Error updating'); }
     finally { setSaving(false); }
   }
+  async function printStatement() {
+    let invoices = [];
+    try { const r = await api.get('/billing/invoices'); invoices = r.data.filter(i => i.customer_id === id); }
+    catch { toast.error('Could not load invoices'); return; }
+    const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const e = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const owe = (i) => (['paid', 'cancelled'].includes(i.status) ? 0 : (i.total || 0));
+    const outstanding = invoices.reduce((s, i) => s + owe(i), 0);
+    const rows = invoices.length
+      ? invoices.map(i => `<tr><td>${e(i.invoice_number)}</td><td>${e(i.issue_date || '')}</td><td>${e(i.due_date || '')}</td><td style="text-align:right">${money(i.total)}</td><td style="text-transform:capitalize">${e(i.status)}</td><td style="text-align:right">${money(owe(i))}</td></tr>`).join('')
+      : '<tr><td colspan="6" style="color:#94a3b8">No invoices on file</td></tr>';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Statement</title>
+    <style>*{box-sizing:border-box}body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1e293b;margin:0;padding:40px;font-size:13px}
+    h1{color:#1d4ed8;font-size:24px;letter-spacing:2px;margin:0 0 4px}.sub{color:#64748b;margin-bottom:20px}
+    .who{margin-bottom:20px}.who b{color:#0f172a}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}th{text-align:left;text-transform:uppercase;font-size:10px;color:#94a3b8;border-bottom:2px solid #e2e8f0;padding:8px 6px}
+    td{padding:8px 6px;border-bottom:1px solid #f1f5f9}.bal{text-align:right;font-size:18px;font-weight:800;color:#0f172a}
+    @media print{body{padding:24px}}</style></head><body>
+    <h1>STATEMENT</h1><div class="sub">${e(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</div>
+    <div class="who"><b>${e(customer.name || '')}</b><br>${e(customer.email || '')}${customer.phone ? ` · ${e(customer.phone)}` : ''}</div>
+    <table><thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th style="text-align:right">Total</th><th>Status</th><th style="text-align:right">Balance</th></tr></thead><tbody>${rows}</tbody></table>
+    <p class="bal">Total balance due: ${money(outstanding)}</p>
+    <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) return alert('Please allow pop-ups to print.');
+    w.document.write(html); w.document.close();
+  }
+
   async function handleDelete() {
     if (!confirm('Delete this customer? This cannot be undone.')) return;
     await api.delete(`/customers/${id}`);
@@ -73,6 +101,7 @@ export default function CustomerDetail() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Btn variant="outline" onClick={printStatement}><FileText size={15} /> Statement</Btn>
             <Btn variant="outline" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
             <Btn variant="danger" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
           </div>

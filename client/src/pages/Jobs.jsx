@@ -6,7 +6,7 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Badge, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
-import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight } from 'lucide-react';
+import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
@@ -25,6 +25,18 @@ export default function Jobs() {
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
+
+  async function duplicateJob(e, job) {
+    e.stopPropagation();
+    try {
+      const { data } = await api.post('/jobs', {
+        title: job.title, description: job.description, customer_id: job.customer_id, technician_id: job.technician_id,
+        status: 'pending', priority: job.priority, job_type: job.job_type, address: job.address, notes: job.notes,
+      });
+      toast.success('Job duplicated');
+      navigate(`/jobs/${data.id}`);
+    } catch { toast.error('Could not duplicate job'); }
+  }
 
   async function assignTech(job, technician_id) {
     try {
@@ -138,7 +150,12 @@ export default function Jobs() {
                   ) : <span className="text-xs text-slate-400">Unscheduled</span>}
                 </Cell>
                 <Cell align="right"><Badge status={job.status} /></Cell>
-                <Cell align="right"><ChevronRight size={16} className="text-slate-300 inline" /></Cell>
+                <Cell align="right">
+                  <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                    <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
+                    <ChevronRight size={16} className="text-slate-300 inline" />
+                  </div>
+                </Cell>
               </Row>
             ))}
           </Table>

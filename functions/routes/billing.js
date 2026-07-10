@@ -151,6 +151,21 @@ router.post('/invoices/:id/payments', async (req, res) => {
   res.status(201).json(await getById('payments', id));
 });
 
+// GET /billing/payments — all recorded payments (for reconciliation), newest first.
+router.get('/payments', async (req, res) => {
+  const [payments, invoices, customers] = await Promise.all([list('payments'), list('invoices'), list('customers')]);
+  const invById = Object.fromEntries(invoices.map(i => [i.id, i]));
+  const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
+  const rows = payments.map(p => {
+    const inv = invById[p.invoice_id] || {};
+    return {
+      id: p.id, amount: p.amount, method: p.method || 'cash', reference: p.reference || null, paid_at: p.paid_at,
+      invoice_id: p.invoice_id, invoice_number: inv.invoice_number || null, customer_name: custName[inv.customer_id] || null,
+    };
+  }).sort((a, b) => (b.paid_at || '').localeCompare(a.paid_at || ''));
+  res.json(rows);
+});
+
 // GET /billing/config — office-accessible billing defaults (e.g. tax rate for new docs).
 router.get('/config', async (req, res) => {
   const rate = await settings.get('default_tax_rate');

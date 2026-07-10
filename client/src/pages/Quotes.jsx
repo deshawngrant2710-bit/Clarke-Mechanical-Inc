@@ -6,7 +6,7 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -38,6 +38,15 @@ export default function Quotes() {
       setModal(true);
     }
   }, []);
+
+  async function duplicateQuote(e, q) {
+    e.stopPropagation();
+    try {
+      await api.post('/billing/quotes', { customer_id: q.customer_id, items: q.items || [], status: 'draft', notes: q.notes || null });
+      toast.success('Estimate duplicated');
+      load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not duplicate'); }
+  }
 
   async function convertToInvoice(e, q) {
     e.stopPropagation();
@@ -131,6 +140,7 @@ export default function Quotes() {
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1">
                     {q.status === 'accepted' && <button onClick={e => convertToInvoice(e, q)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><FileText size={15} /></button>}
+                    <button onClick={e => duplicateQuote(e, q)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
                     <button onClick={e => handleEmail(e, q.id)} title="Email quote to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
                     <button onClick={e => handleDelete(e, q.id)} title="Delete quote" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                   </div>

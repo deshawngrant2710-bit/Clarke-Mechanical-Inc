@@ -6,7 +6,7 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -31,6 +31,15 @@ export default function Invoices() {
       .then(([inv, cust]) => { setInvoices(inv.data); setCustomers(cust.data); setLoading(false); });
   }
   useEffect(load, []);
+
+  async function duplicateInvoice(e, inv) {
+    e.stopPropagation();
+    try {
+      await api.post('/billing/invoices', { customer_id: inv.customer_id, items: inv.items || [], status: 'draft', notes: inv.notes || null });
+      toast.success('Invoice duplicated');
+      load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not duplicate'); }
+  }
 
   async function remindOverdue() {
     if (!confirm('Email a payment reminder to every overdue customer?')) return;
@@ -139,6 +148,7 @@ export default function Invoices() {
                 <Cell align="right"><Badge status={isOverdue(inv) ? 'overdue' : inv.status} /></Cell>
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1">
+                    <button onClick={e => duplicateInvoice(e, inv)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
                     <button onClick={e => handleEmail(e, inv.id)} title="Email invoice to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
                     <button onClick={e => handleDelete(e, inv.id)} title="Delete invoice" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                   </div>
