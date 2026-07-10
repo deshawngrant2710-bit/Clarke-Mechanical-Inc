@@ -350,8 +350,8 @@ router.post('/assistant', async (req, res) => {
   ].join(' ');
 
   try {
-    const primary = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const fallback = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash';
+    const primary = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+    const fallback = process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest';
     const history = Array.isArray(req.body.history) ? req.body.history : [];
     const contents = [
       ...history.slice(-10)
@@ -370,15 +370,16 @@ router.post('/assistant', async (req, res) => {
     );
     const sleep = (ms) => new Promise(res2 => setTimeout(res2, ms));
 
-    // Retry the chosen model once on transient overload (429/500/503), then fall back.
-    let r;
-    const attempts = [primary, primary, fallback];
-    for (let i = 0; i < attempts.length; i++) {
-      r = await callModel(attempts[i]);
-      if (r.ok) break;
-      if (![429, 500, 503].includes(r.status)) break;
-      if (i < attempts.length - 1) await sleep(700);
-    }
+    // Try a model, retrying once on transient overload (429/500/503).
+    const tryModel = async (model) => {
+      let resp = await callModel(model);
+      if (!resp.ok && [429, 500, 503].includes(resp.status)) { await sleep(700); resp = await callModel(model); }
+      return resp;
+    };
+
+    // Primary first; if it fails for ANY reason (busy or unavailable), fall back.
+    let r = await tryModel(primary);
+    if (!r.ok && fallback && fallback !== primary) r = await tryModel(fallback);
 
     if (!r.ok) {
       console.error('[assistant] Gemini error:', r.status, await r.text());
