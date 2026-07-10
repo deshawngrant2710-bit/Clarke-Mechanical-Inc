@@ -26,6 +26,7 @@ import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
 import Payments from './pages/Payments';
 import SearchResults from './pages/SearchResults';
+import AdminAssistant from './pages/AdminAssistant';
 import TimeClock from './pages/TimeClock';
 import { canAccess, homeForRole } from './lib/roles';
 
@@ -97,6 +98,7 @@ export default function App() {
             <Route path="/dispatch" element={<Dispatch />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/search" element={<SearchResults />} />
+            <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
             <Route path="/time-clock" element={<TimeClock />} />
           </Route>
