@@ -165,15 +165,21 @@ export default function InvoiceDetail() {
                 <p className="text-sm text-slate-400 text-center py-3">No payments recorded</p>
               ) : (
                 <div className="space-y-2">
-                  {invoice.payments.map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
-                      <div>
-                        <p className="text-sm font-semibold text-emerald-700">{money(p.amount)}</p>
-                        <p className="text-xs text-slate-500 capitalize">{p.method?.replace('_', ' ')} · {p.paid_at?.slice(0, 10)}</p>
+                  {invoice.payments.map(p => {
+                    const online = /online/i.test(p.notes || '') || String(p.reference || '').startsWith('pi_');
+                    return (
+                      <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-emerald-700">{money(p.amount)}</p>
+                          <p className="text-xs text-slate-500"><span className="capitalize">{p.method?.replace('_', ' ')}</span> · {p.paid_at?.slice(0, 10)}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          {online && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold">Paid online</span>}
+                          {p.reference && <span className="text-[11px] text-slate-400 truncate max-w-[130px]">#{p.reference}</span>}
+                        </div>
                       </div>
-                      {p.reference && <span className="text-xs text-slate-400">#{p.reference}</span>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -80,6 +80,8 @@ export default function Portal() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  const [supportChatId, setSupportChatId] = useState(null);
+  const [supportStatus, setSupportStatus] = useState(null);
   const chatEndRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
@@ -117,21 +119,61 @@ export default function Portal() {
   async function sendChat() {
     const text = chatInput.trim();
     if (!text || chatSending) return;
-    const outgoing = [...chatMessages, { role: 'user', text }];
+
+    // If the last live chat was closed, start fresh with the assistant.
+    const wasClosed = supportChatId && supportStatus === 'closed';
+    const liveChat = supportChatId && !wasClosed;
+    if (wasClosed) { setSupportChatId(null); setSupportStatus(null); }
+
+    const history = wasClosed ? [] : chatMessages;
+    const outgoing = [...history, { role: 'user', text }];
     setChatMessages(outgoing);
     setChatInput('');
     setChatSending(true);
     try {
-      const r = await api.post('/portal/assistant', { message: text, history: chatMessages });
-      setChatMessages([...outgoing, { role: 'assistant', text: r.data.reply }]);
+      if (liveChat) {
+        await api.post(`/portal/support/${supportChatId}/messages`, { text });
+        // The agent's reply arrives via polling below.
+      } else {
+        const r = await api.post('/portal/assistant', { message: text, history });
+        const withReply = [...outgoing, { role: 'assistant', text: r.data.reply }];
+        setChatMessages(withReply);
+        if (r.data.handoff) {
+          const esc = await api.post('/portal/support/escalate', { history: withReply });
+          setSupportChatId(esc.data.chatId);
+          setSupportStatus('waiting');
+          setChatMessages([...withReply, { role: 'system', text: 'Connecting you with our team — someone will reply here shortly. You can keep typing.' }]);
+        }
+      }
     } catch (e) {
-      setChatMessages([...outgoing, { role: 'assistant', text: e.response?.data?.error || 'Sorry, I couldn’t reach the assistant right now. Please try again.' }]);
+      setChatMessages(m => [...m, { role: 'system', text: e.response?.data?.error || 'Sorry, something went wrong. Please try again.' }]);
     } finally {
       setChatSending(false);
     }
   }
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, chatSending]);
+
+  // While connected to a live agent, poll the chat for new messages.
+  useEffect(() => {
+    if (!supportChatId) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const r = await api.get(`/portal/support/${supportChatId}`);
+        if (!active) return;
+        setSupportStatus(r.data.status);
+        setChatMessages(r.data.messages.map(m => ({
+          role: m.sender === 'customer' ? 'user' : m.sender === 'agent' ? 'agent' : m.sender === 'system' ? 'system' : 'assistant',
+          text: m.text,
+          who: m.sender_name,
+        })));
+      } catch { /* ignore transient poll errors */ }
+    };
+    poll();
+    const iv = setInterval(poll, 4000);
+    return () => { active = false; clearInterval(iv); };
+  }, [supportChatId]);
 
   if (loading) return <Spinner />;
 
@@ -444,22 +486,37 @@ export default function Portal() {
           )}
           {tab === 'assistant' && (
             <Card>
-              <CardHeader title="Ask our assistant" icon={<Sparkles size={15} />} />
+              <CardHeader title={supportChatId ? 'Chat with our team' : 'Ask our assistant'} icon={<Sparkles size={15} />} />
+              {supportChatId && (
+                <div className={`px-5 py-2 text-xs font-medium border-b ${supportStatus === 'closed' ? 'bg-slate-50 text-slate-500 border-slate-100' : supportStatus === 'live' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                  {supportStatus === 'closed' ? 'This chat has been closed. Ask another question to start over.'
+                    : supportStatus === 'live' ? 'You’re connected with our team.'
+                    : 'Waiting for a team member to join… you can keep typing.'}
+                </div>
+              )}
               <div className="flex flex-col h-[26rem]">
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">
                   {chatMessages.length === 0 && (
                     <div className="text-center text-sm text-slate-400 mt-8">
                       <Sparkles size={26} className="mx-auto mb-2 text-blue-400" />
                       <p className="font-medium text-slate-500">Hi! I can help with questions about your HVAC service, scheduling, billing, or general heating &amp; cooling tips.</p>
-                      <p className="mt-1">Ask me anything to get started.</p>
+                      <p className="mt-1">Ask me anything — or ask for a person and I’ll connect you.</p>
                     </div>
                   )}
-                  {chatMessages.map((m, i) => (
-                    <div key={i} className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${m.role === 'user' ? 'ml-auto bg-blue-600 text-white rounded-br-sm' : 'mr-auto bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
-                      {m.text}
-                    </div>
-                  ))}
-                  {chatSending && (
+                  {chatMessages.map((m, i) => {
+                    if (m.role === 'system') return <p key={i} className="text-center text-xs text-slate-400 py-1">{m.text}</p>;
+                    const isUser = m.role === 'user';
+                    const isAgent = m.role === 'agent';
+                    return (
+                      <div key={i} className={`max-w-[80%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+                        {isAgent && <p className="text-[10px] font-semibold text-emerald-600 mb-0.5 ml-1">{m.who || 'Agent'}</p>}
+                        <div className={`px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : isAgent ? 'bg-emerald-50 text-emerald-900 border border-emerald-100 rounded-bl-sm' : 'bg-slate-100 text-slate-700 rounded-bl-sm'}`}>
+                          {m.text}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {chatSending && !supportChatId && (
                     <div className="mr-auto bg-slate-100 text-slate-400 text-sm px-3.5 py-2.5 rounded-2xl rounded-bl-sm">Typing…</div>
                   )}
                   <div ref={chatEndRef} />
@@ -469,12 +526,12 @@ export default function Portal() {
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                    placeholder="Type your question…"
+                    placeholder={supportStatus === 'closed' ? 'Ask a new question…' : supportChatId ? 'Message our team…' : 'Type your question…'}
                     className="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500"
                   />
                   <Btn onClick={sendChat} loading={chatSending} disabled={!chatInput.trim()}><Send size={15} /> Send</Btn>
                 </div>
-                <p className="text-[11px] text-slate-400 text-center pb-2 px-3">The assistant can make mistakes and can’t access your account. For account-specific help, contact the office.</p>
+                <p className="text-[11px] text-slate-400 text-center pb-2 px-3">{supportChatId ? 'A team member will reply here. Replies may take a few minutes.' : 'The assistant can make mistakes and can’t access your account. Ask for a person anytime.'}</p>
               </div>
             </Card>
           )}

@@ -346,6 +346,7 @@ router.post('/assistant', async (req, res) => {
     'You cannot actually book, reschedule, or change appointments, view invoices, or access account details.',
     `For those, tell the customer to use the "Request Service" button or contact the office${biz.phone ? ` at ${biz.phone}` : ''}${biz.email ? ` (${biz.email})` : ''}.`,
     'Never invent specific appointment times, prices, or account information.',
+    'If the customer asks to speak to a person, a human, a live agent, or a representative, OR if you genuinely cannot help with their request, reply briefly that you are connecting them with the office, then place the exact tag [[HANDOFF]] on its own at the very end of your reply.',
   ].join(' ');
 
   try {
@@ -375,12 +376,91 @@ router.post('/assistant', async (req, res) => {
     }
 
     const data = await r.json();
-    const reply = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text).join('').trim();
-    res.json({ reply: reply || "Sorry, I didn't quite catch that — could you rephrase?" });
+    const raw = (data?.candidates?.[0]?.content?.parts || []).map(p => p.text).join('').trim();
+    const handoff = /\[\[HANDOFF\]\]/i.test(raw);
+    const reply = raw.replace(/\[\[HANDOFF\]\]/ig, '').trim();
+    res.json({
+      reply: reply || (handoff ? 'Let me connect you with our team — one moment.' : "Sorry, I didn't quite catch that — could you rephrase?"),
+      handoff,
+    });
   } catch (e) {
     console.error('[assistant] failed:', e.message);
     res.status(502).json({ error: 'The assistant is unavailable right now. Please try again later.' });
   }
+});
+
+// POST /portal/support/escalate — hand the conversation off to a human. Creates a
+// support chat, stores the prior bot conversation for context, and emails the office.
+router.post('/support/escalate', async (req, res) => {
+  const { records } = await myCustomerIds(req);
+  const customer = records[0] || null;
+  const history = Array.isArray(req.body.history) ? req.body.history : [];
+  const now = new Date().toISOString();
+  const chatId = uuid();
+  const lastCustomer = [...history].reverse().find(m => m && m.role === 'user' && m.text);
+
+  await create('support_chats', chatId, {
+    customer_id: customer?.id || null,
+    customer_name: req.user.name,
+    customer_email: req.user.email,
+    status: 'waiting',
+    assigned_to: null,
+    created_at: now, updated_at: now, last_message_at: now,
+    last_message_preview: (lastCustomer?.text || '').slice(0, 120),
+  });
+
+  for (const m of history.slice(-20)) {
+    if (!m || !m.text) continue;
+    await create('support_messages', uuid(), {
+      chat_id: chatId,
+      sender: m.role === 'user' ? 'customer' : 'bot',
+      sender_name: m.role === 'user' ? req.user.name : 'Assistant',
+      text: String(m.text),
+      created_at: now,
+    });
+  }
+  await create('support_messages', uuid(), {
+    chat_id: chatId, sender: 'system', sender_name: 'System',
+    text: `${req.user.name} asked to speak with a person.`, created_at: now,
+  });
+
+  try {
+    const to = await settings.get('business_email');
+    if (to) {
+      const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+        <p><strong>${req.user.name} is waiting to chat with a live agent.</strong></p>
+        <p><strong>Contact:</strong> ${req.user.email}${customer?.phone ? ` · ${customer.phone}` : ''}</p>
+        ${lastCustomer?.text ? `<p><strong>They said:</strong> ${lastCustomer.text}</p>` : ''}
+        <p>Open <strong>Support</strong> in Clarke Mechanical to reply.</p></div>`;
+      await sendMail({ type: 'live_chat_request', to, toName: 'Clarke Mechanical', subject: `Live chat request — ${req.user.name}`, html, customerId: customer?.id || null, sentBy: 'Customer Portal' });
+    }
+  } catch (e) { console.error('[support] notify failed:', e.message); }
+
+  res.status(201).json({ chatId });
+});
+
+// GET /portal/support/:chatId — the customer polls their own chat for new messages.
+router.get('/support/:chatId', async (req, res) => {
+  const chat = await getById('support_chats', req.params.chatId);
+  if (!chat || chat.customer_email !== req.user.email) return res.status(404).json({ error: 'Chat not found' });
+  const messages = (await findWhere('support_messages', 'chat_id', req.params.chatId))
+    .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+  res.json({ id: chat.id, status: chat.status, assigned_to: chat.assigned_to || null, messages });
+});
+
+// POST /portal/support/:chatId/messages — the customer sends a message to the agent.
+router.post('/support/:chatId/messages', async (req, res) => {
+  const chat = await getById('support_chats', req.params.chatId);
+  if (!chat || chat.customer_email !== req.user.email) return res.status(404).json({ error: 'Chat not found' });
+  if (chat.status === 'closed') return res.status(400).json({ error: 'This chat has been closed.' });
+  const text = (req.body?.text || '').toString().trim();
+  if (!text) return res.status(400).json({ error: 'Message is required' });
+  const now = new Date().toISOString();
+  const saved = await create('support_messages', uuid(), {
+    chat_id: chat.id, sender: 'customer', sender_name: req.user.name, text, created_at: now,
+  });
+  await update('support_chats', chat.id, { updated_at: now, last_message_at: now, last_message_preview: text.slice(0, 120) });
+  res.status(201).json(saved);
 });
 
 module.exports = router;

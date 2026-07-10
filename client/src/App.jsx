@@ -21,6 +21,7 @@ import InspectionDetail from './pages/InspectionDetail';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
+import Support from './pages/Support';
 import TimeClock from './pages/TimeClock';
 import { canAccess, homeForRole } from './lib/roles';
 
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/inspections/:id" element={<InspectionDetail />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/support" element={<Support />} />
             <Route path="/portal" element={<Portal />} />
             <Route path="/time-clock" element={<TimeClock />} />
           </Route>
