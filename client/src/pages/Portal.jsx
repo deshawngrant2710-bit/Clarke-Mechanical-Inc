@@ -110,6 +110,7 @@ export default function Portal() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [reqModal, setReqModal] = useState(false);
+  const [reqPrefill, setReqPrefill] = useState(null);
   const [profileModal, setProfileModal] = useState(false);
   const [pwModal, setPwModal] = useState(false);
   const [rescheduleJob, setRescheduleJob] = useState(null);
@@ -127,11 +128,19 @@ export default function Portal() {
 
   const toggle = (id) => setExpanded(e => (e === id ? null : id));
 
-  async function respondQuote(id, decision) {
+  async function respondQuote(quote, decision) {
+    const id = typeof quote === 'string' ? quote : quote.id;
     try {
       await api.post(`/portal/quotes/${id}/respond`, { decision });
       toast.success(decision === 'accepted' ? 'Estimate accepted — thank you!' : 'Estimate declined');
       load();
+      if (decision === 'accepted' && typeof quote === 'object') {
+        setReqPrefill({
+          title: `Work from estimate ${quote.quote_number || ''}`.trim(),
+          description: (quote.items || []).map(it => `${it.description} × ${it.quantity}`).join('\n'),
+        });
+        setReqModal(true);
+      }
     } catch (e) { toast.error(e.response?.data?.error || 'Could not update'); }
   }
   async function cancelJob(id) {
@@ -474,8 +483,8 @@ export default function Portal() {
                               <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'quote', doc: q, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
                               {pending ? (
                                 <div className="flex gap-2">
-                                  <Btn size="sm" variant="outline" onClick={() => respondQuote(q.id, 'declined')}><X size={14} /> Decline</Btn>
-                                  <Btn size="sm" variant="success" onClick={() => respondQuote(q.id, 'accepted')}><Check size={14} /> Accept Estimate</Btn>
+                                  <Btn size="sm" variant="outline" onClick={() => respondQuote(q, 'declined')}><X size={14} /> Decline</Btn>
+                                  <Btn size="sm" variant="success" onClick={() => respondQuote(q, 'accepted')}><Check size={14} /> Accept Estimate</Btn>
                                 </div>
                               ) : (
                                 <p className={`text-sm font-medium ${q.status === 'accepted' ? 'text-emerald-600' : 'text-slate-500'}`}>You {q.status} this estimate.</p>
@@ -626,7 +635,7 @@ export default function Portal() {
         </>
       )}
 
-      <ServiceRequestModal open={reqModal} onClose={() => setReqModal(false)} onDone={load} />
+      <ServiceRequestModal open={reqModal} initial={reqPrefill} onClose={() => { setReqModal(false); setReqPrefill(null); }} onDone={load} />
       <ProfileModal open={profileModal} onClose={() => setProfileModal(false)} profile={me?.profile} onDone={load} />
       <ChangePasswordModal open={pwModal} onClose={() => setPwModal(false)} />
       <RescheduleModal job={rescheduleJob} onClose={() => setRescheduleJob(null)} onDone={load} />
@@ -717,10 +726,13 @@ function ReviewModal({ job, onClose, onDone }) {
   );
 }
 
-function ServiceRequestModal({ open, onClose, onDone }) {
+function ServiceRequestModal({ open, onClose, onDone, initial }) {
   const [form, setForm] = useState({ title: '', description: '', preferred_date: '' });
   const [photo, setPhoto] = useState(null);
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (open) setForm({ title: initial?.title || '', description: initial?.description || '', preferred_date: '' });
+  }, [open, initial]);
 
   async function pickPhoto(e) {
     const file = e.target.files?.[0];

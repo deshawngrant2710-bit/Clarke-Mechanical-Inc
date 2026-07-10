@@ -261,9 +261,32 @@ async function invoiceBalanceCents(invoice) {
   return Math.round(balance * 100);
 }
 
+// Returns (creating if needed) the Stripe Customer id for a customer record.
+async function ensureStripeCustomer(secretKey, customer) {
+  if (!customer) return null;
+  if (customer.stripe_customer_id) {
+    // Verify it exists for the current key (a test-mode id is invalid once you go live).
+    const chk = await fetch(`https://api.stripe.com/v1/customers/${customer.stripe_customer_id}`, { headers: { Authorization: `Bearer ${secretKey}` } });
+    if (chk.ok) { const c = await chk.json(); if (c.id && !c.deleted) return c.id; }
+  }
+  const body = new URLSearchParams();
+  if (customer.email) body.set('email', customer.email);
+  if (customer.name) body.set('name', customer.name);
+  body.set('metadata[customer_id]', customer.id);
+  const r = await fetch('https://api.stripe.com/v1/customers', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const cust = await r.json();
+  if (!r.ok || !cust.id) throw new Error('stripe customer create failed');
+  await update('customers', customer.id, { stripe_customer_id: cust.id });
+  return cust.id;
+}
+
 // POST /portal/invoices/:id/create-intent — start a Stripe PaymentIntent for the balance.
 router.post('/invoices/:id/create-intent', async (req, res) => {
-  const { ids } = await myCustomerIds(req);
+  const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
   if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
@@ -274,6 +297,10 @@ router.post('/invoices/:id/create-intent', async (req, res) => {
   const amountCents = await invoiceBalanceCents(invoice);
   if (amountCents <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
 
+  const customer = records.find(c => c.id === invoice.customer_id) || records[0];
+  let custId = null;
+  try { custId = await ensureStripeCustomer(secretKey, customer); } catch (e) { console.error('[stripe] customer:', e.message); }
+
   try {
     const body = new URLSearchParams();
     body.set('amount', String(amountCents));
@@ -281,6 +308,7 @@ router.post('/invoices/:id/create-intent', async (req, res) => {
     body.set('payment_method_types[]', 'card');
     body.set('metadata[invoice_id]', invoice.id);
     body.set('description', `Invoice ${invoice.invoice_number || invoice.id} — customer portal`);
+    if (custId) { body.set('customer', custId); body.set('setup_future_usage', 'off_session'); }
 
     const r = await fetch('https://api.stripe.com/v1/payment_intents', {
       method: 'POST',
@@ -337,6 +365,92 @@ router.post('/invoices/:id/confirm-payment', async (req, res) => {
     console.error('[stripe] confirm error:', e.message);
     res.status(502).json({ error: 'Could not verify the payment. If you were charged, please contact the office.' });
   }
+});
+
+// GET /portal/payment-methods — the customer's saved cards (for one-tap repeat payment).
+router.get('/payment-methods', async (req, res) => {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return res.json([]);
+  const { records } = await myCustomerIds(req);
+  const customer = records[0];
+  if (!customer?.stripe_customer_id) return res.json([]);
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/payment_methods?customer=${customer.stripe_customer_id}&type=card`, {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+    const data = await r.json();
+    res.json((data.data || []).map(pm => ({
+      id: pm.id, brand: pm.card?.brand || 'card', last4: pm.card?.last4 || '',
+      exp_month: pm.card?.exp_month || null, exp_year: pm.card?.exp_year || null,
+    })));
+  } catch (e) { console.error('[stripe] list pm:', e.message); res.json([]); }
+});
+
+// POST /portal/invoices/:id/pay-saved — charge a saved card (off-session).
+router.post('/invoices/:id/pay-saved', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
+  const { paymentMethodId } = req.body || {};
+  if (!paymentMethodId) return res.status(400).json({ error: 'Choose a saved card.' });
+  const customer = records.find(c => c.id === invoice.customer_id) || records[0];
+  if (!customer?.stripe_customer_id) return res.status(400).json({ error: 'No saved card on file.' });
+  const amountCents = await invoiceBalanceCents(invoice);
+  if (amountCents <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
+  try {
+    const body = new URLSearchParams();
+    body.set('amount', String(amountCents));
+    body.set('currency', 'usd');
+    body.set('customer', customer.stripe_customer_id);
+    body.set('payment_method', paymentMethodId);
+    body.set('off_session', 'true');
+    body.set('confirm', 'true');
+    body.set('metadata[invoice_id]', invoice.id);
+    body.set('description', `Invoice ${invoice.invoice_number || invoice.id} — saved card`);
+    const r = await fetch('https://api.stripe.com/v1/payment_intents', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const pi = await r.json();
+    if (!r.ok || pi.status !== 'succeeded') {
+      console.error('[stripe] saved pay:', r.status, JSON.stringify(pi.error || pi.status));
+      return res.status(402).json({ error: 'That card needs verification — please enter your card details below to pay.' });
+    }
+    const existing = await findWhere('payments', 'invoice_id', invoice.id);
+    if (!existing.some(p => p.reference === pi.id)) {
+      await create('payments', uuid(), {
+        invoice_id: invoice.id, amount: (pi.amount_received || pi.amount || 0) / 100, method: 'card',
+        reference: pi.id, notes: 'Paid online via Stripe (saved card)', paid_at: new Date().toISOString(),
+      });
+    }
+    const total = (await findWhere('payments', 'invoice_id', invoice.id)).reduce((s, p) => s + (p.amount || 0), 0);
+    const paid = total >= (invoice.total || 0);
+    if (paid && invoice.status !== 'paid') await update('invoices', invoice.id, { status: 'paid' });
+    res.json({ ok: true, status: paid ? 'paid' : 'partial' });
+  } catch (e) {
+    console.error('[stripe] saved pay error:', e.message);
+    res.status(502).json({ error: 'Could not process the payment. Please try again.' });
+  }
+});
+
+// DELETE /portal/payment-methods/:pmId — remove a saved card.
+router.delete('/payment-methods/:pmId', async (req, res) => {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
+  const { records } = await myCustomerIds(req);
+  const customer = records[0];
+  if (!customer?.stripe_customer_id) return res.status(404).json({ error: 'Not found' });
+  try {
+    const pmR = await fetch(`https://api.stripe.com/v1/payment_methods/${req.params.pmId}`, { headers: { Authorization: `Bearer ${secretKey}` } });
+    const pm = await pmR.json();
+    if (!pmR.ok || pm.customer !== customer.stripe_customer_id) return res.status(404).json({ error: 'Card not found' });
+    await fetch(`https://api.stripe.com/v1/payment_methods/${req.params.pmId}/detach`, { method: 'POST', headers: { Authorization: `Bearer ${secretKey}` } });
+    res.json({ ok: true });
+  } catch (e) { console.error('[stripe] detach:', e.message); res.status(502).json({ error: 'Could not remove the card.' }); }
 });
 
 // POST /portal/invoices/:id/pay-cash — customer signals they'll pay in cash; email the office.
