@@ -135,7 +135,7 @@ export default function Portal() {
         await api.post(`/portal/support/${supportChatId}/messages`, { text });
         // The agent's reply arrives via polling below.
       } else {
-        const r = await api.post('/portal/assistant', { message: text, history });
+        const r = await api.post('/portal/assistant', { message: text, history: history.filter(m => m.role === 'user' || m.role === 'assistant') });
         const withReply = [...outgoing, { role: 'assistant', text: r.data.reply }];
         setChatMessages(withReply);
         if (r.data.handoff) {
@@ -150,6 +150,15 @@ export default function Portal() {
     } finally {
       setChatSending(false);
     }
+  }
+
+  async function leaveChat() {
+    if (!supportChatId) return;
+    const id = supportChatId;
+    setSupportChatId(null);
+    setSupportStatus(null);
+    setChatMessages([{ role: 'system', text: 'You left the chat. Ask a question to start over with the assistant.' }]);
+    try { await api.post(`/portal/support/${id}/leave`); } catch { /* best effort */ }
   }
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, chatSending]);
@@ -488,10 +497,15 @@ export default function Portal() {
             <Card>
               <CardHeader title={supportChatId ? 'Chat with our team' : 'Ask our assistant'} icon={<Sparkles size={15} />} />
               {supportChatId && (
-                <div className={`px-5 py-2 text-xs font-medium border-b ${supportStatus === 'closed' ? 'bg-slate-50 text-slate-500 border-slate-100' : supportStatus === 'live' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                  {supportStatus === 'closed' ? 'This chat has been closed. Ask another question to start over.'
-                    : supportStatus === 'live' ? 'You’re connected with our team.'
-                    : 'Waiting for a team member to join… you can keep typing.'}
+                <div className={`px-5 py-2 text-xs font-medium border-b flex items-center justify-between gap-3 ${supportStatus === 'closed' ? 'bg-slate-50 text-slate-500 border-slate-100' : supportStatus === 'live' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                  <span>
+                    {supportStatus === 'closed' ? 'This chat has been closed. Ask another question to start over.'
+                      : supportStatus === 'live' ? 'You’re connected with our team.'
+                      : 'Waiting for a team member to join… you can keep typing.'}
+                  </span>
+                  {supportStatus !== 'closed' && (
+                    <button onClick={leaveChat} className="shrink-0 font-semibold text-slate-500 hover:text-red-600 underline underline-offset-2">Leave chat</button>
+                  )}
                 </div>
               )}
               <div className="flex flex-col h-[26rem]">

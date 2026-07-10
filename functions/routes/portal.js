@@ -350,8 +350,8 @@ router.post('/assistant', async (req, res) => {
   ].join(' ');
 
   try {
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const primary = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const fallback = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.0-flash';
     const history = Array.isArray(req.body.history) ? req.body.history : [];
     const contents = [
       ...history.slice(-10)
@@ -359,20 +359,30 @@ router.post('/assistant', async (req, res) => {
         .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.text) }] })),
       { role: 'user', parts: [{ text: message }] },
     ];
-
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: { temperature: 0.4, maxOutputTokens: 500 },
-      }),
+    const payload = JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      generationConfig: { temperature: 0.4, maxOutputTokens: 500 },
     });
+    const callModel = (model) => fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload },
+    );
+    const sleep = (ms) => new Promise(res2 => setTimeout(res2, ms));
+
+    // Retry the chosen model once on transient overload (429/500/503), then fall back.
+    let r;
+    const attempts = [primary, primary, fallback];
+    for (let i = 0; i < attempts.length; i++) {
+      r = await callModel(attempts[i]);
+      if (r.ok) break;
+      if (![429, 500, 503].includes(r.status)) break;
+      if (i < attempts.length - 1) await sleep(700);
+    }
 
     if (!r.ok) {
       console.error('[assistant] Gemini error:', r.status, await r.text());
-      return res.status(502).json({ error: 'The assistant is having trouble right now. Please try again in a moment.' });
+      return res.status(502).json({ error: 'Our assistant is briefly overloaded. Please try again in a moment — or ask for a person and we’ll connect you.' });
     }
 
     const data = await r.json();
@@ -405,6 +415,7 @@ router.post('/support/escalate', async (req, res) => {
     customer_email: req.user.email,
     status: 'waiting',
     assigned_to: null,
+    department: null,
     created_at: now, updated_at: now, last_message_at: now,
     last_message_preview: (lastCustomer?.text || '').slice(0, 120),
   });
@@ -461,6 +472,19 @@ router.post('/support/:chatId/messages', async (req, res) => {
   });
   await update('support_chats', chat.id, { updated_at: now, last_message_at: now, last_message_preview: text.slice(0, 120) });
   res.status(201).json(saved);
+});
+
+// POST /portal/support/:chatId/leave — the customer ends the chat.
+router.post('/support/:chatId/leave', async (req, res) => {
+  const chat = await getById('support_chats', req.params.chatId);
+  if (!chat || chat.customer_email !== req.user.email) return res.status(404).json({ error: 'Chat not found' });
+  const now = new Date().toISOString();
+  await update('support_chats', chat.id, { status: 'closed', updated_at: now, last_message_at: now });
+  await create('support_messages', uuid(), {
+    chat_id: chat.id, sender: 'system', sender_name: 'System',
+    text: `${req.user.name} left the chat.`, created_at: now,
+  });
+  res.json({ ok: true });
 });
 
 module.exports = router;

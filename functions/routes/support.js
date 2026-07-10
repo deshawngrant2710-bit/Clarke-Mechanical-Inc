@@ -36,9 +36,30 @@ router.post('/:id/messages', async (req, res) => {
   await update('support_chats', chat.id, {
     status: chat.status === 'closed' ? 'closed' : 'live',
     assigned_to: chat.assigned_to || req.user.name,
+    department: chat.department || req.user.role, // first agent's team owns it
     updated_at: now, last_message_at: now, last_message_preview: text.slice(0, 120),
   });
   res.status(201).json(saved);
+});
+
+// Transfer a chat to the other department; it re-enters that team's queue.
+router.post('/:id/transfer', async (req, res) => {
+  const chat = await getById('support_chats', req.params.id);
+  if (!chat) return res.status(404).json({ error: 'Chat not found' });
+  const target = req.body?.department === 'admin' ? 'admin' : 'office';
+  const now = new Date().toISOString();
+  await update('support_chats', chat.id, {
+    department: target,
+    status: 'waiting',
+    assigned_to: null,
+    updated_at: now, last_message_at: now,
+  });
+  await create('support_messages', uuid(), {
+    chat_id: chat.id, sender: 'system', sender_name: 'System',
+    text: `${req.user.name} transferred this chat to the ${target === 'admin' ? 'Admin' : 'Office'} team.`,
+    created_at: now,
+  });
+  res.json({ ok: true });
 });
 
 // Close a chat.

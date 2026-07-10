@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Empty, Spinner } from '../components/UI';
-import { MessagesSquare, Send, CheckCircle2 } from 'lucide-react';
+import { MessagesSquare, Send, CheckCircle2, ArrowRightLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -12,6 +12,8 @@ const STATUS_PILL = {
   live: 'bg-emerald-100 text-emerald-700',
   closed: 'bg-slate-100 text-slate-500',
 };
+
+const DEPT_LABEL = { office: 'Office', admin: 'Admin' };
 
 export default function Support() {
   const [chats, setChats] = useState([]);
@@ -69,6 +71,18 @@ export default function Support() {
     } catch { toast.error('Could not close'); }
   }
 
+  async function transferChat() {
+    const target = active?.department === 'admin' ? 'office' : 'admin';
+    if (!confirm(`Transfer this chat to the ${DEPT_LABEL[target]} team?`)) return;
+    try {
+      await api.post(`/support/${activeId}/transfer`, { department: target });
+      const r = await api.get(`/support/${activeId}`);
+      setActive(r.data);
+      loadList();
+      toast.success(`Transferred to ${DEPT_LABEL[target]} team`);
+    } catch { toast.error('Could not transfer'); }
+  }
+
   if (loading) return <Spinner />;
 
   const waitingCount = chats.filter(c => c.status === 'waiting').length;
@@ -87,7 +101,10 @@ export default function Support() {
                 className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${activeId === c.id ? 'bg-blue-50/60' : ''}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-800 truncate">{c.customer_name}</span>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize shrink-0 ${STATUS_PILL[c.status] || 'bg-slate-100 text-slate-500'}`}>{c.status}</span>
+                  <span className="flex items-center gap-1 shrink-0">
+                    {c.department && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">{DEPT_LABEL[c.department]}</span>}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_PILL[c.status] || 'bg-slate-100 text-slate-500'}`}>{c.status}</span>
+                  </span>
                 </div>
                 <p className="text-xs text-slate-500 truncate mt-0.5">{c.last_message_preview || '—'}</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">{fmtTime(c.last_message_at)}</p>
@@ -107,8 +124,12 @@ export default function Support() {
                   <p className="text-sm font-semibold text-slate-800 truncate">{active.customer_name}</p>
                   <p className="text-xs text-slate-500 truncate">{active.customer_email}</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                  {active.department && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{DEPT_LABEL[active.department]}</span>}
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_PILL[active.status] || ''}`}>{active.status}</span>
+                  {active.department && active.status !== 'closed' && (
+                    <Btn size="sm" variant="outline" onClick={transferChat}><ArrowRightLeft size={14} /> To {active.department === 'admin' ? 'Office' : 'Admin'}</Btn>
+                  )}
                   {active.status !== 'closed' && <Btn size="sm" variant="outline" onClick={closeChat}><CheckCircle2 size={14} /> Close</Btn>}
                 </div>
               </div>

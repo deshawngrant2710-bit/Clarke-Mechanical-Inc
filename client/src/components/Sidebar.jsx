@@ -1,14 +1,33 @@
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, X } from 'lucide-react';
 import Logo from './Logo';
+import api from '../api/client';
 import { navGroupsForRole } from '../lib/roles';
 
 export default function Sidebar({ open = false, onClose = () => {} }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [waitingChats, setWaitingChats] = useState(0);
 
   const navGroups = navGroupsForRole(user?.role);
+
+  // Poll the number of support chats waiting for a human (admin/office only).
+  useEffect(() => {
+    if (user?.role !== 'admin' && user?.role !== 'office') return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const r = await api.get('/support');
+        // Count chats waiting for this person's team (or not yet assigned to a team).
+        if (active) setWaitingChats(r.data.filter(c => c.status === 'waiting' && (!c.department || c.department === user.role)).length);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const iv = setInterval(poll, 20000);
+    return () => { active = false; clearInterval(iv); };
+  }, [user?.role]);
 
   function handleLogout() {
     logout();
@@ -60,6 +79,9 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                       {isActive && <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-blue-400" />}
                       <Icon size={18} className="shrink-0" />
                       {label}
+                      {to === '/support' && waitingChats > 0 && (
+                        <span className="ml-auto min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-bold">{waitingChats}</span>
+                      )}
                     </>
                   )}
                 </NavLink>
