@@ -4,10 +4,11 @@ import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea } from '../components/UI';
 import { printDocument } from '../lib/printDoc';
 import SignaturePad from '../components/SignaturePad';
+import PayInvoiceModal from '../components/PayInvoiceModal';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
   UserCircle, Plus, Wrench, MapPin, ChevronDown, Check, X, Phone, Mail, Pencil,
-  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send,
+  Download, Ban, CalendarClock, Lock, Star, PenLine, MessageSquare, HelpCircle, Sparkles, Send, CreditCard,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -75,6 +76,7 @@ export default function Portal() {
   const [invoices, setInvoices] = useState([]);
   const [quotes, setQuotes] = useState([]);
   const [tab, setTab] = useState('jobs');
+  const [payInvoice, setPayInvoice] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
@@ -325,7 +327,12 @@ export default function Portal() {
                             </tbody>
                           </table>
                           <div className="flex items-end justify-between mt-2 pt-2 border-t border-slate-200">
-                            <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'invoice', doc: inv, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
+                            <div className="flex gap-2">
+                              {inv.status !== 'paid' && inv.status !== 'cancelled' && (
+                                <Btn size="sm" onClick={() => setPayInvoice(inv)}><CreditCard size={14} /> Pay now</Btn>
+                              )}
+                              <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'invoice', doc: inv, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
+                            </div>
                             <div className="w-48 space-y-0.5 text-sm">
                               <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{money(inv.subtotal)}</span></div>
                               <div className="flex justify-between text-slate-500"><span>Tax</span><span>{money(inv.tax_amount)}</span></div>
@@ -480,6 +487,7 @@ export default function Portal() {
       <RescheduleModal job={rescheduleJob} onClose={() => setRescheduleJob(null)} onDone={load} />
       <ReviewModal job={reviewJob} onClose={() => setReviewJob(null)} onDone={load} />
       <SignoffModal job={signoffJob} defaultName={me?.name} onClose={() => setSignoffJob(null)} onDone={load} />
+      {payInvoice && <PayInvoiceModal invoice={payInvoice} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
     </div>
   );
 }

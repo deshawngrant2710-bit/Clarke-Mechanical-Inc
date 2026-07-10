@@ -213,6 +213,120 @@ router.put('/profile', async (req, res) => {
   res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip });
 });
 
+// GET /portal/payment-config — the publishable Stripe key for the browser.
+// (The secret key stays server-side and is never sent to the client.)
+router.get('/payment-config', async (req, res) => {
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || null;
+  const enabled = !!(process.env.STRIPE_SECRET_KEY && publishableKey);
+  res.json({ enabled, publishableKey });
+});
+
+// Remaining balance on an invoice, in cents.
+async function invoiceBalanceCents(invoice) {
+  const existing = await findWhere('payments', 'invoice_id', invoice.id);
+  const alreadyPaid = existing.reduce((s, p) => s + (p.amount || 0), 0);
+  const balance = Math.max(0, (invoice.total || 0) - alreadyPaid);
+  return Math.round(balance * 100);
+}
+
+// POST /portal/invoices/:id/create-intent — start a Stripe PaymentIntent for the balance.
+router.post('/invoices/:id/create-intent', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
+
+  const amountCents = await invoiceBalanceCents(invoice);
+  if (amountCents <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
+
+  try {
+    const body = new URLSearchParams();
+    body.set('amount', String(amountCents));
+    body.set('currency', 'usd');
+    body.set('automatic_payment_methods[enabled]', 'true');
+    body.set('metadata[invoice_id]', invoice.id);
+    body.set('description', `Invoice ${invoice.invoice_number || invoice.id} — customer portal`);
+
+    const r = await fetch('https://api.stripe.com/v1/payment_intents', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const pi = await r.json();
+    if (!r.ok || !pi.client_secret) {
+      console.error('[stripe] create intent failed:', r.status, JSON.stringify(pi.error || pi));
+      return res.status(502).json({ error: 'Could not start the payment. Please try again.' });
+    }
+    res.json({ clientSecret: pi.client_secret, paymentIntentId: pi.id, amount: amountCents });
+  } catch (e) {
+    console.error('[stripe] create intent error:', e.message);
+    res.status(502).json({ error: 'The payment service is unavailable right now. Please try again shortly.' });
+  }
+});
+
+// POST /portal/invoices/:id/confirm-payment — verify a PaymentIntent with Stripe, then record it.
+// The server confirms status directly with Stripe rather than trusting the browser.
+router.post('/invoices/:id/confirm-payment', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
+
+  const { paymentIntentId } = req.body || {};
+  if (!paymentIntentId) return res.status(400).json({ error: 'Missing payment reference.' });
+
+  try {
+    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${paymentIntentId}`, {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+    const pi = await r.json();
+    if (!r.ok || !pi.id) return res.status(502).json({ error: 'Could not verify the payment.' });
+    if (pi.status !== 'succeeded') return res.status(402).json({ error: 'That payment has not completed.' });
+    if (pi.metadata?.invoice_id && pi.metadata.invoice_id !== invoice.id) return res.status(400).json({ error: 'Payment does not match this invoice.' });
+
+    // Record it once (guard against double-submits recording the same PaymentIntent twice).
+    const existing = await findWhere('payments', 'invoice_id', invoice.id);
+    if (!existing.some(p => p.reference === pi.id)) {
+      await create('payments', uuid(), {
+        invoice_id: invoice.id, amount: (pi.amount_received || pi.amount || 0) / 100, method: 'card',
+        reference: pi.id, notes: 'Paid online via Stripe', paid_at: new Date().toISOString(),
+      });
+    }
+    const total = (await findWhere('payments', 'invoice_id', invoice.id)).reduce((s, p) => s + (p.amount || 0), 0);
+    const paid = total >= (invoice.total || 0);
+    if (paid && invoice.status !== 'paid') await update('invoices', invoice.id, { status: 'paid' });
+    res.json({ ok: true, status: paid ? 'paid' : 'partial' });
+  } catch (e) {
+    console.error('[stripe] confirm error:', e.message);
+    res.status(502).json({ error: 'Could not verify the payment. If you were charged, please contact the office.' });
+  }
+});
+
+// POST /portal/invoices/:id/pay-cash — customer signals they'll pay in cash; email the office.
+router.post('/invoices/:id/pay-cash', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  const customer = records[0];
+  try {
+    const to = await settings.get('business_email');
+    if (to) {
+      const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+        <p><strong>${customer?.name || 'A customer'} would like to pay invoice ${invoice.invoice_number || ''} in cash.</strong></p>
+        <p><strong>Amount:</strong> $${Number(invoice.total || 0).toFixed(2)}<br/>
+        <strong>Contact:</strong> ${customer?.email || ''} ${customer?.phone || ''}</p>
+        <p>Please arrange collection and record the payment in Clarke Mechanical.</p></div>`;
+      await sendMail({ type: 'cash_payment_request', to, toName: 'Clarke Mechanical', subject: `Cash payment request — ${customer?.name || ''}`, html, customerId: invoice.customer_id, sentBy: 'Customer Portal' });
+    }
+  } catch (e) { console.error('[portal] cash notify failed:', e.message); }
+  res.json({ ok: true });
+});
+
 // POST /portal/assistant — customer-facing AI helper. Proxies Google Gemini so the
 // API key stays on the server and is never exposed in the browser.
 router.post('/assistant', async (req, res) => {
