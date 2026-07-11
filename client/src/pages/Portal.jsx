@@ -824,7 +824,6 @@ function ServiceRequestModal({ open, onClose, onDone, initial }) {
             )}
           </div>
         )}
-        <p className="text-xs text-slate-400 -mt-1">Earliest is tomorrow. Your slot is held while we confirm the exact time by phone or email.</p>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">Photos (optional)</label>
           {photos.length > 0 && (

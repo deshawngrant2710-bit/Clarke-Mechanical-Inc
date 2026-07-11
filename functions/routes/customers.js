@@ -8,12 +8,19 @@ router.use(authMiddleware, requireStaff);
 
 // List customers with computed rollups (open jobs, lifetime revenue, balance, last service).
 router.get('/', async (req, res) => {
-  const [customers, jobs, invoices] = await Promise.all([
+  const [customers, jobs, invoices, users] = await Promise.all([
     list('customers', { orderBy: 'name' }),
     list('jobs'),
     list('invoices'),
+    list('users'),
   ]);
-  const enriched = customers.map(c => {
+  // Anyone with a staff login (non-customer role) should not appear in the customer
+  // list — they're an employee, not a client. Matched by email.
+  const staffEmails = new Set(
+    users.filter(u => u.role && u.role !== 'customer' && u.email).map(u => u.email.toLowerCase())
+  );
+  const visible = customers.filter(c => !(c.email && staffEmails.has(c.email.toLowerCase())));
+  const enriched = visible.map(c => {
     const cJobs = jobs.filter(j => j.customer_id === c.id);
     const cInv = invoices.filter(i => i.customer_id === c.id);
     return {
