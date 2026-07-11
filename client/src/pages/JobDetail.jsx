@@ -320,8 +320,8 @@ export default function JobDetail() {
               {(job.scheduled_date || job.scheduled_time) && (
                 <div className="flex items-center gap-2.5 text-slate-600"><Calendar size={14} className="text-slate-400" />{job.scheduled_date}{job.scheduled_time ? ` at ${job.scheduled_time}` : ''}</div>
               )}
-              {job.preferred_window && (
-                <div className="flex items-center gap-2.5 text-slate-500"><Clock size={14} className="text-slate-400" />Customer prefers: {job.preferred_window}</div>
+              {job.booking_window && (
+                <div className="flex items-center gap-2.5 text-slate-500"><Clock size={14} className="text-slate-400" />Booked arrival window: {job.booking_window}</div>
               )}
               {job.address && (
                 <div className="flex items-start gap-2.5 text-slate-600">

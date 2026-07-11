@@ -21,7 +21,7 @@ router.get('/', async (req, res) => {
 });
 
 router.put('/', async (req, res) => {
-  const textKeys = ['business_name', 'business_email', 'business_phone', 'business_hours', 'default_tax_rate', 'email_from', 'smtp_host', 'smtp_port', 'smtp_user'];
+  const textKeys = ['business_name', 'business_email', 'business_phone', 'business_hours', 'default_tax_rate', 'email_from', 'smtp_host', 'smtp_port', 'smtp_user', 'booking_slot_capacity'];
   const patch = {};
   for (const k of textKeys) if (k in req.body) patch[k] = req.body[k];
   if ('reminders_job_enabled' in req.body) patch.reminders_job_enabled = req.body.reminders_job_enabled ? '1' : '0';

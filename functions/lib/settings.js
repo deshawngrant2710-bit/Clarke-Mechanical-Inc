@@ -14,6 +14,7 @@ const DEFAULTS = {
   smtp_pass: process.env.SMTP_PASS || '',
   reminders_job_enabled: '1',
   reminders_overdue_enabled: '1',
+  booking_slot_capacity: '2', // max jobs bookable per online arrival window
 };
 
 const REF = () => db.collection('settings').doc('app');

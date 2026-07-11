@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
-const { db, getById, findWhere, create, update, nameMap } = require('../lib/db');
+const { db, list, getById, findWhere, create, update, nameMap } = require('../lib/db');
 const { authMiddleware } = require('../middleware/auth');
 const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
@@ -28,6 +28,48 @@ async function myCustomerIds(req) {
 }
 
 const byCreated = (a, b) => (b.created_at || '').localeCompare(a.created_at || '');
+
+// ---- Online booking: arrival windows ----
+// Each window has a label (shown to customers) and a 24h start/end used to work out
+// which existing jobs already occupy it. Capacity per window comes from settings.
+const BOOKING_WINDOWS = [
+  { label: '8:00–10:00 AM', start: '08:00', end: '10:00' },
+  { label: '10:00 AM–12:00 PM', start: '10:00', end: '12:00' },
+  { label: '12:00–2:00 PM', start: '12:00', end: '14:00' },
+  { label: '2:00–4:00 PM', start: '14:00', end: '16:00' },
+  { label: '4:00–6:00 PM', start: '16:00', end: '18:00' },
+];
+const tomorrowISO = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
+
+// How many non-cancelled jobs already occupy each window on a given date.
+// A job counts if it was booked into the window (booking_window) OR its scheduled_time
+// falls inside the window's time range — so office-scheduled work consumes capacity too.
+function occupancyForDate(jobs, date) {
+  const day = jobs.filter(j => j.scheduled_date === date && j.status !== 'cancelled');
+  const counts = {};
+  for (const w of BOOKING_WINDOWS) {
+    counts[w.label] = day.filter(j =>
+      j.booking_window === w.label ||
+      (j.scheduled_time && j.scheduled_time >= w.start && j.scheduled_time < w.end)
+    ).length;
+  }
+  return counts;
+}
+
+// GET /portal/availability?date=YYYY-MM-DD — open arrival windows for a day.
+router.get('/availability', async (req, res) => {
+  const date = req.query.date;
+  if (!date) return res.status(400).json({ error: 'A date is required' });
+  if (date < tomorrowISO()) return res.json({ date, capacity: 0, windows: [], reason: 'Bookings start tomorrow.' });
+  const capacity = Math.max(1, Number(await settings.get('booking_slot_capacity')) || 2);
+  const jobs = await list('jobs');
+  const counts = occupancyForDate(jobs, date);
+  const windows = BOOKING_WINDOWS.map(w => {
+    const remaining = Math.max(0, capacity - (counts[w.label] || 0));
+    return { label: w.label, remaining, full: remaining <= 0 };
+  });
+  res.json({ date, capacity, windows });
+});
 
 router.get('/me', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
@@ -114,21 +156,22 @@ router.get('/quotes', async (req, res) => {
 router.post('/service-request', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   if (!ids.length) return res.status(422).json({ error: "Your account isn't linked to a customer record yet." });
-  const { title, description, preferred_date, preferred_window } = req.body;
+  const { title, description, preferred_date, booking_window } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'Please describe the service you need' });
+  if (!preferred_date) return res.status(400).json({ error: 'Please pick a date for your appointment.' });
+  if (preferred_date < tomorrowISO()) return res.status(400).json({ error: 'Please choose a date starting tomorrow.' });
 
-  // Online booking is next-day-onward: reject any preferred date before tomorrow.
-  if (preferred_date) {
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-    if (preferred_date < tomorrow.toISOString().slice(0, 10)) {
-      return res.status(400).json({ error: 'Please choose a date starting tomorrow.' });
-    }
-  }
+  // Validate the chosen arrival window and re-check capacity server-side so two
+  // customers can't book the same slot past its limit (the client view may be stale).
+  const window = BOOKING_WINDOWS.find(w => w.label === booking_window);
+  if (!window) return res.status(400).json({ error: 'Please choose an arrival window.' });
+  const capacity = Math.max(1, Number(await settings.get('booking_slot_capacity')) || 2);
+  const allJobs = await list('jobs');
+  const occupied = (occupancyForDate(allJobs, preferred_date)[window.label] || 0);
+  if (occupied >= capacity) return res.status(409).json({ error: 'Sorry, that time slot just filled up. Please pick another window.' });
 
   const customer = records[0];
   const id = uuid();
-  const noteBits = [`Requested via customer portal by ${req.user.name}`];
-  if (preferred_window) noteBits.push(`Preferred time: ${preferred_window}`);
   const job = await create('jobs', id, {
     title: title.trim(),
     description: description ? description.trim() : null,
@@ -137,12 +180,12 @@ router.post('/service-request', async (req, res) => {
     status: 'pending',
     priority: 'normal',
     job_type: 'Service Request',
-    scheduled_date: preferred_date || null,
+    scheduled_date: preferred_date,
     scheduled_time: null,
-    preferred_window: preferred_window || null,
+    booking_window: window.label,
     completed_date: null,
     address: customer.address || null,
-    notes: noteBits.join(' · '),
+    notes: `Booked via customer portal by ${req.user.name} · Arrival window: ${window.label} (awaiting office confirmation)`,
   });
 
   // Optional photos the customer attached to show the problem.
@@ -165,15 +208,15 @@ router.post('/service-request', async (req, res) => {
     const to = await settings.get('business_email');
     if (to) {
       const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
-        <p><strong>New service request from ${customer.name}</strong></p>
+        <p><strong>New appointment request from ${customer.name}</strong></p>
         <p><strong>Service:</strong> ${job.title}<br/>
         ${job.description ? `<strong>Details:</strong> ${job.description}<br/>` : ''}
-        ${preferred_date ? `<strong>Preferred date:</strong> ${preferred_date}<br/>` : ''}
-        ${preferred_window ? `<strong>Preferred time:</strong> ${preferred_window}<br/>` : ''}
+        <strong>Requested date:</strong> ${preferred_date}<br/>
+        <strong>Arrival window:</strong> ${job.booking_window}<br/>
         <strong>Contact:</strong> ${customer.email || ''} ${customer.phone || ''}<br/>
         ${customer.address ? `<strong>Address:</strong> ${customer.address}` : ''}</p>
-        <p>Open the Jobs tab in Clarke Mechanical to schedule it.</p></div>`;
-      await sendMail({ type: 'service_request', to, toName: 'Clarke Mechanical', subject: `New service request — ${customer.name}`, html, customerId: customer.id, sentBy: 'Customer Portal' });
+        <p><strong>This slot is held pending your confirmation.</strong> Open the Jobs tab in Clarke Mechanical to confirm and assign a technician.</p></div>`;
+      await sendMail({ type: 'service_request', to, toName: 'Clarke Mechanical', subject: `New appointment request — ${customer.name}`, html, customerId: customer.id, sentBy: 'Customer Portal' });
     }
   } catch (e) { console.error('[portal] notify failed:', e.message); }
 

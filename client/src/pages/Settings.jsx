@@ -108,6 +108,8 @@ export default function Settings() {
             <Input label="Public email" icon={<Mail size={15} />} value={data.business_email} onChange={set('business_email')} hint="Shown in email footers & reply-to" />
             <Input label="Phone" value={data.business_phone} onChange={set('business_phone')} />
             <Input label="Business hours" value={data.business_hours || ''} onChange={set('business_hours')} hint="Shown to customers in the portal" />
+            <Input label="Online booking: jobs per time slot" type="number" min="1" step="1" value={data.booking_slot_capacity || '2'}
+              onChange={set('booking_slot_capacity')} hint="How many appointments customers can book in each arrival window" />
             <Input label="Default tax rate (%)" type="number" step="0.01" value={(Number(data.default_tax_rate || 0) * 100).toFixed(2)}
               onChange={e => setData(d => ({ ...d, default_tax_rate: String((Number(e.target.value) || 0) / 100) }))} hint="Applied to new invoices & estimates" />
             <Input label="From address" value={data.email_from} onChange={set('email_from')} hint={'e.g. Clarke Mechanical <no-reply@…>'} />
