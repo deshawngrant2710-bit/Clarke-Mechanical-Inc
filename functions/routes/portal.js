@@ -114,11 +114,21 @@ router.get('/quotes', async (req, res) => {
 router.post('/service-request', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   if (!ids.length) return res.status(422).json({ error: "Your account isn't linked to a customer record yet." });
-  const { title, description, preferred_date } = req.body;
+  const { title, description, preferred_date, preferred_window } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'Please describe the service you need' });
+
+  // Online booking is next-day-onward: reject any preferred date before tomorrow.
+  if (preferred_date) {
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    if (preferred_date < tomorrow.toISOString().slice(0, 10)) {
+      return res.status(400).json({ error: 'Please choose a date starting tomorrow.' });
+    }
+  }
 
   const customer = records[0];
   const id = uuid();
+  const noteBits = [`Requested via customer portal by ${req.user.name}`];
+  if (preferred_window) noteBits.push(`Preferred time: ${preferred_window}`);
   const job = await create('jobs', id, {
     title: title.trim(),
     description: description ? description.trim() : null,
@@ -129,9 +139,10 @@ router.post('/service-request', async (req, res) => {
     job_type: 'Service Request',
     scheduled_date: preferred_date || null,
     scheduled_time: null,
+    preferred_window: preferred_window || null,
     completed_date: null,
     address: customer.address || null,
-    notes: `Requested via customer portal by ${req.user.name}`,
+    notes: noteBits.join(' · '),
   });
 
   // Optional photos the customer attached to show the problem.
@@ -158,6 +169,7 @@ router.post('/service-request', async (req, res) => {
         <p><strong>Service:</strong> ${job.title}<br/>
         ${job.description ? `<strong>Details:</strong> ${job.description}<br/>` : ''}
         ${preferred_date ? `<strong>Preferred date:</strong> ${preferred_date}<br/>` : ''}
+        ${preferred_window ? `<strong>Preferred time:</strong> ${preferred_window}<br/>` : ''}
         <strong>Contact:</strong> ${customer.email || ''} ${customer.phone || ''}<br/>
         ${customer.address ? `<strong>Address:</strong> ${customer.address}` : ''}</p>
         <p>Open the Jobs tab in Clarke Mechanical to schedule it.</p></div>`;

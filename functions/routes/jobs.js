@@ -32,6 +32,64 @@ router.get('/', async (req, res) => {
   res.json(rows);
 });
 
+// Build a single-line address string for a customer/job.
+function fullAddress(job, customer) {
+  const parts = [job.address || customer?.address, customer?.city, customer?.state, customer?.zip].filter(Boolean);
+  return parts.join(', ');
+}
+
+// Geocode via OpenStreetMap Nominatim (free, no key). Results cached on the customer
+// record so we only ever look up each address once. Rate-limited to be a good citizen.
+async function geocode(address) {
+  if (!address) return null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
+    const r = await fetch(url, { headers: { 'User-Agent': 'ClarkeMechanicalCRM/1.0 (dispatch route map)' } });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!data?.length) return null;
+    return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+  } catch (e) { console.error('[jobs] geocode failed:', e.message); return null; }
+}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// GET /jobs/route/list?date=YYYY-MM-DD — the day's route with map coordinates.
+router.get('/route/list', async (req, res) => {
+  const date = req.body?.date || req.query.date || new Date().toISOString().slice(0, 10);
+  const [allJobs, customers, users] = await Promise.all([list('jobs'), list('customers'), nameMap('users')]);
+  const custById = Object.fromEntries(customers.map(c => [c.id, c]));
+  let dayJobs = allJobs.filter(j => j.scheduled_date === date && j.status !== 'cancelled');
+  // Technicians only see their own stops.
+  if (req.user.role === 'technician') dayJobs = dayJobs.filter(j => j.technician_id === req.user.id);
+  dayJobs.sort((a, b) => (a.scheduled_time || '99').localeCompare(b.scheduled_time || '99'));
+
+  const out = [];
+  for (const j of dayJobs) {
+    const customer = custById[j.customer_id];
+    const address = fullAddress(j, customer);
+    let lat = null, lng = null;
+    if (address && customer) {
+      if (customer.geo_address === address && customer.geo_lat != null) {
+        lat = customer.geo_lat; lng = customer.geo_lng;
+      } else {
+        const g = await geocode(address);
+        if (g) {
+          lat = g.lat; lng = g.lng;
+          try { await update('customers', customer.id, { geo_address: address, geo_lat: g.lat, geo_lng: g.lng }); } catch {}
+          await sleep(1100); // Nominatim asks for <=1 req/sec
+        }
+      }
+    }
+    out.push({
+      id: j.id, title: j.title, status: j.status, priority: j.priority,
+      scheduled_time: j.scheduled_time || null, job_type: j.job_type || null,
+      customer_name: customer?.name || null, customer_phone: customer?.phone || null,
+      technician_name: users[j.technician_id] || null, address, lat, lng,
+    });
+  }
+  res.json({ date, jobs: out });
+});
+
 router.get('/:id', async (req, res) => {
   const job = await getById('jobs', req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
-import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea } from '../components/UI';
+import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea, Select } from '../components/UI';
 import { printDocument, buildDocumentHtml } from '../lib/printDoc';
 import SignaturePad from '../components/SignaturePad';
 import PayInvoiceModal from '../components/PayInvoiceModal';
@@ -730,12 +730,15 @@ function ReviewModal({ job, onClose, onDone }) {
   );
 }
 
+const tomorrowStr = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); };
+
 function ServiceRequestModal({ open, onClose, onDone, initial }) {
-  const [form, setForm] = useState({ title: '', description: '', preferred_date: '' });
+  const [form, setForm] = useState({ title: '', description: '', preferred_date: '', preferred_window: '' });
   const [photos, setPhotos] = useState([]);
   const [saving, setSaving] = useState(false);
+  const minDate = tomorrowStr();
   useEffect(() => {
-    if (open) { setForm({ title: initial?.title || '', description: initial?.description || '', preferred_date: '' }); setPhotos([]); }
+    if (open) { setForm({ title: initial?.title || '', description: initial?.description || '', preferred_date: '', preferred_window: '' }); setPhotos([]); }
   }, [open, initial]);
 
   async function pickPhotos(e) {
@@ -751,25 +754,34 @@ function ServiceRequestModal({ open, onClose, onDone, initial }) {
 
   async function submit() {
     if (!form.title.trim()) return toast.error('Please describe the service you need');
+    if (form.preferred_date && form.preferred_date < minDate) return toast.error('Please choose a date starting tomorrow.');
     setSaving(true);
     try {
       await api.post('/portal/service-request', { ...form, photos: photos.map(p => ({ proof: p.proof, proof_type: p.proof_type })) });
-      toast.success("Request sent! We'll be in touch to schedule.");
-      setForm({ title: '', description: '', preferred_date: '' });
+      toast.success("Request sent! We'll confirm your appointment shortly.");
+      setForm({ title: '', description: '', preferred_date: '', preferred_window: '' });
       setPhotos([]);
       onClose(); onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not send request'); }
     finally { setSaving(false); }
   }
   return (
-    <Modal open={open} onClose={onClose} title="Request Service" subtitle="Tell us what you need and we'll schedule it">
+    <Modal open={open} onClose={onClose} title="Book an Appointment" subtitle="Pick a preferred day and we'll confirm the time">
       <div className="space-y-3">
         <Input label="What do you need? *" value={form.title} valid={form.title.trim().length > 2}
           onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. AC not cooling, annual tune-up" />
         <Textarea label="Details (optional)" value={form.description}
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Anything that helps us prepare — symptoms, unit location, access notes…" />
-        <Input label="Preferred date (optional)" type="date" value={form.preferred_date}
-          onChange={e => setForm(f => ({ ...f, preferred_date: e.target.value }))} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Preferred date" type="date" min={minDate} value={form.preferred_date}
+            onChange={e => setForm(f => ({ ...f, preferred_date: e.target.value }))} />
+          <Select label="Preferred time" value={form.preferred_window} onChange={e => setForm(f => ({ ...f, preferred_window: e.target.value }))}>
+            <option value="">No preference</option>
+            <option value="Morning (8am–12pm)">Morning (8am–12pm)</option>
+            <option value="Afternoon (12pm–5pm)">Afternoon (12pm–5pm)</option>
+          </Select>
+        </div>
+        <p className="text-xs text-slate-400 -mt-1">Earliest available is tomorrow. We'll call or email to confirm the exact time.</p>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1.5">Photos (optional)</label>
           {photos.length > 0 && (

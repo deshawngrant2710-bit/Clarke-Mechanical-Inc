@@ -24,6 +24,7 @@ import Portal from './pages/Portal';
 import Support from './pages/Support';
 import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
+import RouteMap from './pages/RouteMap';
 import Payments from './pages/Payments';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
@@ -96,6 +97,7 @@ export default function App() {
             <Route path="/support" element={<Support />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/dispatch" element={<Dispatch />} />
+            <Route path="/route" element={<RouteMap />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
