@@ -147,6 +147,30 @@ router.put('/:id', async (req, res) => {
   notifyOnStatusChange(saved, existing.status); // best-effort, after response
 });
 
+// POST /jobs/:id/confirm-booking — office confirms a customer's held appointment:
+// sets it to scheduled (optionally with an exact time + technician) and emails the customer.
+router.post('/:id/confirm-booking', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const { scheduled_time, technician_id } = req.body;
+  const patch = { status: 'scheduled' };
+  if (scheduled_time !== undefined) patch.scheduled_time = scheduled_time || null;
+  if (technician_id !== undefined) patch.technician_id = technician_id || null;
+  const saved = await update('jobs', req.params.id, patch);
+  // Email the customer a confirmation (reuses the job_confirmation template).
+  try {
+    if (saved.customer_id) {
+      const customer = await getById('customers', saved.customer_id);
+      if (customer?.email) {
+        const tech = saved.technician_id ? await getById('users', saved.technician_id) : null;
+        const { subject, html } = await render('job_confirmation', { ...saved, customer_name: customer.name, technician_name: tech?.name });
+        await sendMail({ type: 'job_confirmation', to: customer.email, toName: customer.name, subject, html, relatedId: saved.id, customerId: saved.customer_id, sentBy: req.user.name });
+      }
+    }
+  } catch (e) { console.error('[jobs] confirm email failed:', e.message); }
+  res.json(saved);
+});
+
 // POST /jobs/:id/signoff — staff captures the customer's signature on-site.
 router.post('/:id/signoff', async (req, res) => {
   const job = await getById('jobs', req.params.id);

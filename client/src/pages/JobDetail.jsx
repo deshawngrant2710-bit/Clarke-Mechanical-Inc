@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { directionsLink } from '../lib/geo';
@@ -18,6 +18,12 @@ const TIMELINE_LABEL = { pending: 'Created', scheduled: 'Scheduled', 'in-progres
 // The technician can advance up to "work done" (awaiting-signoff). Only the customer's
 // sign-off moves a job to "completed", so there's no "Mark Complete" button here.
 const NEXT_STATUS_LABEL = { scheduled: 'Mark Scheduled', 'in-progress': 'Start Job', 'awaiting-signoff': 'Mark Work Done' };
+
+// Default exact start time to prefill when confirming an arrival-window booking.
+const WINDOW_START = {
+  '8:00–10:00 AM': '08:00', '10:00 AM–12:00 PM': '10:00', '12:00–2:00 PM': '12:00',
+  '2:00–4:00 PM': '14:00', '4:00–6:00 PM': '16:00',
+};
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -42,6 +48,9 @@ export default function JobDetail() {
   const [signing, setSigning] = useState(false);
   const padRef = useRef(null);
   const fileRef = useRef();
+  const [confirmTime, setConfirmTime] = useState('');
+  const [confirmTech, setConfirmTech] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   async function captureSignoff() {
     if (!signName.trim()) return toast.error('Enter the customer name');
@@ -59,6 +68,16 @@ export default function JobDetail() {
     Promise.all([api.get(`/jobs/${id}`), api.get('/customers'), api.get('/employees')])
       .then(([j, c, e]) => { setJob(j.data); setForm(j.data); setNotesDraft(''); setCustomers(c.data); setEmployees(e.data); });
     api.get('/inspections').then(r => setJobInspections(r.data.filter(x => x.job_id === id))).catch(() => {});
+  }
+
+  async function confirmBooking() {
+    setConfirming(true);
+    try {
+      await api.post(`/jobs/${id}/confirm-booking`, { scheduled_time: confirmTime || null, technician_id: confirmTech || null });
+      toast.success('Appointment confirmed — customer notified');
+      setConfirmTime(''); setConfirmTech(''); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not confirm the appointment'); }
+    finally { setConfirming(false); }
   }
 
   async function createInspectionForJob() {
@@ -288,6 +307,36 @@ export default function JobDetail() {
           <div className="text-sm text-red-600 font-medium bg-red-50 rounded-lg px-4 py-2.5">This job has been cancelled.</div>
         )}
       </Card>
+
+      {/* Office: confirm a customer's held online booking */}
+      {!isTech && !cancelled && job.status === 'pending' && job.booking_window && (
+        <Card className="p-5 mt-4 border-blue-200 bg-blue-50/40">
+          <div className="flex items-start gap-2.5">
+            <CalendarCheck size={18} className="text-blue-600 mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-800">Appointment request awaiting confirmation</p>
+              <p className="text-sm text-slate-600 mt-0.5">{job.customer_name} booked <strong>{job.scheduled_date}</strong> · arrival window <strong>{job.booking_window}</strong>. Set the exact time, then confirm to notify the customer.</p>
+              <div className="flex flex-wrap items-end gap-3 mt-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Exact time</label>
+                  <input type="time" value={confirmTime || WINDOW_START[job.booking_window] || ''}
+                    onChange={e => setConfirmTime(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 bg-white" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Technician (optional)</label>
+                  <select value={confirmTech} onChange={e => setConfirmTech(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 bg-white min-w-[160px]">
+                    <option value="">Assign later</option>
+                    {employees.filter(u => u.role === 'technician').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <Btn onClick={confirmBooking} loading={confirming}><CalendarCheck size={15} /> Confirm & notify customer</Btn>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="space-y-6 lg:col-span-1">

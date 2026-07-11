@@ -91,7 +91,7 @@ const templates = {
         body: p(`Hi ${job.customer_name || 'there'},`) + p('This confirms your upcoming service:') +
           `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin:8px 0 16px;">
             <p style="margin:0 0 6px;font-size:15px;color:#0f172a;font-weight:600;">${job.title}</p>
-            <p style="margin:0;font-size:14px;color:#475569;">📅 ${job.scheduled_date || 'To be scheduled'}${job.scheduled_time ? ` at ${job.scheduled_time}` : ''}</p>
+            <p style="margin:0;font-size:14px;color:#475569;">📅 ${job.scheduled_date || 'To be scheduled'}${job.scheduled_time ? ` at ${job.scheduled_time}` : job.booking_window ? ` · arrival window ${job.booking_window}` : ''}</p>
             ${job.technician_name ? `<p style="margin:4px 0 0;font-size:14px;color:#475569;">🔧 Technician: ${job.technician_name}</p>` : ''}
             ${job.address ? `<p style="margin:4px 0 0;font-size:14px;color:#475569;">📍 ${job.address}</p>` : ''}</div>` + p('If you need to reschedule, just reply to this email.') }) };
   },
