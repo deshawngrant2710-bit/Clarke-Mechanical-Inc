@@ -13,6 +13,7 @@ export const STATUS_COLORS = {
   cancelled:      'bg-slate-100 text-slate-600 ring-slate-500/20',
   emergency:      'bg-red-100 text-red-700 ring-red-600/20',
   'awaiting-parts': 'bg-orange-100 text-orange-700 ring-orange-600/20',
+  'awaiting-signoff': 'bg-teal-100 text-teal-800 ring-teal-600/20',
   'waiting-customer': 'bg-yellow-100 text-yellow-800 ring-yellow-600/20',
   // Invoices / Quotes
   draft:      'bg-slate-100 text-slate-600 ring-slate-500/20',

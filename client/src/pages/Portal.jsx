@@ -47,6 +47,7 @@ const JOB_STEPS = [
   { key: 'pending', label: 'Requested' },
   { key: 'scheduled', label: 'Scheduled' },
   { key: 'in-progress', label: 'In Progress' },
+  { key: 'awaiting-signoff', label: 'Sign-off' },
   { key: 'completed', label: 'Completed' },
 ];
 
@@ -335,7 +336,7 @@ export default function Portal() {
                             <div className="text-sm text-slate-600 space-y-1.5 mt-2">
                               {j.job_type && <p><span className="text-slate-400">Type:</span> {j.job_type}</p>}
                               {j.description && <p><span className="text-slate-400">Details:</span> {j.description}</p>}
-                              {j.technician_name && <p className="flex items-center gap-1.5"><Wrench size={12} className="text-slate-400" /> Technician: {j.technician_name}</p>}
+                              {j.technician_name && <p className="flex items-center gap-1.5"><Wrench size={12} className="text-slate-400" /> Technician: {j.technician_name}{j.additional_technician_names?.length > 0 ? `, ${j.additional_technician_names.join(', ')}` : ''}</p>}
                               {j.address && <p className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400" /> {j.address}</p>}
                             </div>
                             {j.photos?.length > 0 && (
@@ -352,7 +353,7 @@ export default function Portal() {
                                 <Btn size="sm" variant="outline" className="!text-red-600 !border-red-200 hover:!bg-red-50" onClick={() => cancelJob(j.id)}><Ban size={14} /> Cancel</Btn>
                               </div>
                             )}
-                            {j.status === 'completed' && (
+                            {(j.status === 'awaiting-signoff' || j.status === 'completed') && (
                               <div className="mt-3 space-y-3">
                                 {/* Sign-off */}
                                 {j.signed_at ? (
@@ -363,12 +364,12 @@ export default function Portal() {
                                   </div>
                                 ) : (
                                   <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 flex-wrap">
-                                    <p className="text-sm text-amber-800">Please confirm this work was completed to your satisfaction.</p>
+                                    <p className="text-sm text-amber-800">Your technician has finished the work. Please review and sign off to mark this service complete.</p>
                                     <Btn size="sm" onClick={() => setSignoffJob(j)}><PenLine size={14} /> Sign off</Btn>
                                   </div>
                                 )}
-                                {/* Review */}
-                                {j.review ? (
+                                {/* Review — only after the job is fully completed */}
+                                {j.status === 'completed' && (j.review ? (
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-xs text-slate-500">Your rating:</span>
                                     <Stars value={j.review.rating} />
@@ -376,7 +377,7 @@ export default function Portal() {
                                   </div>
                                 ) : (
                                   <Btn size="sm" variant="outline" onClick={() => setReviewJob(j)}><Star size={14} /> Leave a review</Btn>
-                                )}
+                                ))}
                               </div>
                             )}
                           </div>
@@ -731,28 +732,31 @@ function ReviewModal({ job, onClose, onDone }) {
 
 function ServiceRequestModal({ open, onClose, onDone, initial }) {
   const [form, setForm] = useState({ title: '', description: '', preferred_date: '' });
-  const [photo, setPhoto] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    if (open) setForm({ title: initial?.title || '', description: initial?.description || '', preferred_date: '' });
+    if (open) { setForm({ title: initial?.title || '', description: initial?.description || '', preferred_date: '' }); setPhotos([]); }
   }, [open, initial]);
 
-  async function pickPhoto(e) {
-    const file = e.target.files?.[0];
+  async function pickPhotos(e) {
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
-    if (!file) return;
-    try { const p = await fileToProof(file); setPhoto({ ...p, name: file.name }); }
-    catch (err) { toast.error(err.message || 'Could not add that photo'); }
+    if (!files.length) return;
+    if (photos.length + files.length > 10) return toast.error('You can attach up to 10 photos.');
+    for (const file of files) {
+      try { const p = await fileToProof(file); setPhotos(prev => [...prev, { ...p, name: file.name }]); }
+      catch (err) { toast.error(`${file.name}: ${err.message || 'could not add'}`); }
+    }
   }
 
   async function submit() {
     if (!form.title.trim()) return toast.error('Please describe the service you need');
     setSaving(true);
     try {
-      await api.post('/portal/service-request', { ...form, photo: photo?.proof, photo_type: photo?.proof_type });
+      await api.post('/portal/service-request', { ...form, photos: photos.map(p => ({ proof: p.proof, proof_type: p.proof_type })) });
       toast.success("Request sent! We'll be in touch to schedule.");
       setForm({ title: '', description: '', preferred_date: '' });
-      setPhoto(null);
+      setPhotos([]);
       onClose(); onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not send request'); }
     finally { setSaving(false); }
@@ -767,22 +771,27 @@ function ServiceRequestModal({ open, onClose, onDone, initial }) {
         <Input label="Preferred date (optional)" type="date" value={form.preferred_date}
           onChange={e => setForm(f => ({ ...f, preferred_date: e.target.value }))} />
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Photo (optional)</label>
-          {photo ? (
-            <div className="flex items-center gap-3">
-              {photo.proof_type === 'image'
-                ? <img src={photo.proof} alt="attachment" className="w-14 h-14 rounded-lg object-cover border border-slate-200" />
-                : <div className="w-14 h-14 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400"><FileText size={20} /></div>}
-              <span className="text-sm text-slate-600 truncate flex-1">{photo.name}</span>
-              <button onClick={() => setPhoto(null)} className="text-xs font-medium text-red-600">Remove</button>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Photos (optional)</label>
+          {photos.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {photos.map((p, i) => (
+                <div key={i} className="relative group">
+                  {p.proof_type === 'image'
+                    ? <img src={p.proof} alt={p.name} className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
+                    : <div className="w-16 h-16 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400"><FileText size={20} /></div>}
+                  <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs flex items-center justify-center shadow hover:bg-red-700" title="Remove">×</button>
+                </div>
+              ))}
             </div>
-          ) : (
+          )}
+          {photos.length < 10 && (
             <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">
-              <Camera size={15} /> Add a photo
-              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={pickPhoto} />
+              <Camera size={15} /> {photos.length ? 'Add more' : 'Add photos'}
+              <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={pickPhotos} />
             </label>
           )}
-          <p className="text-xs text-slate-400 mt-1">A picture of the unit or problem helps us prepare.</p>
+          <p className="text-xs text-slate-400 mt-1">Pictures of the unit or problem help us prepare. Up to 10.</p>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>

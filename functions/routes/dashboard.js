@@ -53,8 +53,8 @@ async function technicianDashboard(req, res) {
 router.get('/', async (req, res) => {
   if (req.user.role === 'technician') return technicianDashboard(req, res);
 
-  const [customers, jobs, invoices, inventory, users, reviews, quotes, chats] = await Promise.all([
-    list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'), list('quotes'), list('support_chats'),
+  const [customers, jobs, invoices, inventory, users, reviews, quotes, chats, payReqs] = await Promise.all([
+    list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'), list('quotes'), list('support_chats'), list('payment_requests'),
   ]);
   const t = today();
   const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
@@ -126,6 +126,7 @@ router.get('/', async (req, res) => {
       pendingQuotes: quotes.filter(q => ['sent', 'draft'].includes(q.status)).length,
       newRequests: jobs.filter(j => j.status === 'pending').length,
       waitingChats: chats.filter(c => c.status === 'waiting').length,
+      cashRequests: payReqs.filter(p => p.status === 'pending').length,
     },
     jobsByStatus,
     revenueByMonth,

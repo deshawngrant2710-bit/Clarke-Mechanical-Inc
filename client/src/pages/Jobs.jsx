@@ -6,7 +6,7 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Badge, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
-import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy } from 'lucide-react';
+import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
@@ -108,6 +108,7 @@ export default function Jobs() {
           <option value="pending">Pending</option>
           <option value="scheduled">Scheduled</option>
           <option value="in-progress">In Progress</option>
+          <option value="awaiting-signoff">Awaiting Sign-off</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
         </Select>
@@ -132,13 +133,21 @@ export default function Jobs() {
                 </Cell>
                 <Cell><span className="text-sm text-slate-600">{job.customer_name || <span className="text-slate-300">—</span>}</span></Cell>
                 <Cell>
-                  <div onClick={e => e.stopPropagation()}>
-                    <select value={job.technician_id || ''} onChange={e => assignTech(job, e.target.value)}
-                      className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-blue-500 hover:border-slate-300 max-w-[150px] cursor-pointer">
-                      <option value="">Unassigned</option>
-                      {employees.filter(u => u.role === 'technician').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  </div>
+                  {job.status === 'completed' ? (
+                    // Technician is locked once the job is completed.
+                    <span className="text-sm text-slate-600 inline-flex items-center gap-1.5" title="Locked — job completed">
+                      {job.technician_name || employees.find(u => u.id === job.technician_id)?.name || <span className="text-slate-300">—</span>}
+                      <Lock size={11} className="text-slate-300" />
+                    </span>
+                  ) : (
+                    <div onClick={e => e.stopPropagation()}>
+                      <select value={job.technician_id || ''} onChange={e => assignTech(job, e.target.value)}
+                        className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-blue-500 hover:border-slate-300 max-w-[150px] cursor-pointer">
+                        <option value="">Unassigned</option>
+                        {employees.filter(u => u.role === 'technician').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </Cell>
                 <Cell><Badge status={job.priority} /></Cell>
                 <Cell>

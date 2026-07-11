@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { directionsLink } from '../lib/geo';
@@ -12,10 +12,12 @@ import { useAuth } from '../context/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
-const TIMELINE = ['pending', 'scheduled', 'in-progress', 'completed'];
-const TIMELINE_LABEL = { pending: 'Created', scheduled: 'Scheduled', 'in-progress': 'In Progress', completed: 'Completed' };
+const TIMELINE = ['pending', 'scheduled', 'in-progress', 'awaiting-signoff', 'completed'];
+const TIMELINE_LABEL = { pending: 'Created', scheduled: 'Scheduled', 'in-progress': 'In Progress', 'awaiting-signoff': 'Awaiting Sign-off', completed: 'Completed' };
 
-const NEXT_STATUS_LABEL = { scheduled: 'Mark Scheduled', 'in-progress': 'Start Job', completed: 'Mark Complete' };
+// The technician can advance up to "work done" (awaiting-signoff). Only the customer's
+// sign-off moves a job to "completed", so there's no "Mark Complete" button here.
+const NEXT_STATUS_LABEL = { scheduled: 'Mark Scheduled', 'in-progress': 'Start Job', 'awaiting-signoff': 'Mark Work Done' };
 
 export default function JobDetail() {
   const { id } = useParams();
@@ -237,14 +239,17 @@ export default function JobDetail() {
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {isTech ? (
               <>
-                {!cancelled && job.status !== 'completed' && job.customer_email && (
+                {!cancelled && !['completed', 'awaiting-signoff'].includes(job.status) && job.customer_email && (
                   <Btn variant="outline" onClick={enRoute} loading={enRouting}><Navigation size={15} /> On my way</Btn>
                 )}
-                {!cancelled && nextStatus && (
+                {!cancelled && nextStatus && nextStatus !== 'completed' && (
                   <Btn onClick={() => updateStatus(nextStatus)} loading={saving}>
-                    {nextStatus === 'completed' ? <CheckCircle2 size={15} /> : nextStatus === 'in-progress' ? <Wrench size={15} /> : <Calendar size={15} />}
+                    {nextStatus === 'awaiting-signoff' ? <CheckCircle2 size={15} /> : nextStatus === 'in-progress' ? <Wrench size={15} /> : <Calendar size={15} />}
                     {NEXT_STATUS_LABEL[nextStatus]}
                   </Btn>
+                )}
+                {!cancelled && job.status === 'awaiting-signoff' && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 bg-teal-50 ring-1 ring-teal-600/20 rounded-lg px-2.5 py-1.5"><Clock size={14} /> Waiting for customer sign-off</span>
                 )}
               </>
             ) : (
@@ -336,6 +341,14 @@ export default function JobDetail() {
                   <><Avatar name={job.technician_name} className="w-8 h-8 text-xs" /><div><p className="text-sm font-medium text-slate-800">{job.technician_name}</p><p className="text-xs text-slate-400">Assigned technician</p></div></>
                 ) : <span className="text-xs text-slate-400 flex items-center gap-1.5"><Wrench size={14} /> Unassigned</span>}
               </div>
+              {job.additional_technician_names?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-slate-400">Also on this job:</span>
+                  {job.additional_technician_names.map(n => (
+                    <span key={n} className="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 rounded-full px-2 py-0.5"><Wrench size={10} /> {n}</span>
+                  ))}
+                </div>
+              )}
               {job.completed_date && <p className="text-emerald-600 text-xs font-medium flex items-center gap-1"><CheckCircle2 size={12} /> Completed {job.completed_date}</p>}
             </div>
           </Card>
@@ -489,6 +502,7 @@ export default function JobDetail() {
               <option value="pending">Pending</option>
               <option value="scheduled">Scheduled</option>
               <option value="in-progress">In Progress</option>
+              <option value="awaiting-signoff">Awaiting Sign-off</option>
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
             </Select>
@@ -504,10 +518,27 @@ export default function JobDetail() {
               <option value="">No customer</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
-            <Select label="Technician" value={form.technician_id || ''} onChange={e => f({ technician_id: e.target.value })}>
+            <Select label="Technician" value={form.technician_id || ''} onChange={e => f({ technician_id: e.target.value })} disabled={job.status === 'completed'}>
               <option value="">Unassigned</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
             </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Additional technicians {job.status === 'completed' && <span className="text-xs text-slate-400">(locked — job completed)</span>}</label>
+            <div className="flex flex-wrap gap-1.5">
+              {employees.filter(e => e.role === 'technician' && e.id !== form.technician_id).map(e => {
+                const on = (form.additional_technician_ids || []).includes(e.id);
+                const locked = job.status === 'completed';
+                return (
+                  <button key={e.id} type="button" disabled={locked}
+                    onClick={() => { const cur = form.additional_technician_ids || []; f({ additional_technician_ids: on ? cur.filter(id => id !== e.id) : [...cur, e.id] }); }}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg ring-1 transition-colors ${on ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-600 ring-slate-200 hover:border-slate-300'} ${locked ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                    {e.name}
+                  </button>
+                );
+              })}
+              {employees.filter(e => e.role === 'technician' && e.id !== form.technician_id).length === 0 && <span className="text-xs text-slate-400">No other technicians.</span>}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Scheduled Date" type="date" value={form.scheduled_date || ''} onChange={e => f({ scheduled_date: e.target.value })} />

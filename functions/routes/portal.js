@@ -7,6 +7,17 @@ const settings = require('../lib/settings');
 
 const router = express.Router();
 router.use(authMiddleware);
+// The customer portal is only for customer accounts. If this user has since been
+// given a staff role, block portal access (their token may still say "customer").
+router.use(async (req, res, next) => {
+  try {
+    const u = await getById('users', req.user.id);
+    if (u && u.role && u.role !== 'customer') {
+      return res.status(403).json({ error: 'staff_account', message: 'This account is now a staff account and can no longer use the customer portal. Please sign out and sign back in.' });
+    }
+  } catch { /* on lookup failure, fall through */ }
+  next();
+});
 
 // Find the customer record(s) linked to the logged-in user by email → their ids.
 async function myCustomerIds(req) {
@@ -59,6 +70,7 @@ router.get('/jobs', async (req, res) => {
       id: j.id, title: j.title, status: j.status, priority: j.priority, job_type: j.job_type,
       scheduled_date: j.scheduled_date, scheduled_time: j.scheduled_time, address: j.address,
       description: j.description, technician_name: techs[j.technician_id] || null, created_at: j.created_at,
+      additional_technician_names: (Array.isArray(j.additional_technician_ids) ? j.additional_technician_ids : []).map(id => techs[id]).filter(Boolean),
       review: reviewByJob[j.id] || null,
       signed_by: j.signed_by || null, signed_at: j.signed_at || null, signature: j.signature || null,
       en_route_at: j.en_route_at || null,
@@ -122,11 +134,16 @@ router.post('/service-request', async (req, res) => {
     notes: `Requested via customer portal by ${req.user.name}`,
   });
 
-  // Optional photo the customer attached to show the problem.
-  if (req.body.photo) {
+  // Optional photos the customer attached to show the problem.
+  // Accepts an array (`photos`) or a single legacy `photo`.
+  const incoming = Array.isArray(req.body.photos) && req.body.photos.length
+    ? req.body.photos
+    : (req.body.photo ? [{ proof: req.body.photo, proof_type: req.body.photo_type || 'image' }] : []);
+  for (const p of incoming) {
+    if (!p?.proof) continue;
     try {
       await create('job_photos', uuid(), {
-        job_id: id, proof: req.body.photo, proof_type: req.body.photo_type || 'image',
+        job_id: id, proof: p.proof, proof_type: p.proof_type || 'image',
         caption: 'Submitted by customer', source: 'customer', created_at: new Date().toISOString(),
       });
     } catch (e) { console.error('[portal] request photo failed:', e.message); }
@@ -164,12 +181,14 @@ router.post('/jobs/:id/signoff', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const job = await getById('jobs', req.params.id);
   if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
-  if (job.status !== 'completed') return res.status(400).json({ error: 'You can only sign off on completed services' });
+  if (!['awaiting-signoff', 'completed'].includes(job.status)) return res.status(400).json({ error: 'This service is not ready for sign-off yet' });
   if (job.signed_at) return res.status(409).json({ error: 'This service has already been signed off' });
   const { signature, signed_by } = req.body;
   if (!signature) return res.status(400).json({ error: 'Please provide your signature' });
+  // Signing off completes the job.
   await update('jobs', req.params.id, {
     signature, signed_by: (signed_by || records[0]?.name || req.user.name), signed_at: new Date().toISOString(),
+    status: 'completed', completed_date: job.completed_date || new Date().toISOString().slice(0, 10),
   });
   const saved = await getById('jobs', req.params.id);
   res.json({ id: saved.id, signed_by: saved.signed_by, signed_at: saved.signed_at });
@@ -460,6 +479,16 @@ router.post('/invoices/:id/pay-cash', async (req, res) => {
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
   const customer = records[0];
+
+  // In-app alert for the office (shows in the dashboard "Needs attention").
+  try {
+    await create('payment_requests', uuid(), {
+      invoice_id: invoice.id, invoice_number: invoice.invoice_number || null,
+      customer_id: invoice.customer_id, customer_name: customer?.name || null,
+      amount: invoice.total || 0, method: 'cash', status: 'pending', created_at: new Date().toISOString(),
+    });
+  } catch (e) { console.error('[portal] cash request record failed:', e.message); }
+
   try {
     const to = await settings.get('business_email');
     if (to) {

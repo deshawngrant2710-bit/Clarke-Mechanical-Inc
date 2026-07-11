@@ -5,8 +5,8 @@ const cors = require('cors');
 const app = express();
 app.use(cors({ origin: true }));
 // Allow base64 photo/PDF uploads (portal, inspections, time clock, job photos).
-app.use(express.json({ limit: '12mb' }));
-app.use(express.urlencoded({ extended: true, limit: '12mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 

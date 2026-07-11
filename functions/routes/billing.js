@@ -104,6 +104,17 @@ router.get('/quotes/:id', async (req, res) => {
   });
 });
 
+// Email the customer their estimate when it's marked "sent".
+async function emailEstimateSent(quote, prevStatus) {
+  if (quote.status !== 'sent' || quote.status === prevStatus || !quote.customer_id) return;
+  try {
+    const customer = await getById('customers', quote.customer_id);
+    if (!customer?.email) return;
+    const { subject, html } = await render('quote', { ...quote, customer_name: customer.name });
+    await sendMail({ type: 'quote', to: customer.email, toName: customer.name, subject, html, relatedId: quote.id, customerId: quote.customer_id, sentBy: 'Automated' });
+  } catch (e) { console.error('[billing] estimate email failed:', e.message); }
+}
+
 router.post('/quotes', async (req, res) => {
   const { customer_id, status, issue_date, expiry_date, items = [], tax_rate, notes } = req.body;
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
@@ -115,6 +126,7 @@ router.post('/quotes', async (req, res) => {
     expiry_date: expiry_date || null, subtotal, tax_rate: rate, tax_amount, total, notes: notes || null, items: lineItems,
   });
   res.status(201).json(saved);
+  emailEstimateSent(saved, null);
 });
 
 router.put('/quotes/:id', async (req, res) => {
@@ -128,6 +140,7 @@ router.put('/quotes/:id', async (req, res) => {
     subtotal, tax_rate, tax_amount, total, notes: notes || null, items: lineItems,
   });
   res.json(saved);
+  emailEstimateSent(saved, existing.status);
 });
 
 router.delete('/quotes/:id', async (req, res) => {
@@ -148,6 +161,13 @@ router.post('/invoices/:id/payments', async (req, res) => {
   const payments = await findWhere('payments', 'invoice_id', req.params.id);
   const paid = payments.reduce((s, p) => s + (p.amount || 0), 0);
   if (paid >= invoice.total) await update('invoices', req.params.id, { status: 'paid' });
+  // Clear any pending "customer wants to pay cash" alert for this invoice.
+  try {
+    const reqs = await findWhere('payment_requests', 'invoice_id', req.params.id);
+    for (const r of reqs.filter(r => r.status === 'pending')) {
+      await update('payment_requests', r.id, { status: 'resolved', resolved_at: new Date().toISOString() });
+    }
+  } catch (e) { console.error('[billing] clear cash request:', e.message); }
   res.status(201).json(await getById('payments', id));
 });
 

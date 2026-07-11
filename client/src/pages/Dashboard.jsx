@@ -56,6 +56,7 @@ export default function Dashboard() {
     { label: 'Pending estimates', count: na.pendingQuotes, to: '/quotes', Icon: Receipt },
     { label: 'New service requests', count: na.newRequests, to: '/jobs', Icon: Zap },
     { label: 'Waiting live chats', count: na.waitingChats, to: '/support', Icon: MessagesSquare },
+    { label: 'Cash payment requests', count: na.cashRequests, to: '/invoices', Icon: DollarSign },
   ].filter(i => i.count > 0);
 
   const donutData = data.jobsByStatus
