@@ -4,7 +4,9 @@ const cors = require('cors');
 // Shared Express app — used by server.js (Render) and index.js (Firebase, optional).
 const app = express();
 app.use(cors({ origin: true }));
-app.use(express.json());
+// Allow base64 photo/PDF uploads (portal, inspections, time clock, job photos).
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ extended: true, limit: '12mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 

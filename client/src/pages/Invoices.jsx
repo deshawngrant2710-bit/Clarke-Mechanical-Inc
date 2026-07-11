@@ -24,13 +24,25 @@ export default function Invoices() {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [reminding, setReminding] = useState(false);
+  const [taxInput, setTaxInput] = useState('8.75');
+  const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
   const navigate = useNavigate();
 
   function load() {
-    Promise.all([api.get('/billing/invoices'), api.get('/customers')])
-      .then(([inv, cust]) => { setInvoices(inv.data); setCustomers(cust.data); setLoading(false); });
+    Promise.all([api.get('/billing/invoices'), api.get('/customers'), api.get('/billing/config')])
+      .then(([inv, cust, cfg]) => {
+        setInvoices(inv.data); setCustomers(cust.data);
+        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.0875) * 10000) / 100));
+        setLoading(false);
+      });
   }
   useEffect(load, []);
+
+  function openNew() {
+    const f = emptyForm();
+    f.tax_rate = (parseFloat(defaultTaxPct) || 0) / 100;
+    setForm(f); setTaxInput(defaultTaxPct); setModal(true);
+  }
 
   async function duplicateInvoice(e, inv) {
     e.stopPropagation();
@@ -103,7 +115,7 @@ export default function Invoices() {
     <div className="animate-fade-in">
       <PageHeader title="Invoices" subtitle={`${invoices.length} invoices`} icon={<FileText size={20} />}>
         {stats.overdue > 0 && <Btn variant="outline" onClick={remindOverdue} loading={reminding}><BellRing size={15} /> Remind {stats.overdue} Overdue</Btn>}
-        <Btn onClick={() => setModal(true)}><Plus size={16} /> New Invoice</Btn>
+        <Btn onClick={openNew}><Plus size={16} /> New Invoice</Btn>
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -129,7 +141,7 @@ export default function Invoices() {
           <Empty icon={<FileText size={28} />}
             title={search || statusFilter ? 'No matching invoices' : 'No invoices yet'}
             message={search || statusFilter ? 'Try adjusting your search or filters.' : 'Create an invoice to start collecting payments.'}
-            action={!search && !statusFilter && <Btn onClick={() => setModal(true)}><Plus size={16} /> New Invoice</Btn>} />
+            action={!search && !statusFilter && <Btn onClick={openNew}><Plus size={16} /> New Invoice</Btn>} />
         ) : (
           <Table head={[
             { label: 'Invoice #' }, { label: 'Customer' }, { label: 'Due Date' },
@@ -159,7 +171,7 @@ export default function Invoices() {
         )}
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="New Invoice" subtitle="Build and send a professional invoice">
+      <Modal open={modal} onClose={() => setModal(false)} title="New Invoice" subtitle="Build and send a professional invoice" size="xl">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Select label="Customer" value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}>
@@ -179,32 +191,54 @@ export default function Invoices() {
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700">Line Items</label>
+              <label className="text-sm font-medium text-slate-700">Line items</label>
               <button onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
-                className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700">
-                <PlusCircle size={14} /> Add Item
+                className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                <PlusCircle size={14} /> Add line
               </button>
+            </div>
+            <div className="hidden sm:grid grid-cols-12 gap-2 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <span className="col-span-5">Description</span>
+              <span className="col-span-2 text-right">Qty</span>
+              <span className="col-span-2 text-right">Unit price</span>
+              <span className="col-span-2 text-right">Amount</span>
+              <span className="col-span-1" />
             </div>
             <div className="space-y-2">
               {form.items.map((item, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
                   <input placeholder="Description" value={item.description} onChange={e => setItem(i, 'description', e.target.value)}
-                    className="col-span-6 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
-                  <input placeholder="Qty" type="number" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
-                    className="col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
-                  <input placeholder="Price" type="number" value={item.unit_price} onChange={e => setItem(i, 'unit_price', e.target.value)}
-                    className="col-span-3 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                    className="col-span-12 sm:col-span-5 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                  <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
+                    className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                  <div className="col-span-4 sm:col-span-2 relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                    <input placeholder="0.00" type="number" min="0" step="0.01" value={item.unit_price} onChange={e => setItem(i, 'unit_price', e.target.value)}
+                      className="w-full pl-6 pr-2 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                  </div>
+                  <div className="col-span-3 sm:col-span-2 text-right text-sm font-medium text-slate-700 tabular-nums">{money((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}</div>
                   <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
                     className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
                 </div>
               ))}
+              {form.items.length === 0 && <p className="text-sm text-slate-400 py-2">No items yet — add a line.</p>}
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 rounded-xl p-4 text-sm space-y-1.5 border border-slate-100">
-            <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-medium">{money(subtotal)}</span></div>
-            <div className="flex justify-between text-slate-600"><span>Tax (8.75%)</span><span className="font-medium">{money(tax)}</span></div>
-            <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200 text-base"><span>Total Due</span><span>{money(total)}</span></div>
+          <div className="rounded-xl border border-slate-200 p-4 text-sm space-y-2.5 max-w-xs ml-auto">
+            <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-medium tabular-nums">{money(subtotal)}</span></div>
+            <div className="flex justify-between items-center text-slate-600">
+              <span className="flex items-center gap-2">Tax
+                <span className="inline-flex items-center gap-1">
+                  <input type="number" min="0" step="0.01" value={taxInput}
+                    onChange={e => { setTaxInput(e.target.value); setForm(f => ({ ...f, tax_rate: (parseFloat(e.target.value) || 0) / 100 })); }}
+                    className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                  <span className="text-slate-400">%</span>
+                </span>
+              </span>
+              <span className="font-medium tabular-nums">{money(tax)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-200 text-base"><span>Total Due</span><span className="tabular-nums">{money(total)}</span></div>
           </div>
 
           <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
