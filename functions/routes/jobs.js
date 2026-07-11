@@ -171,6 +171,53 @@ router.post('/:id/confirm-booking', async (req, res) => {
   res.json(saved);
 });
 
+// POST /jobs/:id/suggest-time — office proposes a different date/window and emails the customer.
+router.post('/:id/suggest-time', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const { scheduled_date, booking_window } = req.body;
+  if (!scheduled_date || !booking_window) return res.status(400).json({ error: 'A date and arrival window are required' });
+  const saved = await update('jobs', req.params.id, {
+    scheduled_date, booking_window, scheduled_time: null, status: 'pending',
+  });
+  try {
+    if (saved.customer_id) {
+      const customer = await getById('customers', saved.customer_id);
+      if (customer?.email) {
+        const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+          <p>Hi ${customer.name || 'there'},</p>
+          <p>Thanks for your appointment request for <strong>${saved.title}</strong>. Your original time wasn't available, so we'd like to propose a new time:</p>
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin:8px 0 14px">
+            <p style="margin:0;font-size:15px;color:#0f172a;font-weight:600">📅 ${scheduled_date} · ${booking_window}</p></div>
+          <p>If that works, no action is needed — we'll confirm it. If not, log into your account to pick another open slot, or reply to this email.</p></div>`;
+        await sendMail({ type: 'suggest_time', to: customer.email, toName: customer.name, subject: `A new time for your appointment — ${scheduled_date}`, html, relatedId: saved.id, customerId: saved.customer_id, sentBy: req.user.name });
+      }
+    }
+  } catch (e) { console.error('[jobs] suggest email failed:', e.message); }
+  res.json(saved);
+});
+
+// POST /jobs/:id/decline-booking — office declines a request; cancels it and emails the customer.
+router.post('/:id/decline-booking', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const saved = await update('jobs', req.params.id, { status: 'cancelled' });
+  try {
+    if (saved.customer_id) {
+      const customer = await getById('customers', saved.customer_id);
+      if (customer?.email) {
+        const reason = (req.body.reason || '').trim();
+        const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+          <p>Hi ${customer.name || 'there'},</p>
+          <p>Unfortunately we're unable to accommodate your requested appointment for <strong>${saved.title}</strong>${job.scheduled_date ? ` on ${job.scheduled_date}` : ''}.${reason ? ` ${reason}` : ''}</p>
+          <p>Please log into your account to book another available time, or call us and we'll be glad to help find one that works.</p></div>`;
+        await sendMail({ type: 'decline', to: customer.email, toName: customer.name, subject: `About your appointment request`, html, relatedId: saved.id, customerId: saved.customer_id, sentBy: req.user.name });
+      }
+    }
+  } catch (e) { console.error('[jobs] decline email failed:', e.message); }
+  res.json(saved);
+});
+
 // POST /jobs/:id/signoff — staff captures the customer's signature on-site.
 router.post('/:id/signoff', async (req, res) => {
   const job = await getById('jobs', req.params.id);

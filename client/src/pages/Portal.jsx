@@ -933,24 +933,70 @@ function ChangePasswordModal({ open, onClose }) {
 
 function RescheduleModal({ job, onClose, onDone }) {
   const [date, setDate] = useState('');
+  const [window, setWindow] = useState('');
+  const [slots, setSlots] = useState(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (job) setDate(job.scheduled_date || ''); }, [job]);
+  const minDate = tomorrowStr();
+  useEffect(() => { if (job) { setDate(''); setWindow(''); setSlots(null); } }, [job]);
+
+  useEffect(() => {
+    if (!date) { setSlots(null); return; }
+    setLoadingSlots(true); setWindow('');
+    api.get(`/portal/availability?date=${date}`)
+      .then(r => setSlots(r.data.windows || []))
+      .catch(() => setSlots([]))
+      .finally(() => setLoadingSlots(false));
+  }, [date]);
+
   async function save() {
+    if (!date) return toast.error('Please pick a new date.');
+    if (!window) return toast.error('Please choose an available arrival window.');
     setSaving(true);
     try {
-      await api.put(`/portal/jobs/${job.id}/reschedule`, { preferred_date: date });
-      toast.success('Preferred date updated');
+      await api.put(`/portal/jobs/${job.id}/reschedule`, { preferred_date: date, booking_window: window });
+      toast.success('Appointment moved — the office will confirm the new time.');
       onClose(); onDone();
-    } catch (e) { toast.error(e.response?.data?.error || 'Could not reschedule'); }
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Could not reschedule');
+      if (e.response?.status === 409 && date) {
+        api.get(`/portal/availability?date=${date}`).then(r => setSlots(r.data.windows || [])).catch(() => {});
+        setWindow('');
+      }
+    }
     finally { setSaving(false); }
   }
   return (
-    <Modal open={!!job} onClose={onClose} title="Reschedule Service" subtitle={job?.title} size="sm">
+    <Modal open={!!job} onClose={onClose} title="Reschedule Appointment" subtitle={job?.title} size="sm">
       <div className="space-y-3">
-        <Input label="New preferred date" type="date" value={date} onChange={e => setDate(e.target.value)} />
+        <Input label="New date *" type="date" min={minDate} value={date} onChange={e => setDate(e.target.value)} />
+        {date && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Arrival window *</label>
+            {loadingSlots ? (
+              <p className="text-sm text-slate-400">Checking availability…</p>
+            ) : slots && slots.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {slots.map(s => (
+                  <button key={s.label} type="button" disabled={s.full}
+                    onClick={() => setWindow(s.label)}
+                    className={`text-sm rounded-lg px-3 py-2 ring-1 text-left transition-colors ${
+                      s.full ? 'bg-slate-50 text-slate-300 ring-slate-200 cursor-not-allowed line-through'
+                      : window === s.label ? 'bg-blue-600 text-white ring-blue-600'
+                      : 'bg-white text-slate-700 ring-slate-200 hover:border-slate-300'}`}>
+                    <span className="block font-medium">{s.label}</span>
+                    <span className={`text-xs ${window === s.label ? 'text-blue-100' : 'text-slate-400'}`}>{s.full ? 'Full' : `${s.remaining} left`}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-amber-600">No openings on this day — please try another date.</p>
+            )}
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={save} loading={saving}>{saving ? 'Saving…' : 'Update Date'}</Btn>
+          <Btn onClick={save} loading={saving}>{saving ? 'Saving…' : 'Move Appointment'}</Btn>
         </div>
       </div>
     </Modal>

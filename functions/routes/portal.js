@@ -44,8 +44,8 @@ const tomorrowISO = () => { const d = new Date(); d.setDate(d.getDate() + 1); re
 // How many non-cancelled jobs already occupy each window on a given date.
 // A job counts if it was booked into the window (booking_window) OR its scheduled_time
 // falls inside the window's time range — so office-scheduled work consumes capacity too.
-function occupancyForDate(jobs, date) {
-  const day = jobs.filter(j => j.scheduled_date === date && j.status !== 'cancelled');
+function occupancyForDate(jobs, date, excludeId = null) {
+  const day = jobs.filter(j => j.scheduled_date === date && j.status !== 'cancelled' && j.id !== excludeId);
   const counts = {};
   for (const w of BOOKING_WINDOWS) {
     counts[w.label] = day.filter(j =>
@@ -298,13 +298,44 @@ router.post('/jobs/:id/cancel', async (req, res) => {
   res.json(saved);
 });
 
-// PUT /portal/jobs/:id/reschedule — change the preferred date of an unstarted service.
+// PUT /portal/jobs/:id/reschedule — move an unstarted service to a new open slot.
 router.put('/jobs/:id/reschedule', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   const job = await getById('jobs', req.params.id);
   if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
   if (!['pending', 'scheduled'].includes(job.status)) return res.status(400).json({ error: 'This service can no longer be rescheduled' });
-  const saved = await update('jobs', req.params.id, { scheduled_date: req.body.preferred_date || null });
+
+  const { preferred_date, booking_window } = req.body;
+  if (!preferred_date) return res.status(400).json({ error: 'Please pick a new date.' });
+  if (preferred_date < tomorrowISO()) return res.status(400).json({ error: 'Please choose a date starting tomorrow.' });
+  const window = BOOKING_WINDOWS.find(w => w.label === booking_window);
+  if (!window) return res.status(400).json({ error: 'Please choose an arrival window.' });
+
+  const capacity = Math.max(1, Number(await settings.get('booking_slot_capacity')) || 2);
+  const allJobs = await list('jobs');
+  const occupied = occupancyForDate(allJobs, preferred_date, job.id)[window.label] || 0; // don't count this job against itself
+  if (occupied >= capacity) return res.status(409).json({ error: 'Sorry, that time slot just filled up. Please pick another window.' });
+
+  // Moving the appointment sends it back to pending so the office re-confirms the new time.
+  const saved = await update('jobs', req.params.id, {
+    scheduled_date: preferred_date, booking_window: window.label, scheduled_time: null, status: 'pending',
+  });
+
+  // Let the office know the customer moved their appointment.
+  try {
+    const to = await settings.get('business_email');
+    const customer = await getById('customers', job.customer_id);
+    if (to) {
+      const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+        <p><strong>${customer?.name || 'A customer'} rescheduled their appointment.</strong></p>
+        <p><strong>Service:</strong> ${job.title}<br/>
+        <strong>New date:</strong> ${preferred_date}<br/>
+        <strong>New arrival window:</strong> ${window.label}</p>
+        <p>This slot is held pending your confirmation.</p></div>`;
+      await sendMail({ type: 'reschedule', to, toName: 'Clarke Mechanical', subject: `Appointment rescheduled — ${customer?.name || ''}`, html, relatedId: job.id, customerId: job.customer_id, sentBy: 'Customer Portal' });
+    }
+  } catch (e) { console.error('[portal] reschedule notify failed:', e.message); }
+
   res.json(saved);
 });
 

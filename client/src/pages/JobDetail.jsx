@@ -51,6 +51,11 @@ export default function JobDetail() {
   const [confirmTime, setConfirmTime] = useState('');
   const [confirmTech, setConfirmTech] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestDate, setSuggestDate] = useState('');
+  const [suggestWindow, setSuggestWindow] = useState('');
+  const [suggesting, setSuggesting] = useState(false);
+  const [declining, setDeclining] = useState(false);
 
   async function captureSignoff() {
     if (!signName.trim()) return toast.error('Enter the customer name');
@@ -78,6 +83,29 @@ export default function JobDetail() {
       setConfirmTime(''); setConfirmTech(''); load();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not confirm the appointment'); }
     finally { setConfirming(false); }
+  }
+
+  async function suggestTime() {
+    if (!suggestDate) return toast.error('Pick a date to suggest');
+    if (!suggestWindow) return toast.error('Pick an arrival window');
+    setSuggesting(true);
+    try {
+      await api.post(`/jobs/${id}/suggest-time`, { scheduled_date: suggestDate, booking_window: suggestWindow });
+      toast.success('New time suggested — customer notified');
+      setSuggestOpen(false); setSuggestDate(''); setSuggestWindow(''); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not send suggestion'); }
+    finally { setSuggesting(false); }
+  }
+
+  async function declineBooking() {
+    if (!window.confirm('Decline this appointment request? The customer will be emailed and asked to book another time.')) return;
+    setDeclining(true);
+    try {
+      await api.post(`/jobs/${id}/decline-booking`, {});
+      toast.success('Request declined — customer notified');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not decline'); }
+    finally { setDeclining(false); }
   }
 
   async function createInspectionForJob() {
@@ -333,6 +361,28 @@ export default function JobDetail() {
                 </div>
                 <Btn onClick={confirmBooking} loading={confirming}><CalendarCheck size={15} /> Confirm & notify customer</Btn>
               </div>
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <Btn size="sm" variant="outline" onClick={() => setSuggestOpen(o => !o)}><Calendar size={14} /> Suggest another time</Btn>
+                <Btn size="sm" variant="outline" className="!text-red-600 !border-red-200 hover:!bg-red-50" onClick={declineBooking} loading={declining}><Trash2 size={14} /> Decline request</Btn>
+              </div>
+              {suggestOpen && (
+                <div className="flex flex-wrap items-end gap-3 mt-3 p-3 rounded-lg bg-white ring-1 ring-slate-200">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">New date</label>
+                    <input type="date" value={suggestDate} onChange={e => setSuggestDate(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Arrival window</label>
+                    <select value={suggestWindow} onChange={e => setSuggestWindow(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 bg-white min-w-[160px]">
+                      <option value="">Choose…</option>
+                      {Object.keys(WINDOW_START).map(w => <option key={w} value={w}>{w}</option>)}
+                    </select>
+                  </div>
+                  <Btn size="sm" onClick={suggestTime} loading={suggesting}>Send suggestion</Btn>
+                </div>
+              )}
             </div>
           </div>
         </Card>
