@@ -113,6 +113,7 @@ export default function Portal() {
   const [reqModal, setReqModal] = useState(false);
   const [reqPrefill, setReqPrefill] = useState(null);
   const [profileModal, setProfileModal] = useState(false);
+  const [verifyKind, setVerifyKind] = useState(null);
   const [pwModal, setPwModal] = useState(false);
   const [rescheduleJob, setRescheduleJob] = useState(null);
   const [reviewJob, setReviewJob] = useState(null);
@@ -272,8 +273,20 @@ export default function Portal() {
           <Card className="p-5 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-                <span className="flex items-center gap-2"><Mail size={14} className="text-slate-400" />{me.email}</span>
-                {me.profile?.phone && <span className="flex items-center gap-2"><Phone size={14} className="text-slate-400" />{me.profile.phone}</span>}
+                <span className="flex items-center gap-2">
+                  <Mail size={14} className="text-slate-400" />{me.email}
+                  {me.profile?.email_verified
+                    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
+                    : <button onClick={() => setVerifyKind('email')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
+                </span>
+                {me.profile?.phone && (
+                  <span className="flex items-center gap-2">
+                    <Phone size={14} className="text-slate-400" />{me.profile.phone}
+                    {me.profile?.phone_verified
+                      ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
+                      : <button onClick={() => setVerifyKind('phone')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
+                  </span>
+                )}
                 {(me.profile?.address || me.profile?.city) && <span className="flex items-center gap-2"><MapPin size={14} className="text-slate-400" />{[me.profile.address, me.profile.city, me.profile.state].filter(Boolean).join(', ')}</span>}
               </div>
               <button onClick={() => setPwModal(true)} className="text-xs font-medium text-slate-500 hover:text-blue-600 flex items-center gap-1.5"><Lock size={12} /> Change password</button>
@@ -641,6 +654,7 @@ export default function Portal() {
 
       <ServiceRequestModal open={reqModal} initial={reqPrefill} onClose={() => { setReqModal(false); setReqPrefill(null); }} onDone={load} />
       <ProfileModal open={profileModal} onClose={() => setProfileModal(false)} profile={me?.profile} onDone={load} />
+      <VerifyModal kind={verifyKind} target={verifyKind === 'phone' ? me?.profile?.phone : me?.email} onClose={() => setVerifyKind(null)} onDone={load} />
       <ChangePasswordModal open={pwModal} onClose={() => setPwModal(false)} />
       <RescheduleModal job={rescheduleJob} onClose={() => setRescheduleJob(null)} onDone={load} />
       <ReviewModal job={reviewJob} onClose={() => setReviewJob(null)} onDone={load} />
@@ -851,6 +865,68 @@ function ServiceRequestModal({ open, onClose, onDone, initial }) {
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>
           <Btn onClick={submit} loading={saving}>{saving ? 'Sending…' : 'Send Request'}</Btn>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function VerifyModal({ kind, target, onClose, onDone }) {
+  const [stage, setStage] = useState('send'); // 'send' | 'code'
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [notAvailable, setNotAvailable] = useState('');
+  const label = kind === 'phone' ? 'phone number' : 'email address';
+  useEffect(() => { if (kind) { setStage('send'); setCode(''); setNotAvailable(''); } }, [kind]);
+
+  async function sendCode() {
+    setBusy(true); setNotAvailable('');
+    try {
+      await api.post(`/portal/verify/${kind}/send`);
+      toast.success(kind === 'phone' ? 'Code texted to your phone' : 'Code sent to your email');
+      setStage('code');
+    } catch (e) {
+      if (e.response?.status === 503) setNotAvailable(e.response?.data?.message || 'Text verification isn’t enabled yet.');
+      else toast.error(e.response?.data?.error || 'Could not send the code');
+    } finally { setBusy(false); }
+  }
+  async function confirmCode() {
+    if (code.trim().length < 4) return toast.error('Enter the code we sent you');
+    setBusy(true);
+    try {
+      await api.post(`/portal/verify/${kind}/confirm`, { code: code.trim() });
+      toast.success(`Your ${label} is verified`);
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'That code did not work'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open={!!kind} onClose={onClose} title={`Verify your ${label}`} size="sm">
+      <div className="space-y-4">
+        {notAvailable ? (
+          <p className="text-sm text-slate-600">{notAvailable} Please verify your email instead, or contact the office.</p>
+        ) : stage === 'send' ? (
+          <>
+            <p className="text-sm text-slate-600">We'll send a 6-digit code to <strong>{target}</strong>. Enter it to confirm this {label} is yours.</p>
+            <div className="flex justify-end gap-2">
+              <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+              <Btn onClick={sendCode} loading={busy}>Send code</Btn>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-600">Enter the 6-digit code we sent to <strong>{target}</strong>.</p>
+            <Input label="Verification code" value={code} inputMode="numeric" maxLength={6}
+              onChange={e => setCode(e.target.value.replace(/\D/g, ''))} placeholder="123456" />
+            <div className="flex justify-between items-center">
+              <button onClick={sendCode} disabled={busy} className="text-xs font-medium text-blue-600 hover:text-blue-700">Resend code</button>
+              <div className="flex gap-2">
+                <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+                <Btn onClick={confirmCode} loading={busy}>Verify</Btn>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );

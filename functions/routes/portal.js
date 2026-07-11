@@ -344,11 +344,80 @@ router.put('/profile', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   if (!ids.length) return res.status(422).json({ error: "Your account isn't linked to a customer record yet." });
   const { phone, address, city, state, zip, email_opt_in, sms_opt_in } = req.body;
-  const saved = await update('customers', ids[0], {
+  const current = await getById('customers', ids[0]);
+  const patch = {
     phone: phone || null, address: address || null, city: city || null, state: state || null, zip: zip || null,
     email_opt_in: email_opt_in !== false, sms_opt_in: !!sms_opt_in,
+  };
+  // Changing the phone number invalidates a prior phone verification.
+  if ((phone || null) !== (current?.phone || null)) { patch.phone_verified = false; patch.phone_verify_code = null; }
+  const saved = await update('customers', ids[0], patch);
+  res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip, email_opt_in: saved.email_opt_in, sms_opt_in: saved.sms_opt_in, email_verified: !!saved.email_verified, phone_verified: !!saved.phone_verified });
+});
+
+// ---- Contact verification ----
+const genCode = () => String(Math.floor(100000 + Math.random() * 900000));
+const smsConfigured = () => !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM);
+async function sendSms(to, body) {
+  const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN, from = process.env.TWILIO_FROM;
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${tok}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ To: to, From: from, Body: body }),
   });
-  res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip, email_opt_in: saved.email_opt_in, sms_opt_in: saved.sms_opt_in });
+  if (!r.ok) throw new Error(`Twilio ${r.status}`);
+}
+
+// Email a 6-digit verification code.
+router.post('/verify/email/send', async (req, res) => {
+  const { records } = await myCustomerIds(req);
+  const customer = records[0];
+  if (!customer?.email) return res.status(400).json({ error: 'There is no email address on file.' });
+  if (customer.email_verified) return res.json({ ok: true, already: true });
+  const code = genCode();
+  await update('customers', customer.id, { email_verify_code: code, email_verify_expires: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
+  const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
+    <p>Hi ${customer.name || 'there'},</p>
+    <p>Your Clarke Mechanical verification code is:</p>
+    <p style="font-size:30px;font-weight:700;letter-spacing:6px;color:#0f172a;margin:8px 0">${code}</p>
+    <p style="font-size:13px;color:#64748b">This code expires in 15 minutes. If you didn't request it, you can ignore this email.</p></div>`;
+  try { await sendMail({ type: 'verify_email', to: customer.email, toName: customer.name, subject: `Your verification code: ${code}`, html, customerId: customer.id, sentBy: 'Automated' }); }
+  catch (e) { console.error('[portal] verify email failed:', e.message); return res.status(502).json({ error: 'Could not send the code. Please try again.' }); }
+  res.json({ ok: true });
+});
+
+router.post('/verify/email/confirm', async (req, res) => {
+  const { records } = await myCustomerIds(req);
+  const customer = records[0];
+  const code = (req.body.code || '').trim();
+  if (!customer?.email_verify_code || customer.email_verify_code !== code) return res.status(400).json({ error: 'That code is incorrect.' });
+  if (new Date(customer.email_verify_expires || 0).getTime() < Date.now()) return res.status(400).json({ error: 'That code has expired. Please request a new one.' });
+  await update('customers', customer.id, { email_verified: true, email_verify_code: null, email_verify_expires: null });
+  res.json({ ok: true });
+});
+
+// Text a 6-digit verification code (needs an SMS provider configured).
+router.post('/verify/phone/send', async (req, res) => {
+  const { records } = await myCustomerIds(req);
+  const customer = records[0];
+  if (!customer?.phone) return res.status(400).json({ error: 'There is no phone number on file.' });
+  if (customer.phone_verified) return res.json({ ok: true, already: true });
+  if (!smsConfigured()) return res.status(503).json({ error: 'not_configured', message: 'Text verification isn’t enabled yet.' });
+  const code = genCode();
+  await update('customers', customer.id, { phone_verify_code: code, phone_verify_expires: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
+  try { await sendSms(customer.phone, `Clarke Mechanical verification code: ${code}`); }
+  catch (e) { console.error('[portal] verify sms failed:', e.message); return res.status(502).json({ error: 'Could not send the text. Please try again later.' }); }
+  res.json({ ok: true });
+});
+
+router.post('/verify/phone/confirm', async (req, res) => {
+  const { records } = await myCustomerIds(req);
+  const customer = records[0];
+  const code = (req.body.code || '').trim();
+  if (!customer?.phone_verify_code || customer.phone_verify_code !== code) return res.status(400).json({ error: 'That code is incorrect.' });
+  if (new Date(customer.phone_verify_expires || 0).getTime() < Date.now()) return res.status(400).json({ error: 'That code has expired. Please request a new one.' });
+  await update('customers', customer.id, { phone_verified: true, phone_verify_code: null, phone_verify_expires: null });
+  res.json({ ok: true });
 });
 
 // GET /portal/payment-config — the publishable Stripe key for the browser.
