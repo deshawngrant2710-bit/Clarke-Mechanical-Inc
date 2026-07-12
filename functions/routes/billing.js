@@ -18,13 +18,19 @@ const withItemTotals = (items = []) => items.map(i => ({
   unit_price: Number(i.unit_price) || 0, total: (Number(i.quantity) || 0) * (Number(i.unit_price) || 0),
 }));
 
-// Next sequential number like INV-2026-0001 / QUO-2026-0001.
-async function nextNumber(collection, prefix) {
-  const year = new Date().getFullYear();
+// Sequential document numbers.
+//  - useYear=false → simple running sequence like CL-0001, CL-0002 …
+//  - useYear=true  → year-scoped like QUO-2026-0001
+async function nextNumber(collection, prefix, useYear = false) {
   const all = await list(collection);
   const field = collection === 'invoices' ? 'invoice_number' : 'quote_number';
-  const count = all.filter(x => (x[field] || '').startsWith(`${prefix}-${year}-`)).length + 1;
-  return `${prefix}-${year}-${String(count).padStart(4, '0')}`;
+  if (useYear) {
+    const year = new Date().getFullYear();
+    const count = all.filter(x => (x[field] || '').startsWith(`${prefix}-${year}-`)).length + 1;
+    return `${prefix}-${year}-${String(count).padStart(4, '0')}`;
+  }
+  const count = all.filter(x => (x[field] || '').startsWith(`${prefix}-`)).length + 1;
+  return `${prefix}-${String(count).padStart(4, '0')}`;
 }
 
 /* ---------------- INVOICES ---------------- */
@@ -58,7 +64,7 @@ router.post('/invoices', async (req, res) => {
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
   const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
-  const invoice_number = await nextNumber('invoices', 'INV');
+  const invoice_number = await nextNumber('invoices', 'CL');
   const saved = await create('invoices', uuid(), {
     invoice_number, customer_id: customer_id || null, job_id: job_id || null, status: status || 'draft',
     issue_date: issue_date || null, due_date: due_date || null, subtotal, tax_rate: rate, tax_amount, total,
@@ -120,7 +126,7 @@ router.post('/quotes', async (req, res) => {
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
   const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
-  const quote_number = await nextNumber('quotes', 'QUO');
+  const quote_number = await nextNumber('quotes', 'QUO', true);
   const saved = await create('quotes', uuid(), {
     quote_number, customer_id: customer_id || null, status: status || 'draft', issue_date: issue_date || null,
     expiry_date: expiry_date || null, subtotal, tax_rate: rate, tax_amount, total, notes: notes || null, items: lineItems,

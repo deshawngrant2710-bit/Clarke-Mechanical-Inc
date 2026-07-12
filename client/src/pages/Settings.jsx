@@ -88,17 +88,6 @@ export default function Settings() {
         <Btn onClick={save} loading={saving}>Save Changes</Btn>
       </PageHeader>
 
-      {/* Status */}
-      <div className={`mb-6 p-4 rounded-2xl border flex items-center gap-3 ${data.configured ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-        {data.configured ? <CheckCircle2 size={20} className="shrink-0" /> : <Mail size={20} className="shrink-0" />}
-        <div>
-          <p className="text-sm font-semibold">{data.configured ? 'Live email is active' : 'Demo mode — email is simulated'}</p>
-          <p className="text-xs opacity-80">{data.configured
-            ? 'Emails are delivered via your configured SMTP server.'
-            : 'Emails are rendered and logged but not delivered. Add SMTP details below to go live.'}</p>
-        </div>
-      </div>
-
       <div className="space-y-6">
         {/* Business info */}
         <Card>
@@ -108,11 +97,14 @@ export default function Settings() {
             <Input label="Public email" icon={<Mail size={15} />} value={data.business_email} onChange={set('business_email')} hint="Shown in email footers & reply-to" />
             <Input label="Phone" value={data.business_phone} onChange={set('business_phone')} />
             <Input label="Business hours" value={data.business_hours || ''} onChange={set('business_hours')} hint="Shown to customers in the portal" />
+            <Input label="Website" value={data.business_website || ''} onChange={set('business_website')} hint="Shown in email footer (leave blank to hide)" placeholder="www.clarkemechanicalinc.org" />
+            <Input label="Tagline" value={data.business_tagline || ''} onChange={set('business_tagline')} hint="Short slogan shown in email header & footer" />
             <Input label="Online booking: jobs per time slot" type="number" min="1" step="1" value={data.booking_slot_capacity || '2'}
               onChange={set('booking_slot_capacity')} hint="How many appointments customers can book in each arrival window" />
             <Input label="Default tax rate (%)" type="number" step="0.01" value={(Number(data.default_tax_rate || 0) * 100).toFixed(2)}
               onChange={e => setData(d => ({ ...d, default_tax_rate: String((Number(e.target.value) || 0) / 100) }))} hint="Applied to new invoices & estimates" />
             <Input label="From address" value={data.email_from} onChange={set('email_from')} hint={'e.g. Clarke Mechanical <no-reply@…>'} />
+            <Input label="Reply-to address" value={data.email_reply_to || ''} onChange={set('email_reply_to')} hint="Where customer replies go (e.g. your Gmail). Leave blank to use the public email." />
           </div>
         </Card>
 

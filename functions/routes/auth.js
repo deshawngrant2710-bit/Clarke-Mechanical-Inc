@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
 const { db, findOne, create, getById, update, remove } = require('../lib/db');
 const { JWT_SECRET, authMiddleware } = require('../middleware/auth');
-const { sendMail } = require('../lib/email');
+const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -30,13 +30,9 @@ router.post('/forgot-password', async (req, res) => {
       await create('password_resets', token, { user_id: user.id, email, expires_at, used: false });
       const origin = req.headers.origin || process.env.APP_URL || '';
       const link = `${origin}/reset-password?token=${token}`;
-      const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
-        <p>Hi ${user.name || 'there'},</p>
-        <p>We received a request to reset your password. Click the button below to choose a new one. This link expires in 1 hour.</p>
-        <p style="margin:18px 0"><a href="${link}" style="background:#2563eb;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;display:inline-block">Reset my password</a></p>
-        <p style="font-size:13px;color:#64748b">If you didn't request this, you can safely ignore this email — your password won't change.</p></div>`;
       try {
-        await sendMail({ type: 'password_reset', to: email, toName: user.name, subject: 'Reset your Clarke Mechanical password', html, customerId: null, sentBy: 'Automated' });
+        const { subject, html } = await render('password_reset', { name: user.name, link });
+        await sendMail({ type: 'password_reset', to: email, toName: user.name, subject, html, customerId: null, sentBy: 'Automated' });
       } catch (e) { console.error('[auth] reset email failed:', e.message); }
     }
     res.json({ ok: true });

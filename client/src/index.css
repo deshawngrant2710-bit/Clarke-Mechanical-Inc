@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Use Inter across the app (loaded in index.html) for consistent, professional type. */
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Clarke Mechanical — Design Tokens                                  */
 /* ------------------------------------------------------------------ */
@@ -30,18 +35,24 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background-color: var(--surface-sunk);
   color: #0f172a;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* Brand-tinted text selection. */
+::selection { background: rgb(37 99 235 / 0.16); color: #0f172a; }
+
+/* Tabular, aligned figures for money/quantities. */
+.tabular-nums, table { font-variant-numeric: tabular-nums; }
+
 /* ------------------------------------------------------------------ */
 /*  Typography scale                                                   */
 /* ------------------------------------------------------------------ */
-.text-page-title    { font-size: 34px; line-height: 1.1;  font-weight: 800; letter-spacing: -0.02em; }
-.text-section-title { font-size: 22px; line-height: 1.2;  font-weight: 700; letter-spacing: -0.01em; }
-.text-card-title    { font-size: 16px; line-height: 1.3;  font-weight: 600; }
+.text-page-title    { font-size: 30px; line-height: 1.15; font-weight: 700; letter-spacing: -0.022em; text-wrap: balance; }
+.text-section-title { font-size: 20px; line-height: 1.25; font-weight: 700; letter-spacing: -0.014em; text-wrap: balance; }
+.text-card-title    { font-size: 15px; line-height: 1.35; font-weight: 600; letter-spacing: -0.006em; }
 
 /* ------------------------------------------------------------------ */
 /*  Custom scrollbars                                                  */

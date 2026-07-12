@@ -376,13 +376,10 @@ router.post('/verify/email/send', async (req, res) => {
   if (customer.email_verified) return res.json({ ok: true, already: true });
   const code = genCode();
   await update('customers', customer.id, { email_verify_code: code, email_verify_expires: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
-  const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
-    <p>Hi ${customer.name || 'there'},</p>
-    <p>Your Clarke Mechanical verification code is:</p>
-    <p style="font-size:30px;font-weight:700;letter-spacing:6px;color:#0f172a;margin:8px 0">${code}</p>
-    <p style="font-size:13px;color:#64748b">This code expires in 15 minutes. If you didn't request it, you can ignore this email.</p></div>`;
-  try { await sendMail({ type: 'verify_email', to: customer.email, toName: customer.name, subject: `Your verification code: ${code}`, html, customerId: customer.id, sentBy: 'Automated' }); }
-  catch (e) { console.error('[portal] verify email failed:', e.message); return res.status(502).json({ error: 'Could not send the code. Please try again.' }); }
+  try {
+    const { subject, html } = await render('verify_code', { name: customer.name, code });
+    await sendMail({ type: 'verify_email', to: customer.email, toName: customer.name, subject, html, customerId: customer.id, sentBy: 'Automated' });
+  } catch (e) { console.error('[portal] verify email failed:', e.message); return res.status(502).json({ error: 'Could not send the code. Please try again.' }); }
   res.json({ ok: true });
 });
 
