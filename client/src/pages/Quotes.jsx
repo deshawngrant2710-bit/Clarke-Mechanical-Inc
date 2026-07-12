@@ -26,6 +26,7 @@ export default function Quotes() {
   const [saving, setSaving] = useState(false);
   const [taxInput, setTaxInput] = useState('8.75');
   const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
+  const [priceBook, setPriceBook] = useState([]);
 
   function load() {
     Promise.all([api.get('/billing/quotes'), api.get('/customers'), api.get('/billing/config')])
@@ -34,6 +35,7 @@ export default function Quotes() {
         setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.0875) * 10000) / 100));
         setLoading(false);
       });
+    api.get('/pricebook').then(r => setPriceBook(r.data)).catch(() => {});
   }
   useEffect(load, []);
 
@@ -86,6 +88,10 @@ export default function Quotes() {
     setForm(f => {
       const items = [...f.items];
       items[idx] = { ...items[idx], [key]: key === 'description' ? val : Number(val) };
+      if (key === 'description') {
+        const match = priceBook.find(p => (p.name || '').toLowerCase() === val.trim().toLowerCase());
+        if (match) items[idx].unit_price = Number(match.unit_price) || 0;
+      }
       return { ...f, items };
     });
   }
@@ -183,6 +189,9 @@ export default function Quotes() {
           </div>
 
           <div>
+            <datalist id="pb-items">
+              {priceBook.map(p => <option key={p.id} value={p.name}>{p.category ? `${p.category} · ` : ''}${(Number(p.unit_price) || 0).toFixed(2)}</option>)}
+            </datalist>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-700">Line items</label>
               <button onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
@@ -190,6 +199,7 @@ export default function Quotes() {
                 <PlusCircle size={14} /> Add line
               </button>
             </div>
+            {priceBook.length > 0 && <p className="text-[11px] text-slate-400 mb-2">Tip: start typing a description to pick from your price book — the price fills in automatically.</p>}
             <div className="hidden sm:grid grid-cols-12 gap-2 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
               <span className="col-span-5">Description</span>
               <span className="col-span-2 text-right">Qty</span>
@@ -201,6 +211,7 @@ export default function Quotes() {
               {form.items.map((item, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
                   <input placeholder="Description" value={item.description} onChange={e => setItem(i, 'description', e.target.value)}
+                    list="pb-items"
                     className="col-span-12 sm:col-span-5 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
                   <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
                     className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
