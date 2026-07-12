@@ -32,7 +32,9 @@ export default function CustomerDetail() {
   async function handleSave() {
     setSaving(true);
     try {
-      await api.put(`/customers/${id}`, form);
+      const contact = [form.first_name, form.last_name].map(s => (s || '').trim()).filter(Boolean).join(' ');
+      const name = (form.business_name || '').trim() || contact || (form.name || '').trim();
+      await api.put(`/customers/${id}`, { ...form, name });
       toast.success('Customer updated');
       setEditModal(false); load();
     } catch { toast.error('Error updating'); }
