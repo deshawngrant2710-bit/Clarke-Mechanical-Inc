@@ -42,24 +42,35 @@ router.get('/:id', async (req, res) => {
   res.json({ ...customer, jobs });
 });
 
+// Build the customer's fields from the request, deriving the display `name`
+// from the business name or contact first/last so all downstream code (jobs,
+// invoices, portal) keeps working off `name`.
+function customerFields(b) {
+  const business = (b.business_name || '').trim();
+  const first = (b.first_name || '').trim();
+  const last = (b.last_name || '').trim();
+  const contact = [first, last].filter(Boolean).join(' ');
+  const name = business || contact || (b.name || '').trim();
+  return {
+    name, business_name: business || null, first_name: first || null, last_name: last || null,
+    email: b.email || null, phone: b.phone || null, address: b.address || null,
+    city: b.city || null, state: b.state || null, zip: b.zip || null, notes: b.notes || null,
+  };
+}
+
 router.post('/', async (req, res) => {
-  const { name, email, phone, address, city, state, zip, notes } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name is required' });
-  const saved = await create('customers', uuid(), {
-    name, email: email || null, phone: phone || null, address: address || null,
-    city: city || null, state: state || null, zip: zip || null, notes: notes || null,
-  });
+  const fields = customerFields(req.body);
+  if (!fields.name) return res.status(400).json({ error: 'A business name or contact name is required' });
+  const saved = await create('customers', uuid(), fields);
   res.status(201).json(saved);
 });
 
 router.put('/:id', async (req, res) => {
   const existing = await getById('customers', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Customer not found' });
-  const { name, email, phone, address, city, state, zip, notes } = req.body;
-  const saved = await update('customers', req.params.id, {
-    name, email: email || null, phone: phone || null, address: address || null,
-    city: city || null, state: state || null, zip: zip || null, notes: notes || null,
-  });
+  const fields = customerFields(req.body);
+  if (!fields.name) return res.status(400).json({ error: 'A business name or contact name is required' });
+  const saved = await update('customers', req.params.id, fields);
   res.json(saved);
 });
 

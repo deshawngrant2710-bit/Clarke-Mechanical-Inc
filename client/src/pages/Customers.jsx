@@ -9,7 +9,7 @@ import {
 import { Plus, Search, Phone, Mail, MapPin, Users, UserPlus, CalendarPlus, DollarSign, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const empty = { name: '', email: '', phone: '', address: '', city: '', state: '', zip: '', notes: '' };
+const empty = { business_name: '', first_name: '', last_name: '', email: '', phone: '', address: '', city: '', state: '', zip: '', notes: '' };
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
 function isThisMonth(dateStr) {
@@ -58,10 +58,12 @@ export default function Customers() {
   };
 
   async function handleSave() {
-    if (!form.name.trim()) return toast.error('Name is required');
+    if (!form.business_name.trim() && !form.first_name.trim() && !form.last_name.trim()) return toast.error('Enter a business name or a contact name');
     setSaving(true);
     try {
-      await api.post('/customers', form);
+      const contact = [form.first_name, form.last_name].map(s => (s || '').trim()).filter(Boolean).join(' ');
+      const name = form.business_name.trim() || contact;
+      await api.post('/customers', { ...form, name });
       toast.success('Customer added');
       setModal(false);
       setForm(empty);
@@ -127,6 +129,9 @@ export default function Customers() {
                     <Avatar name={c.name} className="w-9 h-9 text-xs" />
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-800 truncate">{c.name}</p>
+                      {c.business_name && (c.first_name || c.last_name) && (
+                        <p className="text-xs text-slate-500 truncate">{[c.first_name, c.last_name].filter(Boolean).join(' ')}</p>
+                      )}
                       {isThisMonth(c.created_at) && <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">New</span>}
                     </div>
                   </div>
@@ -163,7 +168,11 @@ export default function Customers() {
 
       <Modal open={modal} onClose={() => setModal(false)} title="Add Customer" subtitle="Create a new customer account">
         <div className="space-y-3">
-          <Input label="Full Name *" icon={<Users size={15} />} value={form.name} valid={form.name.trim().length > 1} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Doe or Acme Corp" />
+          <Input label="Business name (optional)" icon={<Users size={15} />} value={form.business_name} onChange={e => setForm(f => ({ ...f, business_name: e.target.value }))} hint="Leave blank for a residential customer and use the contact name below" />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Contact first name" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} />
+            <Input label="Contact last name" value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Phone" icon={<Phone size={15} />} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(555) 000-0000" />
             <Input label="Email" icon={<Mail size={15} />} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="name@email.com" />

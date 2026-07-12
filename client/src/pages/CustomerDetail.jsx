@@ -198,7 +198,11 @@ export default function CustomerDetail() {
 
       <Modal open={editModal} onClose={() => setEditModal(false)} title="Edit Customer">
         <div className="space-y-3">
-          <Input label="Full Name *" value={form.name || ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          <Input label="Business name (optional)" value={form.business_name || ''} onChange={e => setForm(f => ({ ...f, business_name: e.target.value }))} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Contact first name" value={form.first_name || ''} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} />
+            <Input label="Contact last name" value={form.last_name || ''} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Phone" icon={<Phone size={15} />} value={form.phone || ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
             <Input label="Email" icon={<Mail size={15} />} type="email" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
