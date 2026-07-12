@@ -5,8 +5,27 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { BookOpen, Plus, Pencil, Trash2, Tag } from 'lucide-react';
+import { BookOpen, Plus, Pencil, Trash2, Tag, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// Minimal CSV parser that handles quoted fields, commas and escaped quotes.
+function parseCSV(text) {
+  const rows = []; let field = '', row = [], inQ = false, i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i += 2; continue; } inQ = false; i++; continue; }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQ = true; i++; continue; }
+    if (c === ',') { row.push(field); field = ''; i++; continue; }
+    if (c === '\r') { i++; continue; }
+    if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+    field += c; i++;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
 
 const empty = { name: '', category: '', unit: '', unit_price: 0, notes: '' };
 const money = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -19,9 +38,44 @@ export default function PriceBook() {
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   function load() { api.get('/pricebook').then(r => setItems(r.data)); }
   useEffect(load, []);
+
+  async function onImport(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text).filter(r => r.some(c => c && c.trim()));
+      if (rows.length < 2) return toast.error('That file looks empty.');
+      const header = rows[0].map(h => h.trim().toLowerCase());
+      const idx = (names) => header.findIndex(h => names.includes(h));
+      const iName = idx(['name', 'item', 'description']);
+      const iPrice = idx(['price', 'unit_price', 'charge', 'charge them']);
+      const iCat = idx(['category', 'section']);
+      const iUnit = idx(['unit']);
+      const iNotes = idx(['notes', 'note']);
+      if (iName === -1 || iPrice === -1) return toast.error('CSV needs at least "name" and "price" columns.');
+      const parsed = rows.slice(1).map(r => ({
+        name: (r[iName] || '').trim(),
+        category: iCat > -1 ? (r[iCat] || '').trim() : '',
+        unit: iUnit > -1 ? (r[iUnit] || '').trim() : '',
+        unit_price: Number((r[iPrice] || '0').toString().replace(/[^0-9.]/g, '')) || 0,
+        notes: iNotes > -1 ? (r[iNotes] || '').trim() : '',
+      })).filter(it => it.name);
+      if (!parsed.length) return toast.error('No rows with an item name were found.');
+      const replace = window.confirm(`Import ${parsed.length} items?\n\nOK = replace the current price book\nCancel = add to what's already there`);
+      // (Cancel still imports, just without replacing — see below.)
+      setImporting(true);
+      const { data } = await api.post('/pricebook/import', { items: parsed, replace });
+      toast.success(`Imported ${data.added} items`);
+      load();
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not import that file'); }
+    finally { setImporting(false); }
+  }
 
   const categories = [...new Set((items || []).map(i => i.category).filter(Boolean))].sort();
   const filtered = (items || []).filter(i => {
@@ -56,6 +110,12 @@ export default function PriceBook() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Price Book" subtitle="Standard commercial pricing for quick quoting" icon={<BookOpen size={20} />}>
+        <label className="inline-flex">
+          <span className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer ${importing ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Upload size={16} /> {importing ? 'Importing…' : 'Import CSV'}
+          </span>
+          <input type="file" accept=".csv,text/csv" className="hidden" onChange={onImport} />
+        </label>
         <Btn onClick={openNew}><Plus size={16} /> New Item</Btn>
       </PageHeader>
 
