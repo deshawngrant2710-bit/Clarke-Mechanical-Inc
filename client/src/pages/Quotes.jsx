@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
+import PriceItemInput from '../components/PriceItemInput';
 import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
@@ -88,10 +89,13 @@ export default function Quotes() {
     setForm(f => {
       const items = [...f.items];
       items[idx] = { ...items[idx], [key]: key === 'description' ? val : Number(val) };
-      if (key === 'description') {
-        const match = priceBook.find(p => (p.name || '').toLowerCase() === val.trim().toLowerCase());
-        if (match) items[idx].unit_price = Number(match.unit_price) || 0;
-      }
+      return { ...f, items };
+    });
+  }
+  function pickItem(idx, it) {
+    setForm(f => {
+      const items = [...f.items];
+      items[idx] = { ...items[idx], description: it.name, unit_price: Number(it.unit_price) || 0 };
       return { ...f, items };
     });
   }
@@ -189,9 +193,6 @@ export default function Quotes() {
           </div>
 
           <div>
-            <datalist id="pb-items">
-              {priceBook.map(p => <option key={p.id} value={p.name}>{p.category ? `${p.category} · ` : ''}${(Number(p.unit_price) || 0).toFixed(2)}</option>)}
-            </datalist>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-700">Line items</label>
               <button onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
@@ -199,7 +200,7 @@ export default function Quotes() {
                 <PlusCircle size={14} /> Add line
               </button>
             </div>
-            {priceBook.length > 0 && <p className="text-[11px] text-slate-400 mb-2">Tip: start typing a description to pick from your price book — the price fills in automatically.</p>}
+            {priceBook.length > 0 && <p className="text-[11px] text-slate-400 mb-2">Tip: start typing a description to search your price book — the price fills in automatically.</p>}
             <div className="hidden sm:grid grid-cols-12 gap-2 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
               <span className="col-span-5">Description</span>
               <span className="col-span-2 text-right">Qty</span>
@@ -210,9 +211,8 @@ export default function Quotes() {
             <div className="space-y-2">
               {form.items.map((item, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <input placeholder="Description" value={item.description} onChange={e => setItem(i, 'description', e.target.value)}
-                    list="pb-items"
-                    className="col-span-12 sm:col-span-5 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                  <PriceItemInput className="col-span-12 sm:col-span-5" value={item.description} items={priceBook}
+                    onChange={v => setItem(i, 'description', v)} onPick={it => pickItem(i, it)} />
                   <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
                     className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
                   <div className="col-span-4 sm:col-span-2 relative">
