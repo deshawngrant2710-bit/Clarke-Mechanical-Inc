@@ -4,6 +4,7 @@ import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Badge, Btn, Spinner, Empty } from '../components/UI';
 import { Map as MapIcon, MapPin, Clock, Phone, Navigation, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import DirectionsButton from '../components/DirectionsButton';
 
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
@@ -100,7 +101,6 @@ export default function RouteMap() {
     if (!stops) return;
     window.open(`https://www.google.com/maps/dir/${stops}`, '_blank');
   }
-  const directionsUrl = (addr) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}`;
 
   return (
     <div className="animate-fade-in">
@@ -150,7 +150,7 @@ export default function RouteMap() {
                       {j.technician_name && <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><User size={11} /> {j.technician_name}</p>}
                       <div className="flex items-center gap-2 mt-1.5">
                         <Badge status={j.status} />
-                        {j.address && <a href={directionsUrl(j.address)} target="_blank" rel="noreferrer" className="text-xs font-medium text-blue-600 inline-flex items-center gap-1"><Navigation size={11} /> Directions</a>}
+                        {j.address && <DirectionsButton address={j.address} />}
                         {j.customer_phone && <a href={`tel:${j.customer_phone}`} className="text-xs font-medium text-slate-500 inline-flex items-center gap-1"><Phone size={11} /> Call</a>}
                       </div>
                     </div>

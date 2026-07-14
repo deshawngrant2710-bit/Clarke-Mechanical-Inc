@@ -47,6 +47,15 @@ router.post('/clock-in', async (req, res) => {
 router.post('/clock-out', async (req, res) => {
   const e = await openEntry(req.user.id);
   if (!e) return res.status(400).json({ error: "You're not clocked in" });
+  // Can't clock out mid-job — the job must be finished first. "Finished" means the
+  // tech has marked the work done (awaiting sign-off), or it's completed/cancelled,
+  // since the customer's sign-off happens after the tech leaves.
+  if (e.job_id) {
+    const job = await getById('jobs', e.job_id);
+    if (job && !['awaiting-signoff', 'completed', 'cancelled'].includes(job.status)) {
+      return res.status(409).json({ error: `Please finish the job "${job.title}" (mark the work done) before clocking out.` });
+    }
+  }
   const { proof, proof_type, location } = req.body;
   if (!proof) return res.status(400).json({ error: 'A photo of the work is required before clocking out' });
   const clockOut = new Date().toISOString();

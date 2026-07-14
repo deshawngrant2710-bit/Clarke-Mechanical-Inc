@@ -46,6 +46,17 @@ export default function TimeClock() {
     } catch { toast.error('Could not load proof'); }
   }
 
+  // Block clocking out until the job you're clocked into is finished.
+  function tryClockOut() {
+    if (active?.job_id) {
+      const j = jobs.find(x => x.id === active.job_id);
+      if (j && !['awaiting-signoff', 'completed', 'cancelled'].includes(j.status)) {
+        return toast.error(`Finish "${j.title}" (mark the work done) before clocking out.`);
+      }
+    }
+    setClockOutOpen(true);
+  }
+
   if (loading) return <SkeletonPage stats={3} rows={5} />;
 
   const myEntries = entries.filter(e => e.technician_id === user?.id);
@@ -80,7 +91,7 @@ export default function TimeClock() {
                 <p className="text-2xl font-bold text-slate-800 tabular-nums">{elapsed(active.clock_in, now)}</p>
               </div>
             </div>
-            <Btn variant="danger" size="lg" onClick={() => setClockOutOpen(true)}><LogOut size={18} /> Clock Out</Btn>
+            <Btn variant="danger" size="lg" onClick={tryClockOut}><LogOut size={18} /> Clock Out</Btn>
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">

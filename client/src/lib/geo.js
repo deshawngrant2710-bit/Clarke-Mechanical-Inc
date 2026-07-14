@@ -15,5 +15,16 @@ export const mapsLink = (loc) => (loc ? `https://www.google.com/maps?q=${loc.lat
 
 // Turn-by-turn directions to a job address. Opens the device's default maps app
 // (Google Maps in-browser, Apple Maps on iOS) with the address as destination.
-export const directionsLink = (address) =>
-  (address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}` : null);
+//  - mode 'car'   → standard driving directions
+//  - mode 'truck' → commercial: keeps off parkways by avoiding highways (dirflg=h).
+//    Consumer maps can't do true truck routing, so drivers should confirm with a
+//    truck GPS for low bridges / weight limits (see TRUCK_GPS_URL).
+export const directionsLink = (address, mode = 'car') => {
+  if (!address) return null;
+  const dest = encodeURIComponent(address);
+  if (mode === 'truck') return `https://www.google.com/maps?daddr=${dest}&dirflg=h`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+};
+
+// A dedicated truck GPS for guaranteed commercial-legal routing.
+export const TRUCK_GPS_URL = 'https://smarttruckroute.com/';

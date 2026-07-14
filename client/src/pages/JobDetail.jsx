@@ -5,7 +5,7 @@ import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, 
 import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
-import { directionsLink } from '../lib/geo';
+import DirectionsButton from '../components/DirectionsButton';
 import { propertyLabel, equipmentLabel } from '../lib/inspectionForms';
 import { fileToProof } from '../lib/imageProof';
 import { useAuth } from '../context/AuthContext';
@@ -137,6 +137,17 @@ export default function JobDetail() {
     toast.success('Deleted'); navigate('/jobs');
   }
   async function updateStatus(newStatus) {
+    // Technicians must be clocked in before starting a job.
+    if (isTech && newStatus === 'in-progress') {
+      try {
+        const { data: active } = await api.get('/time/active');
+        if (!active) {
+          toast.error('Please clock in before starting the job.');
+          if (window.confirm('You need to clock in first. Go to the Time Clock now?')) navigate('/time-clock');
+          return;
+        }
+      } catch { /* if the check fails, fall through and let them proceed */ }
+    }
     setSaving(true);
     try {
       await api.put(`/jobs/${id}`, { ...job, status: newStatus });
@@ -286,7 +297,7 @@ export default function JobDetail() {
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {isTech ? (
               <>
-                {!cancelled && !['completed', 'awaiting-signoff'].includes(job.status) && job.customer_email && (
+                {!cancelled && job.status === 'scheduled' && job.customer_email && (
                   <Btn variant="outline" onClick={enRoute} loading={enRouting}><Navigation size={15} /> On my way</Btn>
                 )}
                 {!cancelled && nextStatus && nextStatus !== 'completed' && (
@@ -427,14 +438,10 @@ export default function JobDetail() {
                   <MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" />
                   <div className="min-w-0">
                     <p>{job.address}</p>
-                    <a
-                      href={directionsLink(job.address)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors"
-                    >
-                      <Navigation size={12} /> Directions
-                    </a>
+                    <div className="mt-1">
+                      <DirectionsButton address={job.address}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition-colors" />
+                    </div>
                   </div>
                 </div>
               )}

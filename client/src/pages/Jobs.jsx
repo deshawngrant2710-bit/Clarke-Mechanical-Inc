@@ -175,7 +175,11 @@ export default function Jobs() {
         <div className="space-y-3">
           <Input label="Job Title *" value={form.title} valid={form.title.trim().length > 2} onChange={e => f({ title: e.target.value })} placeholder="e.g. AC Repair - Unit 3B" />
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Customer" value={form.customer_id} onChange={e => f({ customer_id: e.target.value })}>
+            <Select label="Customer" value={form.customer_id} onChange={e => {
+              const c = customers.find(x => x.id === e.target.value);
+              const addr = c ? [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ') : '';
+              f(addr ? { customer_id: e.target.value, address: addr } : { customer_id: e.target.value });
+            }}>
               <option value="">Select customer</option>
               {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
