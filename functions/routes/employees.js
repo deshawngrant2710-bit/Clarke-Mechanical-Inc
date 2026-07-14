@@ -8,7 +8,10 @@ const router = express.Router();
 router.use(authMiddleware, requireStaff);
 
 const ROLES = ['customer', 'technician', 'office', 'admin'];
-const strip = (u) => u && { id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at };
+const strip = (u) => u && {
+  id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at,
+  pay_per_job: u.pay_per_job || 0, salary_amount: u.salary_amount || 0, salary_frequency: u.salary_frequency || 'none',
+};
 
 router.get('/', async (req, res) => {
   const users = (await list('users', { orderBy: 'name' })).map(strip);
@@ -49,6 +52,19 @@ router.put('/:id/role', adminOnly, async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'User not found' });
   if (req.params.id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'You cannot change your own admin role' });
   const saved = await update('users', req.params.id, { role });
+  res.json(strip(saved));
+});
+
+// Set a worker's pay settings — ADMIN ONLY.
+router.put('/:id/pay', adminOnly, async (req, res) => {
+  const existing = await getById('users', req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Employee not found' });
+  const freqs = ['none', 'daily', 'weekly', 'biweekly', 'monthly'];
+  const saved = await update('users', req.params.id, {
+    pay_per_job: Number(req.body.pay_per_job) || 0,
+    salary_amount: Number(req.body.salary_amount) || 0,
+    salary_frequency: freqs.includes(req.body.salary_frequency) ? req.body.salary_frequency : 'none',
+  });
   res.json(strip(saved));
 });
 

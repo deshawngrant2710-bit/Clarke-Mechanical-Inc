@@ -28,6 +28,7 @@ import Dispatch from './pages/Dispatch';
 import RouteMap from './pages/RouteMap';
 import Payments from './pages/Payments';
 import PriceBook from './pages/PriceBook';
+import Payroll from './pages/Payroll';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
 import TimeClock from './pages/TimeClock';
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="/route" element={<RouteMap />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/price-book" element={<PriceBook />} />
+            <Route path="/payroll" element={<Payroll />} />
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
