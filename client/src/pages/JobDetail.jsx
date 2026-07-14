@@ -38,12 +38,16 @@ export default function JobDetail() {
   const [saving, setSaving] = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+  const [editNoteText, setEditNoteText] = useState('');
   const [jobInspections, setJobInspections] = useState([]);
   const [enRouting, setEnRouting] = useState(false);
   const [partForm, setPartForm] = useState({ name: '', quantity: '1', unit_price: '', note: '' });
   const [addingPart, setAddingPart] = useState(false);
   const [emailing, setEmailing] = useState('');
   const [signModal, setSignModal] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [bizPhone, setBizPhone] = useState('');
   const [signName, setSignName] = useState('');
   const [signing, setSigning] = useState(false);
   const padRef = useRef(null);
@@ -56,6 +60,16 @@ export default function JobDetail() {
   const [suggestWindow, setSuggestWindow] = useState('');
   const [suggesting, setSuggesting] = useState(false);
   const [declining, setDeclining] = useState(false);
+
+  async function approveSignoff() {
+    setApproving(true);
+    try {
+      await api.post(`/jobs/${id}/approve-signoff`);
+      toast.success('Customer sign-off approved');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not approve'); }
+    finally { setApproving(false); }
+  }
 
   async function captureSignoff() {
     if (!signName.trim()) return toast.error('Enter the customer name');
@@ -121,6 +135,7 @@ export default function JobDetail() {
     } catch (e) { toast.error(e.response?.data?.error || 'Could not start inspection'); }
   }
   useEffect(load, [id]);
+  useEffect(() => { api.get('/auth/public-info').then(r => setBizPhone(r.data.business_phone || '')).catch(() => {}); }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -176,6 +191,23 @@ export default function JobDetail() {
     try { await api.delete(`/jobs/${id}/parts/${pid}`); load(); }
     catch { toast.error('Could not remove'); }
   }
+  // Rebuild the full notes string from the parsed entries (keeps each entry's meta line).
+  function rebuildNotes(entries) {
+    return entries.map(e => (e.meta ? `${e.meta}\n${e.body}` : e.body)).join('\n\n---\n');
+  }
+  async function saveNoteEdit(idx) {
+    const text = editNoteText.trim();
+    if (!text) return toast.error('Note cannot be empty');
+    const entries = noteEntries.map((e, i) => (i === idx ? { ...e, body: text } : e));
+    setSavingNotes(true);
+    try {
+      await api.put(`/jobs/${id}`, { ...job, notes: rebuildNotes(entries) });
+      toast.success('Note updated');
+      setEditingNote(null); setEditNoteText(''); load();
+    } catch { toast.error('Could not update note'); }
+    finally { setSavingNotes(false); }
+  }
+
   async function addNote() {
     const text = notesDraft.trim();
     if (!text) return;
@@ -192,14 +224,19 @@ export default function JobDetail() {
     finally { setSavingNotes(false); }
   }
   async function handlePhotoUpload(e) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
-    if (!file) return;
-    try {
-      const { proof, proof_type } = await fileToProof(file);
-      await api.post(`/jobs/${id}/photos`, { proof, proof_type });
-      toast.success('Photo uploaded'); load();
-    } catch (err) { toast.error(err.message || 'Upload failed'); }
+    if (!files.length) return;
+    let ok = 0, failed = 0;
+    for (const file of files) {
+      try {
+        const { proof, proof_type } = await fileToProof(file);
+        await api.post(`/jobs/${id}/photos`, { proof, proof_type });
+        ok++;
+      } catch (err) { failed++; toast.error(`${file.name}: ${err.message || 'upload failed'}`); }
+    }
+    if (ok) toast.success(`${ok} photo${ok === 1 ? '' : 's'} uploaded`);
+    load();
   }
   async function removePhoto(pid) {
     if (!confirm('Remove this photo?')) return;
@@ -487,7 +524,23 @@ export default function JobDetail() {
                     {noteEntries.map((entry, idx) => (
                       <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                         {entry.meta && <p className="text-xs font-semibold text-slate-500 mb-1">{entry.meta}</p>}
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{entry.body}</p>
+                        {editingNote === idx ? (
+                          <div className="space-y-2">
+                            <Textarea value={editNoteText} onChange={e => setEditNoteText(e.target.value)} rows={3} />
+                            <div className="flex justify-end gap-2">
+                              <Btn size="sm" variant="outline" onClick={() => { setEditingNote(null); setEditNoteText(''); }}>Cancel</Btn>
+                              <Btn size="sm" onClick={() => saveNoteEdit(idx)} loading={savingNotes} disabled={!editNoteText.trim()}>Save</Btn>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm text-slate-700 whitespace-pre-wrap flex-1">{entry.body}</p>
+                            {isTech && (
+                              <button onClick={() => { setEditingNote(idx); setEditNoteText(entry.body); }}
+                                className="text-slate-400 hover:text-blue-600 shrink-0" title="Edit note"><Pencil size={13} /></button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -508,13 +561,38 @@ export default function JobDetail() {
                   <p className="text-xs text-slate-500 mb-2">{new Date(job.signed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                   {job.signature && <img src={job.signature} alt="signature" className="h-16 bg-white border border-slate-200 rounded" />}
                 </div>
-              ) : job.status === 'completed' ? (
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <p className="text-sm text-amber-700">Awaiting customer sign-off.</p>
-                  <Btn size="sm" onClick={() => { setSignName(job.customer_name || ''); setSignModal(true); }}><PenLine size={14} /> Capture signature</Btn>
-                </div>
+              ) : !['awaiting-signoff', 'completed'].includes(job.status) ? (
+                <p className="text-sm text-slate-400">Available once the work is marked done.</p>
+              ) : !isTech ? (
+                // Office / admin: approve, then can also capture the signature
+                job.signoff_approved ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Sign-off approved{job.signoff_approved_by ? ` by ${job.signoff_approved_by}` : ''}</p>
+                    <Btn size="sm" onClick={() => { setSignName(job.customer_name || ''); setSignModal(true); }}><PenLine size={14} /> Capture signature</Btn>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-amber-700">The technician is requesting approval to collect the customer's signature on site.</p>
+                    <Btn size="sm" onClick={approveSignoff} loading={approving}><CheckCircle2 size={14} /> Approve customer sign-off</Btn>
+                  </div>
+                )
               ) : (
-                <p className="text-sm text-slate-400">Available once the job is marked completed.</p>
+                // Technician
+                job.signoff_approved ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Approved — have the customer sign.</p>
+                    <Btn size="sm" onClick={() => { setSignName(job.customer_name || ''); setSignModal(true); }}><PenLine size={14} /> Customer signature</Btn>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <p className="text-sm font-semibold text-amber-800">Call the office to approve customer sign-off</p>
+                    <p className="text-xs text-amber-700 mt-0.5">Once the office approves, the customer can sign here.</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      {bizPhone && <a href={`tel:${bizPhone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white text-blue-700 text-xs font-semibold border border-amber-200 hover:bg-blue-50"><Phone size={12} /> Call the office</a>}
+                      <button onClick={load} className="text-xs font-semibold text-amber-800 underline">Check again</button>
+                    </div>
+                  </div>
+                )
               )}
             </div>
           </Card>
@@ -523,7 +601,7 @@ export default function JobDetail() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader title={`Photos (${job.photos?.length || 0})`} icon={<Camera size={15} />}
-              action={<><input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handlePhotoUpload} />
+              action={<><input ref={fileRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handlePhotoUpload} />
                 <Btn size="sm" onClick={() => fileRef.current?.click()}><Upload size={14} /> Upload</Btn></>} />
             <div className="p-5">
               {!job.photos?.length ? (
@@ -542,7 +620,7 @@ export default function JobDetail() {
                           <img src={p.proof} alt={p.caption || 'job photo'} className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300" />
                         </a>
                       )}
-                      <button onClick={() => removePhoto(p.id)} className="absolute top-1 right-1 p-1 rounded-md bg-white/90 text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={13} /></button>
+                      <button onClick={() => removePhoto(p.id)} aria-label="Delete photo" className="absolute top-1 right-1 p-1.5 rounded-md bg-white/90 text-red-600 shadow-sm hover:bg-white"><Trash2 size={13} /></button>
                     </div>
                   ))}
                 </div>

@@ -274,7 +274,7 @@ function ClockOutModal({ open, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title="Clock Out" subtitle="A photo of the completed work is required">
       <div className="space-y-4">
-        <input ref={fileRef} type="file" accept="image/*,application/pdf" capture="environment" className="hidden" onChange={onFile} />
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onFile} />
         {!preview ? (
           <button onClick={() => fileRef.current?.click()}
             className="w-full flex flex-col items-center justify-center gap-2 py-10 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:bg-blue-50/40 transition-colors">

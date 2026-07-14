@@ -37,7 +37,7 @@ function PhotoThumb({ inspId, photo, onDelete }) {
         </a>
       )}
       <button onClick={() => onDelete(photo.id)} aria-label="Remove"
-        className="absolute top-1 right-1 p-1 rounded-md bg-white/90 text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+        className="absolute top-1 right-1 p-1.5 rounded-md bg-white/90 text-red-600 shadow-sm hover:bg-white">
         <X size={14} />
       </button>
     </div>
@@ -87,16 +87,21 @@ export default function InspectionDetail() {
   }
 
   async function handleUpload(e) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []);
     e.target.value = '';
-    if (!file) return;
+    if (!files.length) return;
     setUploading(true);
-    try {
-      const { proof, proof_type } = await fileToProof(file);
-      await api.post(`/inspections/${id}/photos`, { proof, proof_type });
-      toast.success('Uploaded'); load();
-    } catch (err) { toast.error(err.message || 'Upload failed'); }
-    finally { setUploading(false); }
+    let ok = 0;
+    for (const file of files) {
+      try {
+        const { proof, proof_type } = await fileToProof(file);
+        await api.post(`/inspections/${id}/photos`, { proof, proof_type });
+        ok++;
+      } catch (err) { toast.error(`${file.name}: ${err.message || 'upload failed'}`); }
+    }
+    if (ok) toast.success(`${ok} file${ok === 1 ? '' : 's'} uploaded`);
+    load();
+    setUploading(false);
   }
 
   async function deletePhoto(pid) {
@@ -228,7 +233,7 @@ export default function InspectionDetail() {
           action={
             <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer transition-colors ${uploading ? 'bg-slate-100 text-slate-400' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
               <Camera size={14} /> {uploading ? 'Uploading…' : 'Add photo / PDF'}
-              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleUpload} disabled={uploading} />
+              <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
             </label>
           } />
         {(!insp.photos || insp.photos.length === 0) ? (

@@ -1,7 +1,7 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
-const { authMiddleware, requireStaff } = require('../middleware/auth');
+const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
 
 const router = express.Router();
@@ -209,10 +209,25 @@ router.post('/:id/decline-booking', async (req, res) => {
   res.json(saved);
 });
 
+// POST /jobs/:id/approve-signoff — office/admin approves a technician collecting the
+// customer's signature on site. Unlocks the signature pad on the tech's device.
+router.post('/:id/approve-signoff', requireRole('admin', 'office'), async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const saved = await update('jobs', req.params.id, {
+    signoff_approved: true, signoff_approved_by: req.user.name, signoff_approved_at: new Date().toISOString(),
+  });
+  res.json(saved);
+});
+
 // POST /jobs/:id/signoff — staff captures the customer's signature on-site.
 router.post('/:id/signoff', async (req, res) => {
   const job = await getById('jobs', req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
+  // A technician can only collect the customer's signature after office approval.
+  if (req.user.role === 'technician' && !job.signoff_approved) {
+    return res.status(403).json({ error: 'Office approval is required before the customer can sign off. Please call the office.' });
+  }
   const { signature, signed_by } = req.body;
   if (!signature) return res.status(400).json({ error: 'Signature is required' });
   const extra = job.status === 'awaiting-signoff'
