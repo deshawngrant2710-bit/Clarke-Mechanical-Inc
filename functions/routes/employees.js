@@ -11,6 +11,7 @@ const ROLES = ['customer', 'technician', 'office', 'admin'];
 const strip = (u) => u && {
   id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at,
   pay_per_job: u.pay_per_job || 0, salary_amount: u.salary_amount || 0, salary_frequency: u.salary_frequency || 'none',
+  also_technician: !!u.also_technician,
 };
 
 router.get('/', async (req, res) => {
@@ -52,6 +53,15 @@ router.put('/:id/role', adminOnly, async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'User not found' });
   if (req.params.id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'You cannot change your own admin role' });
   const saved = await update('users', req.params.id, { role });
+  res.json(strip(saved));
+});
+
+// Toggle "also works as a technician" so an admin/office user can also be assigned
+// jobs and use the technician field workflow — ADMIN ONLY.
+router.put('/:id/tech-flag', adminOnly, async (req, res) => {
+  const existing = await getById('users', req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Employee not found' });
+  const saved = await update('users', req.params.id, { also_technician: !!req.body.also_technician });
   res.json(strip(saved));
 });
 

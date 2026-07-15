@@ -56,6 +56,14 @@ export default function Employees() {
     } finally { setSaving(false); }
   }
 
+  async function toggleTechFlag(id, val) {
+    try {
+      await api.put(`/employees/${id}/tech-flag`, { also_technician: val });
+      toast.success(val ? 'Now also a technician' : 'Technician access removed');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not update'); }
+  }
+
   async function handleRoleChange(id, role) {
     try {
       await api.put(`/employees/${id}/role`, { role });
@@ -153,6 +161,14 @@ export default function Employees() {
                     >
                       {ROLES.map(r => <option key={r} value={r}>{cap(r)}</option>)}
                     </select>
+                    {['admin', 'office'].includes(u.role) && (
+                      <label className="mt-2.5 flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                        <input type="checkbox" checked={!!u.also_technician}
+                          onChange={e => toggleTechFlag(u.id, e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                        Also works as a technician
+                      </label>
+                    )}
                   </div>
                 )}
               </Card>

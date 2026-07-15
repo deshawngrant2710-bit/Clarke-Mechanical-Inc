@@ -144,7 +144,7 @@ export default function Jobs() {
                       <select value={job.technician_id || ''} onChange={e => assignTech(job, e.target.value)}
                         className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-blue-500 hover:border-slate-300 max-w-[150px] cursor-pointer">
                         <option value="">Unassigned</option>
-                        {employees.filter(u => u.role === 'technician').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        {employees.filter(u => u.role === 'technician' || u.also_technician).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     </div>
                   )}

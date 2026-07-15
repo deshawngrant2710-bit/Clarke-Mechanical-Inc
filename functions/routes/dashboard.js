@@ -115,7 +115,7 @@ router.get('/', async (req, res) => {
         id: j.id, title: j.title, status: j.status, priority: j.priority, scheduled_time: j.scheduled_time,
         address: j.address, customer_name: custName[j.customer_id] || null, technician_name: techName[j.technician_id] || null,
       })),
-    technicians: users.filter(u => u.role === 'technician').sort((a, b) => a.name.localeCompare(b.name)).map(u => ({
+    technicians: users.filter(u => u.role === 'technician' || u.also_technician).sort((a, b) => a.name.localeCompare(b.name)).map(u => ({
       id: u.id, name: u.name, role: u.role,
       active_jobs: jobs.filter(j => j.technician_id === u.id && j.status === 'in-progress').length,
       today_jobs: jobs.filter(j => j.technician_id === u.id && j.scheduled_date === t).length,

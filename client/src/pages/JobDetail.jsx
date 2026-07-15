@@ -30,6 +30,8 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isTech = user?.role === 'technician';
+  // Admin/office users flagged "also a technician" get the field-tech tools too.
+  const canTech = isTech || !!user?.also_technician;
   const [job, setJob] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -153,7 +155,7 @@ export default function JobDetail() {
   }
   async function updateStatus(newStatus) {
     // Technicians must be clocked in before starting a job.
-    if (isTech && newStatus === 'in-progress') {
+    if (canTech && newStatus === 'in-progress') {
       try {
         const { data: active } = await api.get('/time/active');
         if (!active) {
@@ -332,7 +334,8 @@ export default function JobDetail() {
             <p className="text-xs text-slate-400 mt-1 font-mono">Job #{id.slice(0, 8).toUpperCase()}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {isTech ? (
+            {/* Technician field tools (also shown to admins flagged as technicians) */}
+            {canTech && (
               <>
                 {!cancelled && job.status === 'scheduled' && job.customer_email && (
                   <Btn variant="outline" onClick={enRoute} loading={enRouting}><Navigation size={15} /> On my way</Btn>
@@ -347,7 +350,9 @@ export default function JobDetail() {
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 bg-teal-50 ring-1 ring-teal-600/20 rounded-lg px-2.5 py-1.5"><Clock size={14} /> Waiting for customer sign-off</span>
                 )}
               </>
-            ) : (
+            )}
+            {/* Office / admin controls */}
+            {!isTech && (
               <>
                 <Btn variant="outline" onClick={() => notify('job_confirmation', 'Confirmation')} loading={emailing === 'job_confirmation'}><MailCheck size={15} /> Send Confirmation</Btn>
                 <Btn variant="outline" onClick={() => notify('job_reminder', 'Reminder')} loading={emailing === 'job_reminder'}><BellRing size={15} /> Send Reminder</Btn>
@@ -404,7 +409,7 @@ export default function JobDetail() {
                   <select value={confirmTech} onChange={e => setConfirmTech(e.target.value)}
                     className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-500 bg-white min-w-[160px]">
                     <option value="">Assign later</option>
-                    {employees.filter(u => u.role === 'technician').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    {employees.filter(u => u.role === 'technician' || u.also_technician).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
                 <Btn onClick={confirmBooking} loading={confirming}><CalendarCheck size={15} /> Confirm & notify customer</Btn>
@@ -502,11 +507,11 @@ export default function JobDetail() {
           {job.description && (
             <Card><CardHeader title="Description" /><p className="p-5 text-sm text-slate-700 whitespace-pre-wrap">{job.description}</p></Card>
           )}
-          {(isTech || noteEntries.length > 0) && (
+          {(canTech || noteEntries.length > 0) && (
             <Card>
               <CardHeader title={`Notes${noteEntries.length ? ` (${noteEntries.length})` : ''}`} />
               <div className="p-5 space-y-4">
-                {isTech && (
+                {canTech && (
                   <div className="space-y-2">
                     <Textarea
                       value={notesDraft}
@@ -535,7 +540,7 @@ export default function JobDetail() {
                         ) : (
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-sm text-slate-700 whitespace-pre-wrap flex-1">{entry.body}</p>
-                            {isTech && (
+                            {canTech && (
                               <button onClick={() => { setEditingNote(idx); setEditNoteText(entry.body); }}
                                 className="text-slate-400 hover:text-blue-600 shrink-0" title="Edit note"><Pencil size={13} /></button>
                             )}
@@ -545,7 +550,7 @@ export default function JobDetail() {
                     ))}
                   </div>
                 ) : (
-                  isTech && <p className="text-sm text-slate-400">No notes yet.</p>
+                  canTech && <p className="text-sm text-slate-400">No notes yet.</p>
                 )}
               </div>
             </Card>
@@ -713,7 +718,7 @@ export default function JobDetail() {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Additional technicians {job.status === 'completed' && <span className="text-xs text-slate-400">(locked — job completed)</span>}</label>
             <div className="flex flex-wrap gap-1.5">
-              {employees.filter(e => e.role === 'technician' && e.id !== form.technician_id).map(e => {
+              {employees.filter(e => (e.role === 'technician' || e.also_technician) && e.id !== form.technician_id).map(e => {
                 const on = (form.additional_technician_ids || []).includes(e.id);
                 const locked = job.status === 'completed';
                 return (
@@ -724,7 +729,7 @@ export default function JobDetail() {
                   </button>
                 );
               })}
-              {employees.filter(e => e.role === 'technician' && e.id !== form.technician_id).length === 0 && <span className="text-xs text-slate-400">No other technicians.</span>}
+              {employees.filter(e => (e.role === 'technician' || e.also_technician) && e.id !== form.technician_id).length === 0 && <span className="text-xs text-slate-400">No other technicians.</span>}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
