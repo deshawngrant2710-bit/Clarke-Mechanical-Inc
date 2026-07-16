@@ -25,6 +25,14 @@ export const INFO_FIELDS = [
   { key: 'location', label: 'Equipment location', placeholder: 'e.g. basement, rooftop, closet' },
 ];
 
+// Work-order fields (stored inside `info`) — filled in as the tech does the job.
+export const WORKORDER_FIELDS = [
+  { key: 'wo_complaint', label: 'Problem reported / complaint', placeholder: 'What the customer reported', rows: 2 },
+  { key: 'wo_work', label: 'Work performed', placeholder: 'What you did on site', rows: 3 },
+  { key: 'wo_readings', label: 'Readings / measurements', placeholder: 'AC: suction/head pressure, supply/return temps · Boiler: pressure, stack temp, CO / CO₂', rows: 2 },
+  { key: 'wo_labor', label: 'Labor / time on site', placeholder: 'e.g. 2.5 hrs', rows: 1 },
+];
+
 // Each checklist item is answered Pass / Fail / N/A, with an optional note.
 export const CHECKLIST_SECTIONS = [
   {

@@ -7,7 +7,7 @@ const router = express.Router();
 router.use(authMiddleware, requireStaff);
 
 // Fields a technician may set/patch on an inspection.
-const FIELDS = ['property_type', 'equipment_type', 'job_id', 'customer_id', 'info', 'checklist', 'notes', 'recommendations', 'status'];
+const FIELDS = ['property_type', 'equipment_type', 'job_id', 'customer_id', 'info', 'checklist', 'notes', 'recommendations', 'status', 'parts', 'signature', 'signed_by', 'signed_at'];
 
 function canView(user, insp) {
   return user.role !== 'technician' || insp.technician_id === user.id;

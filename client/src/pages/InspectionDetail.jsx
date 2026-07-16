@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Input, Select, Textarea, Spinner } from '../components/UI';
-import { ArrowLeft, Trash2, Camera, FileText, X, Save, Send, Building2, Home, Wrench } from 'lucide-react';
+import { ArrowLeft, Trash2, Camera, FileText, X, Save, Send, Building2, Home, Wrench, Printer, PlusCircle, PenLine, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { fileToProof } from '../lib/imageProof';
+import SignaturePad from '../components/SignaturePad';
 import {
-  PROPERTY_TYPES, EQUIPMENT_TYPES, INFO_FIELDS, ANSWERS, sectionsFor, propertyLabel, equipmentLabel,
+  PROPERTY_TYPES, EQUIPMENT_TYPES, INFO_FIELDS, WORKORDER_FIELDS, ANSWERS, sectionsFor, propertyLabel, equipmentLabel,
 } from '../lib/inspectionForms';
 
 const ANSWER_STYLE = {
@@ -57,8 +58,13 @@ export default function InspectionDetail() {
   const [checklist, setChecklist] = useState({});
   const [notes, setNotes] = useState('');
   const [recommendations, setRecommendations] = useState('');
+  const [parts, setParts] = useState([]);
+  const [signature, setSignature] = useState(null);
+  const [signedBy, setSignedBy] = useState('');
+  const [signName, setSignName] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const padRef = useRef(null);
 
   function load() {
     api.get(`/inspections/${id}`).then(r => {
@@ -70,6 +76,9 @@ export default function InspectionDetail() {
       setChecklist(d.checklist || {});
       setNotes(d.notes || '');
       setRecommendations(d.recommendations || '');
+      setParts(Array.isArray(d.parts) ? d.parts : []);
+      setSignature(d.signature || null);
+      setSignedBy(d.signed_by || '');
     }).catch(() => { toast.error('Could not load inspection'); navigate('/inspections'); });
   }
   useEffect(load, [id]);
@@ -77,7 +86,12 @@ export default function InspectionDetail() {
   async function save(status) {
     setSaving(true);
     try {
-      const payload = { property_type: property, equipment_type: equipment, info, checklist, notes, recommendations };
+      const payload = {
+        property_type: property, equipment_type: equipment, info, checklist, notes, recommendations,
+        parts: parts.filter(p => (p.name || '').trim()),
+        signature: signature || null, signed_by: signature ? (signedBy || 'Customer') : null,
+        signed_at: signature ? (insp.signed_at || new Date().toISOString()) : null,
+      };
       if (status) payload.status = status;
       await api.put(`/inspections/${id}`, payload);
       toast.success(status === 'submitted' ? 'Inspection submitted' : 'Saved');
@@ -122,6 +136,42 @@ export default function InspectionDetail() {
       items: [{ description: desc, quantity: 1, unit_price: 0 }],
       notes: `From ${propertyLabel(property)} ${equipmentLabel(equipment)} inspection`,
     } } });
+  }
+
+  function setPart(i, patch) { setParts(p => p.map((x, idx) => (idx === i ? { ...x, ...patch } : x))); }
+  function captureSignature() {
+    if (!signName.trim()) return toast.error('Enter the customer name');
+    if (padRef.current?.isEmpty()) return toast.error('Please have the customer sign');
+    setSignature(padRef.current.toDataURL());
+    setSignedBy(signName.trim());
+    toast.success('Signature captured — click Save to keep it');
+  }
+
+  function printWorkOrder() {
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const sects = sectionsFor(property, equipment);
+    const checkRows = sects.flatMap(s => s.items.map(it => { const v = checklist[it.key] || {}; return v.answer ? `<tr><td>${esc(it.label)}</td><td style="text-align:right;text-transform:uppercase">${esc(v.answer)}</td><td>${esc(v.note || '')}</td></tr>` : ''; })).join('') || '<tr><td colspan="3" style="color:#94a3b8">No items checked</td></tr>';
+    const partRows = parts.filter(p => (p.name || '').trim()).map(p => `<tr><td>${esc(p.name)}</td><td style="text-align:right">${esc(p.quantity)}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#94a3b8">None</td></tr>';
+    const infoRow = (label, val) => (val ? `<tr><td style="color:#64748b;padding:2px 12px 2px 0;white-space:nowrap">${label}</td><td>${esc(val)}</td></tr>` : '');
+    const woRow = (label, val) => (val ? `<div style="margin:8px 0"><div style="font-size:11px;text-transform:uppercase;color:#94a3b8">${label}</div><div>${esc(val)}</div></div>` : '');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Work Order</title>
+    <style>body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1e293b;padding:36px;font-size:13px;line-height:1.5}
+    h1{color:#0b2545;font-size:22px;margin:0 0 2px}.muted{color:#64748b}
+    .box{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin:14px 0}.h{font-weight:700;color:#0f172a;margin-bottom:8px;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
+    table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px solid #f1f5f9;vertical-align:top}
+    .sig-img{height:60px}@media print{body{padding:20px}}</style></head><body>
+    <h1>WORK ORDER</h1><p class="muted">${esc(propertyLabel(property))} · ${esc(equipmentLabel(equipment))} · ${new Date().toLocaleDateString('en-US')}</p>
+    <div class="box"><div class="h">Equipment & Site</div><table>${INFO_FIELDS.map(f => infoRow(f.label, info[f.key])).join('')}</table></div>
+    <div class="box"><div class="h">Service</div>${woRow('Problem reported', info.wo_complaint)}${woRow('Work performed', info.wo_work)}${woRow('Readings', info.wo_readings)}${woRow('Labor', info.wo_labor)}</div>
+    <div class="box"><div class="h">Checklist</div><table><thead><tr><td style="color:#94a3b8">Item</td><td style="text-align:right;color:#94a3b8">Result</td><td style="color:#94a3b8">Note</td></tr></thead><tbody>${checkRows}</tbody></table></div>
+    <div class="box"><div class="h">Parts used</div><table><thead><tr><td style="color:#94a3b8">Part</td><td style="text-align:right;color:#94a3b8">Qty</td></tr></thead><tbody>${partRows}</tbody></table></div>
+    ${recommendations ? `<div class="box"><div class="h">Recommendations</div><div>${esc(recommendations)}</div></div>` : ''}
+    ${notes ? `<div class="box"><div class="h">Notes</div><div>${esc(notes)}</div></div>` : ''}
+    <div style="margin-top:24px"><div class="h">Customer sign-off</div>${signature ? `<img class="sig-img" src="${signature}"/><div class="muted">${esc(signedBy)}</div>` : '<div style="border-top:1px solid #94a3b8;width:260px;margin-top:36px;padding-top:4px;color:#64748b">Customer signature</div>'}</div>
+    <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) return toast.error('Allow pop-ups to print');
+    w.document.write(html); w.document.close();
   }
 
   const setAnswer = (key, answer) => setChecklist(p => ({ ...p, [key]: { ...p[key], answer } }));
@@ -177,6 +227,37 @@ export default function InspectionDetail() {
         </div>
       </Card>
 
+      {/* Work order — service details */}
+      <Card className="p-5 mb-6">
+        <CardHeader title="Work Order" icon={<Wrench size={15} />} />
+        <div className="space-y-3 mt-2">
+          {WORKORDER_FIELDS.map(f => (
+            <Textarea key={f.key} label={f.label} rows={f.rows || 2} placeholder={f.placeholder}
+              value={info[f.key] || ''} onChange={e => setInfo(p => ({ ...p, [f.key]: e.target.value }))} />
+          ))}
+        </div>
+      </Card>
+
+      {/* Parts used */}
+      <Card className="p-5 mb-6">
+        <div className="flex items-center justify-between">
+          <CardHeader title="Parts / materials used" />
+          <button onClick={() => setParts(p => [...p, { name: '', quantity: 1 }])} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"><PlusCircle size={14} /> Add part</button>
+        </div>
+        <div className="space-y-2 mt-3">
+          {parts.length === 0 && <p className="text-sm text-slate-400">No parts added.</p>}
+          {parts.map((p, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <input value={p.name} onChange={e => setPart(i, { name: e.target.value })} placeholder="Part / material"
+                className="flex-1 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+              <input type="number" min="0" value={p.quantity} onChange={e => setPart(i, { quantity: e.target.value })} placeholder="Qty"
+                className="w-20 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+              <button onClick={() => setParts(ps => ps.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+      </Card>
+
       {/* Checklist */}
       {sections.map(section => (
         <Card key={section.id} className="mb-6">
@@ -227,6 +308,24 @@ export default function InspectionDetail() {
           onChange={e => setNotes(e.target.value)} placeholder="Any other observations." />
       </Card>
 
+      {/* Customer sign-off */}
+      <Card className="p-5 mb-6">
+        <CardHeader title="Customer sign-off" icon={<PenLine size={15} />} />
+        {signature ? (
+          <div className="mt-3">
+            <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Signed by {signedBy}</p>
+            <img src={signature} alt="signature" className="mt-2 h-16 bg-white border border-slate-200 rounded" />
+            <button onClick={() => { setSignature(null); setSignedBy(''); }} className="mt-2 text-xs font-medium text-red-600">Clear signature</button>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            <Input label="Customer name" value={signName} onChange={e => setSignName(e.target.value)} placeholder="Name of person signing" />
+            <SignaturePad ref={padRef} />
+            <div className="flex justify-end"><Btn size="sm" onClick={captureSignature}><PenLine size={14} /> Capture signature</Btn></div>
+          </div>
+        )}
+      </Card>
+
       {/* Photos */}
       <Card className="p-5 mb-6">
         <CardHeader title={`Photos & documents (${insp.photos?.length || 0})`} icon={<Camera size={15} />}
@@ -247,6 +346,7 @@ export default function InspectionDetail() {
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-2 sticky bottom-0 bg-slate-50/80 backdrop-blur py-3">
+        <Btn variant="outline" onClick={printWorkOrder}><Printer size={15} /> Print work order</Btn>
         <Btn variant="outline" onClick={() => save()} loading={saving}><Save size={15} /> Save draft</Btn>
         <Btn onClick={() => save('submitted')} loading={saving}><Send size={15} /> {submitted ? 'Update & keep submitted' : 'Submit inspection'}</Btn>
       </div>
