@@ -64,6 +64,7 @@ export default function InspectionDetail() {
   const [signName, setSignName] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [emailing, setEmailing] = useState(false);
   const padRef = useRef(null);
 
   function load() {
@@ -147,31 +148,49 @@ export default function InspectionDetail() {
     toast.success('Signature captured — click Save to keep it');
   }
 
-  function printWorkOrder() {
+  // Inline-styled work-order body — shared by the printout and the customer email.
+  function buildWorkOrderBody() {
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const sects = sectionsFor(property, equipment);
-    const checkRows = sects.flatMap(s => s.items.map(it => { const v = checklist[it.key] || {}; return v.answer ? `<tr><td>${esc(it.label)}</td><td style="text-align:right;text-transform:uppercase">${esc(v.answer)}</td><td>${esc(v.note || '')}</td></tr>` : ''; })).join('') || '<tr><td colspan="3" style="color:#94a3b8">No items checked</td></tr>';
-    const partRows = parts.filter(p => (p.name || '').trim()).map(p => `<tr><td>${esc(p.name)}</td><td style="text-align:right">${esc(p.quantity)}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#94a3b8">None</td></tr>';
-    const infoRow = (label, val) => (val ? `<tr><td style="color:#64748b;padding:2px 12px 2px 0;white-space:nowrap">${label}</td><td>${esc(val)}</td></tr>` : '');
-    const woRow = (label, val) => (val ? `<div style="margin:8px 0"><div style="font-size:11px;text-transform:uppercase;color:#94a3b8">${label}</div><div>${esc(val)}</div></div>` : '');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Work Order</title>
-    <style>body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1e293b;padding:36px;font-size:13px;line-height:1.5}
-    h1{color:#0b2545;font-size:22px;margin:0 0 2px}.muted{color:#64748b}
-    .box{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin:14px 0}.h{font-weight:700;color:#0f172a;margin-bottom:8px;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
-    table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px solid #f1f5f9;vertical-align:top}
-    .sig-img{height:60px}@media print{body{padding:20px}}</style></head><body>
-    <h1>WORK ORDER</h1><p class="muted">${esc(propertyLabel(property))} · ${esc(equipmentLabel(equipment))} · ${new Date().toLocaleDateString('en-US')}</p>
-    <div class="box"><div class="h">Equipment & Site</div><table>${INFO_FIELDS.map(f => infoRow(f.label, info[f.key])).join('')}</table></div>
-    <div class="box"><div class="h">Service</div>${woRow('Problem reported', info.wo_complaint)}${woRow('Work performed', info.wo_work)}${woRow('Readings', info.wo_readings)}${woRow('Labor', info.wo_labor)}</div>
-    <div class="box"><div class="h">Checklist</div><table><thead><tr><td style="color:#94a3b8">Item</td><td style="text-align:right;color:#94a3b8">Result</td><td style="color:#94a3b8">Note</td></tr></thead><tbody>${checkRows}</tbody></table></div>
-    <div class="box"><div class="h">Parts used</div><table><thead><tr><td style="color:#94a3b8">Part</td><td style="text-align:right;color:#94a3b8">Qty</td></tr></thead><tbody>${partRows}</tbody></table></div>
-    ${recommendations ? `<div class="box"><div class="h">Recommendations</div><div>${esc(recommendations)}</div></div>` : ''}
-    ${notes ? `<div class="box"><div class="h">Notes</div><div>${esc(notes)}</div></div>` : ''}
-    <div style="margin-top:24px"><div class="h">Customer sign-off</div>${signature ? `<img class="sig-img" src="${signature}"/><div class="muted">${esc(signedBy)}</div>` : '<div style="border-top:1px solid #94a3b8;width:260px;margin-top:36px;padding-top:4px;color:#64748b">Customer signature</div>'}</div>
+    const cell = 'padding:5px 0;border-bottom:1px solid #f1f5f9;vertical-align:top;color:#334155;font-size:13px;';
+    const box = (title, inner) => `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin:14px 0;"><div style="font-weight:700;color:#0f172a;margin-bottom:8px;text-transform:uppercase;font-size:12px;letter-spacing:.04em;">${title}</div>${inner}</div>`;
+    const infoRow = (label, val) => (val ? `<tr><td style="color:#64748b;padding:2px 12px 2px 0;white-space:nowrap;font-size:13px;">${label}</td><td style="font-size:13px;color:#334155;">${esc(val)}</td></tr>` : '');
+    const woRow = (label, val) => (val ? `<div style="margin:8px 0"><div style="font-size:11px;text-transform:uppercase;color:#94a3b8">${label}</div><div style="font-size:13px;color:#334155;">${esc(val)}</div></div>` : '');
+    const checkRows = sects.flatMap(s => s.items.map(it => { const v = checklist[it.key] || {}; return v.answer ? `<tr><td style="${cell}">${esc(it.label)}</td><td style="${cell}text-align:right;text-transform:uppercase">${esc(v.answer)}</td><td style="${cell}">${esc(v.note || '')}</td></tr>` : ''; })).join('') || `<tr><td style="${cell}color:#94a3b8" colspan="3">No items checked</td></tr>`;
+    const partRows = parts.filter(p => (p.name || '').trim()).map(p => `<tr><td style="${cell}">${esc(p.name)}</td><td style="${cell}text-align:right">${esc(p.quantity)}</td></tr>`).join('') || `<tr><td style="${cell}color:#94a3b8" colspan="2">None</td></tr>`;
+    return [
+      box('Equipment &amp; Site', `<table style="width:100%;border-collapse:collapse;">${INFO_FIELDS.map(f => infoRow(f.label, info[f.key])).join('')}</table>`),
+      box('Service', `${woRow('Problem reported', info.wo_complaint)}${woRow('Work performed', info.wo_work)}${woRow('Readings', info.wo_readings)}${woRow('Labor', info.wo_labor)}`),
+      box('Checklist', `<table style="width:100%;border-collapse:collapse;"><tr><td style="color:#94a3b8;font-size:11px;">Item</td><td style="color:#94a3b8;font-size:11px;text-align:right;">Result</td><td style="color:#94a3b8;font-size:11px;">Note</td></tr>${checkRows}</table>`),
+      box('Parts used', `<table style="width:100%;border-collapse:collapse;"><tr><td style="color:#94a3b8;font-size:11px;">Part</td><td style="color:#94a3b8;font-size:11px;text-align:right;">Qty</td></tr>${partRows}</table>`),
+      recommendations ? box('Recommendations', `<div style="font-size:13px;color:#334155;">${esc(recommendations)}</div>`) : '',
+      notes ? box('Notes', `<div style="font-size:13px;color:#334155;">${esc(notes)}</div>`) : '',
+      `<div style="margin-top:20px"><div style="font-weight:700;color:#0f172a;text-transform:uppercase;font-size:12px;letter-spacing:.04em;margin-bottom:8px;">Customer sign-off</div>${signature ? `<img src="${signature}" style="height:60px"/><div style="color:#64748b;font-size:13px;">${esc(signedBy)}</div>` : '<div style="border-top:1px solid #94a3b8;width:260px;margin-top:36px;padding-top:4px;color:#64748b;font-size:13px;">Customer signature</div>'}</div>`,
+    ].join('');
+  }
+
+  function printWorkOrder() {
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Work Order</title></head>
+    <body style="font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1e293b;padding:32px;line-height:1.5;">
+    <h1 style="color:#0b2545;font-size:22px;margin:0 0 2px;">WORK ORDER</h1>
+    <p style="color:#64748b;margin:0 0 8px;">${propertyLabel(property)} · ${equipmentLabel(equipment)} · ${new Date().toLocaleDateString('en-US')}</p>
+    ${buildWorkOrderBody()}
     <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
     const w = window.open('', '_blank');
     if (!w) return toast.error('Allow pop-ups to print');
     w.document.write(html); w.document.close();
+  }
+
+  async function emailWorkOrder() {
+    setEmailing(true);
+    try {
+      await api.post(`/inspections/${id}/email`, {
+        heading: `Work Order — ${propertyLabel(property)} ${equipmentLabel(equipment)}`,
+        body: buildWorkOrderBody(),
+      });
+      toast.success('Work order emailed to the customer');
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not email the work order'); }
+    finally { setEmailing(false); }
   }
 
   const setAnswer = (key, answer) => setChecklist(p => ({ ...p, [key]: { ...p[key], answer } }));
@@ -346,7 +365,8 @@ export default function InspectionDetail() {
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-2 sticky bottom-0 bg-slate-50/80 backdrop-blur py-3">
-        <Btn variant="outline" onClick={printWorkOrder}><Printer size={15} /> Print work order</Btn>
+        <Btn variant="outline" onClick={printWorkOrder}><Printer size={15} /> Print</Btn>
+        <Btn variant="outline" onClick={emailWorkOrder} loading={emailing}><FileText size={15} /> Email to customer</Btn>
         <Btn variant="outline" onClick={() => save()} loading={saving}><Save size={15} /> Save draft</Btn>
         <Btn onClick={() => save('submitted')} loading={saving}><Send size={15} /> {submitted ? 'Update & keep submitted' : 'Submit inspection'}</Btn>
       </div>

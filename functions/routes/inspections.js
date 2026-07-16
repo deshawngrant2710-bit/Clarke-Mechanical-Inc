@@ -2,9 +2,24 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { db, getById, list, findWhere, create, update, remove } = require('../lib/db');
 const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
+const { render, sendMail } = require('../lib/email');
 
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
+
+// POST /inspections/:id/email — email the completed work order to the customer.
+router.post('/:id/email', async (req, res) => {
+  const insp = await getById('inspections', req.params.id);
+  if (!insp) return res.status(404).json({ error: 'Inspection not found' });
+  const customer = insp.customer_id ? await getById('customers', insp.customer_id) : null;
+  const to = req.body.to || customer?.email;
+  if (!to) return res.status(400).json({ error: 'No customer email on file for this work order.' });
+  try {
+    const { subject, html } = await render('work_order', { heading: req.body.heading || 'Work Order', body: req.body.body || '', customer_name: customer?.name });
+    await sendMail({ type: 'work_order', to, toName: customer?.name, subject, html, relatedId: insp.id, customerId: insp.customer_id || null, sentBy: req.user.name });
+    res.json({ ok: true });
+  } catch (e) { console.error('[inspections] work order email failed:', e.message); res.status(502).json({ error: 'Could not send the work order' }); }
+});
 
 // Fields a technician may set/patch on an inspection.
 const FIELDS = ['property_type', 'equipment_type', 'job_id', 'customer_id', 'info', 'checklist', 'notes', 'recommendations', 'status', 'parts', 'signature', 'signed_by', 'signed_at'];

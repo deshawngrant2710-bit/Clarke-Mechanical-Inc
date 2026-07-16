@@ -249,6 +249,11 @@ const templates = {
       html: shell(b, { heading: `Purchase Order ${po.po_number}`,
         body: p(`Hi ${po.vendor_name || 'there'},`) + p(`Please supply the following items${po.expected_date ? `, needed by <strong>${po.expected_date}</strong>` : ''}:`) + table + totalsBlock('Total', po.total, NAVY) + (po.notes ? p(`<strong>Notes:</strong> ${po.notes}`) : '') + p('Please confirm availability and pricing. Thank you!') }) };
   },
+  work_order(e, b) {
+    return { subject: e.subject || `Your work order from ${b.name}`,
+      html: shell(b, { heading: e.heading || 'Work order',
+        body: p(`Hi ${e.customer_name || 'there'},`) + p('Thank you for your business. Here is a summary of the work we performed:') + (e.body || '') + p('Please keep this for your records. Reply to this email with any questions.') }) };
+  },
   test(_e, b) {
     return { subject: `${b.name} — test email`,
       html: shell(b, { heading: 'Your email is working!',
