@@ -47,7 +47,7 @@ async function emailConfig() {
     business: {
       name: s.business_name, email: s.business_email, phone: s.business_phone, hours: s.business_hours,
       website: s.business_website || '', tagline: s.business_tagline || '',
-      appUrl: process.env.APP_URL || 'https://clarke-mechanical-inc.web.app',
+      appUrl: process.env.APP_URL || 'https://clarkemechanicalinc.org',
     },
     smtp: { host: s.smtp_host, port: Number(s.smtp_port) || 587, user: s.smtp_user, pass: s.smtp_pass },
     provider,

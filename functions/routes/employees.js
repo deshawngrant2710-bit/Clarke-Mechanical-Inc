@@ -80,6 +80,11 @@ router.put('/:id/pay', adminOnly, async (req, res) => {
 
 router.delete('/:id', adminOnly, async (req, res) => {
   await remove('users', req.params.id);
+  // Also clear their payroll payment records so they don't linger on the Payroll tab.
+  try {
+    const pays = await findWhere('payroll_payments', 'user_id', req.params.id);
+    for (const p of pays) await remove('payroll_payments', p.id);
+  } catch (e) { console.error('[employees] payroll cleanup:', e.message); }
   res.json({ success: true });
 });
 

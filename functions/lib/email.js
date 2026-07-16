@@ -4,7 +4,7 @@ const { db } = require('./db');
 const settings = require('./settings');
 
 // Publicly-hosted brand logo (works in Brevo HTTP API and all mail clients).
-const LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://clarke-mechanical-inc.web.app/email-logo.png';
+const LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://clarkemechanicalinc.org/email-logo.png';
 
 // ---- Brand palette ----
 const NAVY = '#0b2545';
