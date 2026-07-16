@@ -177,6 +177,22 @@ router.post('/invoices/:id/payments', async (req, res) => {
   res.status(201).json(await getById('payments', id));
 });
 
+// DELETE /billing/payments/:id — remove a recorded payment; re-open the invoice if
+// it was marked paid and is no longer fully covered.
+router.delete('/payments/:id', async (req, res) => {
+  const payment = await getById('payments', req.params.id);
+  if (!payment) return res.status(404).json({ error: 'Payment not found' });
+  await remove('payments', req.params.id);
+  if (payment.invoice_id) {
+    const invoice = await getById('invoices', payment.invoice_id);
+    if (invoice && invoice.status === 'paid') {
+      const remaining = (await findWhere('payments', 'invoice_id', payment.invoice_id)).reduce((s, p) => s + (p.amount || 0), 0);
+      if (remaining < (invoice.total || 0)) await update('invoices', payment.invoice_id, { status: 'sent' });
+    }
+  }
+  res.json({ success: true });
+});
+
 // GET /billing/payments — all recorded payments (for reconciliation), newest first.
 router.get('/payments', async (req, res) => {
   const [payments, invoices, customers] = await Promise.all([list('payments'), list('invoices'), list('customers')]);

@@ -8,11 +8,29 @@ import toast from 'react-hot-toast';
 
 const EMAIL_LABEL = {
   invoice: 'Invoice sent',
+  invoice_reminder: 'Payment reminder',
   receipt: 'Payment receipt',
-  quote: 'Quote sent',
+  quote: 'Estimate sent',
   job_confirmation: 'Appointment confirmation',
   job_reminder: 'Appointment reminder',
+  job_completed: 'Service complete',
+  job_en_route: 'On-the-way notice',
+  en_route: 'On-the-way notice',
+  service_confirmation: 'Request received',
+  service_request: 'New request',
+  suggest_time: 'Suggested new time',
+  decline: 'Appointment update',
+  password_reset: 'Password reset',
+  verify_email: 'Email verification',
 };
+
+// Parse a stored timestamp safely (ISO or "YYYY-MM-DD HH:MM:SS"); '' if unparseable.
+const fmtSent = (s) => {
+  if (!s) return '';
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+const emailLabel = (t) => EMAIL_LABEL[t] || (t || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -152,7 +170,7 @@ export default function CustomerDetail() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-800 flex items-center gap-1.5">
-                          <Mail size={12} className="text-slate-400 shrink-0" />{EMAIL_LABEL[e.type] || e.type}
+                          <Mail size={12} className="text-slate-400 shrink-0" />{emailLabel(e.type)}
                         </p>
                         <p className="text-xs text-slate-400 truncate">{e.subject}</p>
                       </div>
@@ -161,7 +179,7 @@ export default function CustomerDetail() {
                         : e.status === 'simulated' ? 'bg-slate-100 text-slate-500'
                         : 'bg-emerald-50 text-emerald-600'}`}>{e.status}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">{new Date(e.sent_at.replace(' ', 'T') + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}{e.sent_by ? ` · by ${e.sent_by}` : ''}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">{fmtSent(e.sent_at)}{e.sent_by ? ` · by ${e.sent_by}` : ''}</p>
                   </div>
                 ))}
               </div>

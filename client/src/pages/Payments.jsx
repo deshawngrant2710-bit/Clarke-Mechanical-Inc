@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, StatCard, Empty, Spinner } from '../components/UI';
-import { CreditCard, DollarSign, Banknote } from 'lucide-react';
+import { CreditCard, DollarSign, Banknote, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
@@ -13,7 +14,16 @@ export default function Payments() {
   const [payments, setPayments] = useState(null);
   const [method, setMethod] = useState('all');
 
-  useEffect(() => { api.get('/billing/payments').then(r => setPayments(r.data)).catch(() => setPayments([])); }, []);
+  function load() { api.get('/billing/payments').then(r => setPayments(r.data)).catch(() => setPayments([])); }
+  useEffect(load, []);
+
+  async function del(e, p) {
+    e.stopPropagation();
+    if (!window.confirm(`Delete this ${money(p.amount)} payment${p.invoice_number ? ` on ${p.invoice_number}` : ''}? If the invoice was marked paid, it'll return to unpaid.`)) return;
+    try { await api.delete(`/billing/payments/${p.id}`); toast.success('Payment deleted'); load(); }
+    catch (err) { toast.error(err.response?.data?.error || 'Could not delete'); }
+  }
+
   if (!payments) return <Spinner />;
 
   const filtered = payments.filter(p => method === 'all' || p.method === method);
@@ -49,6 +59,7 @@ export default function Payments() {
                   <th className="px-5 py-2.5 font-semibold">Invoice</th>
                   <th className="px-5 py-2.5 font-semibold">Method</th>
                   <th className="px-5 py-2.5 font-semibold text-right">Amount</th>
+                  <th className="px-5 py-2.5 font-semibold"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -59,6 +70,9 @@ export default function Payments() {
                     <td className="px-5 py-3 text-slate-500">{p.invoice_number || '—'}</td>
                     <td className="px-5 py-3 text-slate-600 capitalize">{p.method}{/pi_/.test(p.reference || '') ? ' (online)' : ''}</td>
                     <td className="px-5 py-3 text-right font-semibold text-emerald-600">{money(p.amount)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <button onClick={e => del(e, p)} title="Delete payment" className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
