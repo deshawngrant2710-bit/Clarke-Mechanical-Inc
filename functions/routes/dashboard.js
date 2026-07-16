@@ -57,6 +57,9 @@ router.get('/', async (req, res) => {
     list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'), list('quotes'), list('support_chats'), list('payment_requests'),
   ]);
   const t = today();
+  // Don't count staff (who have a matching login) as customers — mirrors the Customers list.
+  const staffEmails = new Set(users.filter(u => u.role && u.role !== 'customer' && u.email).map(u => u.email.toLowerCase()));
+  const realCustomers = customers.filter(c => !(c.email && staffEmails.has(c.email.toLowerCase())));
   const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
   const techName = Object.fromEntries(users.map(u => [u.id, u.name]));
   const paid = invoices.filter(i => i.status === 'paid');
@@ -82,7 +85,7 @@ router.get('/', async (req, res) => {
   const byCreated = (a, b) => (b.created_at || '').localeCompare(a.created_at || '');
 
   res.json({
-    totalCustomers: customers.length,
+    totalCustomers: realCustomers.length,
     totalJobs: jobs.length,
     openJobs: openJobs.length,
     completedJobs: jobs.filter(j => j.status === 'completed').length,
