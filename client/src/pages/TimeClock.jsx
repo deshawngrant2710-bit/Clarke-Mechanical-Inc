@@ -5,7 +5,7 @@ import { Card, CardHeader, Btn, Modal, Select, Empty, SkeletonPage, StatCard, Av
 import { fileToProof } from '../lib/imageProof';
 import { getLocation, mapsLink } from '../lib/geo';
 import { useAuth } from '../context/AuthContext';
-import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin, Pencil } from 'lucide-react';
+import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'; }
@@ -45,6 +45,12 @@ export default function TimeClock() {
       if (!data.proof) return toast.error('No proof on file');
       setProofView(data);
     } catch { toast.error('Could not load proof'); }
+  }
+
+  async function deleteEntry(e) {
+    if (!window.confirm(`Delete this time entry for ${e.technician_name}? This can't be undone.`)) return;
+    try { await api.delete(`/time/${e.id}`); toast.success('Time entry deleted'); load(); }
+    catch (err) { toast.error(err.response?.data?.error || 'Could not delete'); }
   }
 
   // Block clocking out until the job you're clocked into is finished.
@@ -189,6 +195,7 @@ export default function TimeClock() {
                           </button>
                         ) : <span className="text-slate-300 text-xs">—</span>}
                         {isAdmin && <button onClick={() => setEditEntry(e)} title="Edit times" className="text-slate-400 hover:text-blue-600"><Pencil size={13} /></button>}
+                        {isAdmin && <button onClick={() => deleteEntry(e)} title="Delete entry" className="text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>}
                       </div>
                     </td>
                   </tr>

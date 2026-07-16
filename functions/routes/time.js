@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
-const { db, getById, create, update, list, findWhere } = require('../lib/db');
+const { db, getById, create, update, remove, list, findWhere } = require('../lib/db');
 const { authMiddleware, requireStaff } = require('../middleware/auth');
 
 const router = express.Router();
@@ -95,6 +95,13 @@ router.put('/:id', async (req, res) => {
   patch.hours = clockOut ? Math.round(((new Date(clockOut) - new Date(clockIn)) / 3600000) * 100) / 100 : null;
   const saved = await update('time_entries', req.params.id, patch);
   res.json({ ...saved, proof: undefined });
+});
+
+// DELETE /time/:id — admin removes a time entry (e.g. a test shift).
+router.delete('/:id', async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only an admin can delete timesheets' });
+  await remove('time_entries', req.params.id);
+  res.json({ success: true });
 });
 
 // The proof image/PDF for one entry (own, or admin).
