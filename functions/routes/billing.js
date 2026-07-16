@@ -121,6 +121,22 @@ async function emailEstimateSent(quote, prevStatus) {
   } catch (e) { console.error('[billing] estimate email failed:', e.message); }
 }
 
+// POST /billing/quotes/preview — render the estimate exactly as the customer will
+// receive it (the branded email), without saving or sending. Used for "preview".
+router.post('/quotes/preview', async (req, res) => {
+  const { customer_id, items = [], tax_rate, expiry_date, notes, quote_number } = req.body;
+  const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
+  const lineItems = withItemTotals(items);
+  const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
+  const customer = customer_id ? await getById('customers', customer_id) : null;
+  const entity = {
+    quote_number: quote_number || 'DRAFT', customer_name: customer?.name || 'Customer',
+    items: lineItems, subtotal, tax_amount, total, expiry_date: expiry_date || null, notes: notes || null,
+  };
+  const { subject, html } = await render('quote', entity);
+  res.json({ subject, html });
+});
+
 router.post('/quotes', async (req, res) => {
   const { customer_id, status, issue_date, expiry_date, items = [], tax_rate, notes } = req.body;
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);

@@ -24,6 +24,8 @@ export default function Quotes() {
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm());
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [taxInput, setTaxInput] = useState('8.75');
   const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
@@ -102,6 +104,17 @@ export default function Quotes() {
   const subtotal = form.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
   const tax = subtotal * form.tax_rate;
   const total = subtotal + tax;
+
+  async function previewQuote() {
+    if (!form.customer_id) return toast.error('Pick a customer first');
+    if (!form.items.some(i => (i.description || '').trim())) return toast.error('Add at least one line item');
+    setPreviewing(true);
+    try {
+      const { data } = await api.post('/billing/quotes/preview', form);
+      setPreview(data);
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not build the preview'); }
+    finally { setPreviewing(false); }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -246,11 +259,19 @@ export default function Quotes() {
           </div>
 
           <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-          <div className="flex justify-end gap-2 pt-2">
-            <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
-            <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Quote'}</Btn>
+          <div className="flex justify-between gap-2 pt-2">
+            <Btn variant="outline" onClick={previewQuote} loading={previewing}><Mail size={15} /> Preview as customer</Btn>
+            <div className="flex gap-2">
+              <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
+              <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Quote'}</Btn>
+            </div>
           </div>
         </div>
+      </Modal>
+
+      <Modal open={!!preview} onClose={() => setPreview(null)} title="Customer preview" subtitle={preview?.subject} size="xl">
+        <p className="text-xs text-slate-400 mb-2">This is exactly what the customer will see when the estimate is sent.</p>
+        <iframe title="estimate preview" srcDoc={preview?.html || ''} className="w-full h-[70vh] rounded-lg border border-slate-200 bg-white" />
       </Modal>
     </div>
   );
