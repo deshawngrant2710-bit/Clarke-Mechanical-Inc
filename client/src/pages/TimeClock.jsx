@@ -5,7 +5,7 @@ import { Card, CardHeader, Btn, Modal, Select, Empty, SkeletonPage, StatCard, Av
 import { fileToProof } from '../lib/imageProof';
 import { getLocation, mapsLink } from '../lib/geo';
 import { useAuth } from '../context/AuthContext';
-import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin } from 'lucide-react';
+import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'; }
@@ -27,6 +27,7 @@ export default function TimeClock() {
   const [clockInOpen, setClockInOpen] = useState(false);
   const [clockOutOpen, setClockOutOpen] = useState(false);
   const [proofView, setProofView] = useState(null);
+  const [editEntry, setEditEntry] = useState(null);
 
   function load() {
     return Promise.all([api.get('/time/active'), api.get('/time'), api.get('/jobs')]).then(([a, e, j]) => {
@@ -181,11 +182,14 @@ export default function TimeClock() {
                     </td>
                     <td className="px-5 py-3 text-right font-medium text-slate-800">{e.hours != null ? `${e.hours.toFixed(2)}` : '—'}</td>
                     <td className="px-5 py-3 text-right">
-                      {e.has_proof ? (
-                        <button onClick={() => viewProof(e.id)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-xs font-medium">
-                          {e.proof_type === 'pdf' ? <FileText size={13} /> : <ImageIcon size={13} />} View
-                        </button>
-                      ) : <span className="text-slate-300 text-xs">—</span>}
+                      <div className="inline-flex items-center gap-3 justify-end">
+                        {e.has_proof ? (
+                          <button onClick={() => viewProof(e.id)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-xs font-medium">
+                            {e.proof_type === 'pdf' ? <FileText size={13} /> : <ImageIcon size={13} />} View
+                          </button>
+                        ) : <span className="text-slate-300 text-xs">—</span>}
+                        {isAdmin && <button onClick={() => setEditEntry(e)} title="Edit times" className="text-slate-400 hover:text-blue-600"><Pencil size={13} /></button>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -198,12 +202,68 @@ export default function TimeClock() {
       <ClockInModal open={clockInOpen} onClose={() => setClockInOpen(false)} onDone={load} jobs={jobs} requireJob={user?.role === 'technician'} />
       <ClockOutModal open={clockOutOpen} onClose={() => setClockOutOpen(false)} onDone={load} />
 
+      <EditTimeModal entry={editEntry} onClose={() => setEditEntry(null)} onDone={load} />
+
       <Modal open={!!proofView} onClose={() => setProofView(null)} title="Proof of Work" size="lg">
         {proofView?.proof_type === 'pdf'
           ? <iframe title="proof" src={proofView.proof} className="w-full h-[70vh] rounded-lg border border-slate-200" />
           : <img src={proofView?.proof} alt="proof of work" className="w-full rounded-lg border border-slate-200" />}
       </Modal>
     </div>
+  );
+}
+
+// ISO -> value for <input type="datetime-local"> (local time), and blank if none.
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function EditTimeModal({ entry, onClose, onDone }) {
+  const [clockIn, setClockIn] = useState('');
+  const [clockOut, setClockOut] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (entry) { setClockIn(toLocalInput(entry.clock_in)); setClockOut(toLocalInput(entry.clock_out)); }
+  }, [entry]);
+
+  async function save() {
+    if (!clockIn) return toast.error('Clock-in time is required');
+    setSaving(true);
+    try {
+      await api.put(`/time/${entry.id}`, {
+        clock_in: new Date(clockIn).toISOString(),
+        clock_out: clockOut ? new Date(clockOut).toISOString() : null,
+      });
+      toast.success('Timesheet updated');
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not update'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={!!entry} onClose={onClose} title="Edit time entry" subtitle={entry ? `${entry.technician_name}${entry.job_title ? ` · ${entry.job_title}` : ''}` : ''} size="sm">
+      {entry && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Clock in</label>
+            <input type="datetime-local" value={clockIn} onChange={e => setClockIn(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Clock out</label>
+            <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+            <p className="text-xs text-slate-400 mt-1">Hours recalculate automatically. Leave blank if the shift is still open.</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+            <Btn onClick={save} loading={saving}>Save</Btn>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

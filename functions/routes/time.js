@@ -81,6 +81,22 @@ router.get('/', async (req, res) => {
   })));
 });
 
+// PUT /time/:id — admin corrects a past entry's clock-in/out times; recomputes hours.
+router.put('/:id', async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only an admin can edit timesheets' });
+  const e = await getById('time_entries', req.params.id);
+  if (!e) return res.status(404).json({ error: 'Not found' });
+  const patch = {};
+  if (req.body.clock_in) patch.clock_in = new Date(req.body.clock_in).toISOString();
+  if (req.body.clock_out !== undefined) patch.clock_out = req.body.clock_out ? new Date(req.body.clock_out).toISOString() : null;
+  const clockIn = patch.clock_in || e.clock_in;
+  const clockOut = patch.clock_out !== undefined ? patch.clock_out : e.clock_out;
+  if (clockOut && new Date(clockOut) <= new Date(clockIn)) return res.status(400).json({ error: 'Clock-out must be after clock-in' });
+  patch.hours = clockOut ? Math.round(((new Date(clockOut) - new Date(clockIn)) / 3600000) * 100) / 100 : null;
+  const saved = await update('time_entries', req.params.id, patch);
+  res.json({ ...saved, proof: undefined });
+});
+
 // The proof image/PDF for one entry (own, or admin).
 router.get('/:id/proof', async (req, res) => {
   const e = await getById('time_entries', req.params.id);
