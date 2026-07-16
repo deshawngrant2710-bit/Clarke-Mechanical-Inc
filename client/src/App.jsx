@@ -29,6 +29,7 @@ import RouteMap from './pages/RouteMap';
 import Payments from './pages/Payments';
 import PriceBook from './pages/PriceBook';
 import Payroll from './pages/Payroll';
+import Purchasing from './pages/Purchasing';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
 import TimeClock from './pages/TimeClock';
@@ -105,6 +106,7 @@ export default function App() {
             <Route path="/payments" element={<Payments />} />
             <Route path="/price-book" element={<PriceBook />} />
             <Route path="/payroll" element={<Payroll />} />
+            <Route path="/purchasing" element={<Purchasing />} />
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />

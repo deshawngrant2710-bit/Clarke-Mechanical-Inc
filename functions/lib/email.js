@@ -234,6 +234,21 @@ const templates = {
           `<div style="text-align:center;margin:14px 0 18px;"><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 26px;font-size:30px;font-weight:800;letter-spacing:8px;color:${NAVY};">${e.code}</span></div>` +
           p(`<span style="color:#64748b;font-size:13px;">This code expires in 15 minutes. If you didn't request it, you can ignore this email.</span>`) }) };
   },
+  purchase_order(po, b) {
+    const rows = (po.items || []).map(i => `<tr>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f7;color:#334155;font-size:14px;">${i.description}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f7;color:#64748b;font-size:14px;text-align:right;">${i.quantity}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f7;color:#64748b;font-size:14px;text-align:right;">${money(i.unit_cost)}</td>
+      <td style="padding:8px 0;border-bottom:1px solid #eef2f7;color:#0f172a;font-size:14px;text-align:right;font-weight:600;">${money(i.total)}</td></tr>`).join('');
+    const table = `<table style="width:100%;border-collapse:collapse;margin:16px 0;"><tr>
+      <th style="text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;padding-bottom:6px;">Item</th>
+      <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;padding-bottom:6px;">Qty</th>
+      <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;padding-bottom:6px;">Unit</th>
+      <th style="text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;padding-bottom:6px;">Amount</th></tr>${rows}</table>`;
+    return { subject: `Purchase Order ${po.po_number} from ${b.name}`,
+      html: shell(b, { heading: `Purchase Order ${po.po_number}`,
+        body: p(`Hi ${po.vendor_name || 'there'},`) + p(`Please supply the following items${po.expected_date ? `, needed by <strong>${po.expected_date}</strong>` : ''}:`) + table + totalsBlock('Total', po.total, NAVY) + (po.notes ? p(`<strong>Notes:</strong> ${po.notes}`) : '') + p('Please confirm availability and pricing. Thank you!') }) };
+  },
   test(_e, b) {
     return { subject: `${b.name} — test email`,
       html: shell(b, { heading: 'Your email is working!',
