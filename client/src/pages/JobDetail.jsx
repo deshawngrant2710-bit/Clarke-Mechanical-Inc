@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck, CheckSquare } from 'lucide-react';
+import { TaskModal } from './Tasks';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import DirectionsButton from '../components/DirectionsButton';
@@ -50,6 +51,7 @@ export default function JobDetail() {
   const [signModal, setSignModal] = useState(false);
   const [approving, setApproving] = useState(false);
   const [bizPhone, setBizPhone] = useState('');
+  const [taskModal, setTaskModal] = useState(false);
   const [signName, setSignName] = useState('');
   const [signing, setSigning] = useState(false);
   const padRef = useRef(null);
@@ -334,6 +336,7 @@ export default function JobDetail() {
             <p className="text-xs text-slate-400 mt-1 font-mono">Job #{id.slice(0, 8).toUpperCase()}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
+            {!cancelled && <Btn variant="outline" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>}
             {/* Technician field tools (also shown to admins flagged as technicians) */}
             {canTech && (
               <>
@@ -752,6 +755,10 @@ export default function JobDetail() {
           </div>
         </div>
       </Modal>
+
+      <TaskModal open={taskModal} onClose={() => setTaskModal(false)}
+        staff={employees.filter(u => u.role && u.role !== 'customer')} customers={customers} onDone={() => {}}
+        initial={{ customer_id: job.customer_id || '', title: `Follow-up: ${job.title}` }} />
 
       <Modal open={signModal} onClose={() => setSignModal(false)} title="Capture Customer Sign-off" subtitle={job.title}>
         <div className="space-y-4">

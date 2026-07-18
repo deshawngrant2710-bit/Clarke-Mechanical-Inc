@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Modal, Input, Textarea, Badge, Spinner, Avatar, Empty } from '../components/UI';
-import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText, CheckSquare } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
+import { TaskModal } from './Tasks';
 import toast from 'react-hot-toast';
 
 const EMAIL_LABEL = {
@@ -38,6 +39,8 @@ export default function CustomerDetail() {
   const [customer, setCustomer] = useState(null);
   const [emails, setEmails] = useState([]);
   const [editModal, setEditModal] = useState(false);
+  const [taskModal, setTaskModal] = useState(false);
+  const [staff, setStaff] = useState([]);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -46,6 +49,7 @@ export default function CustomerDetail() {
     api.get(`/email/log?customer_id=${id}`).then(r => setEmails(r.data)).catch(() => {});
   }
   useEffect(load, [id]);
+  useEffect(() => { api.get('/employees').then(r => setStaff(r.data.filter(u => u.role && u.role !== 'customer'))).catch(() => {}); }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -122,6 +126,7 @@ export default function CustomerDetail() {
           </div>
           <div className="flex items-center gap-2">
             <Btn variant="outline" onClick={printStatement}><FileText size={15} /> Statement</Btn>
+            <Btn variant="outline" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>
             <Btn variant="outline" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
             <Btn variant="danger" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
           </div>
@@ -215,6 +220,9 @@ export default function CustomerDetail() {
           </Card>
         </div>
       </div>
+
+      <TaskModal open={taskModal} onClose={() => setTaskModal(false)} staff={staff}
+        customers={customer ? [customer] : []} onDone={() => {}} initial={{ customer_id: id }} />
 
       <Modal open={editModal} onClose={() => setEditModal(false)} title="Edit Customer">
         <div className="space-y-3">
