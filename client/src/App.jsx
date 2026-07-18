@@ -30,6 +30,7 @@ import Payments from './pages/Payments';
 import PriceBook from './pages/PriceBook';
 import Payroll from './pages/Payroll';
 import Purchasing from './pages/Purchasing';
+import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
 import TimeClock from './pages/TimeClock';
@@ -107,6 +108,7 @@ export default function App() {
             <Route path="/price-book" element={<PriceBook />} />
             <Route path="/payroll" element={<Payroll />} />
             <Route path="/purchasing" element={<Purchasing />} />
+            <Route path="/tasks" element={<Tasks />} />
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />

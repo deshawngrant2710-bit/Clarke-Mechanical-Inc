@@ -12,7 +12,7 @@ import { DonutChart, AreaChart } from '../components/Charts';
 import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
-  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation, MessagesSquare,
+  Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation, MessagesSquare, CheckSquare, Circle,
 } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import Logo from '../components/Logo';
@@ -25,6 +25,45 @@ const STATUS_COLORS = {
 };
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// "Your to-do" — open tasks assigned to you (or to anyone), leavable by the owner/techs.
+function ToDoWidget({ user, navigate }) {
+  const [tasks, setTasks] = useState([]);
+  const loadTasks = () => api.get('/tasks').then(r => setTasks(r.data)).catch(() => {});
+  useEffect(() => { loadTasks(); }, []);
+  const mine = tasks.filter(t => t.status !== 'done' && (t.assigned_to === user?.id || !t.assigned_to)).slice(0, 6);
+  const extra = tasks.filter(t => t.status !== 'done' && (t.assigned_to === user?.id || !t.assigned_to)).length - mine.length;
+  async function done(t) { try { await api.put(`/tasks/${t.id}`, { status: 'done' }); loadTasks(); } catch { /* ignore */ } }
+
+  return (
+    <Card className="p-5 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2"><CheckSquare size={16} className="text-blue-500" /><h2 className="text-card-title text-slate-800">Your to-do</h2></div>
+        <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">Open list <ArrowRight size={12} /></button>
+      </div>
+      {mine.length === 0 ? (
+        <p className="text-sm text-slate-400">You're all caught up. Nothing on your list right now.</p>
+      ) : (
+        <div className="space-y-2.5">
+          {mine.map(t => (
+            <div key={t.id} className="flex items-start gap-2.5">
+              <button onClick={() => done(t)} title="Mark done" className="mt-0.5 shrink-0 text-slate-300 hover:text-emerald-500"><Circle size={18} /></button>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-slate-800">{t.priority === 'high' && <span className="text-red-600 font-semibold">! </span>}{t.title}</p>
+                {t.notes && <p className="text-xs text-slate-500 truncate">{t.notes}</p>}
+                <div className="flex flex-wrap gap-x-2 text-[11px] text-slate-400">
+                  {t.customer_name && <span>{t.customer_name}</span>}
+                  {t.created_by && <span>· from {t.created_by}</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+          {extra > 0 && <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-slate-500 hover:text-blue-600">+{extra} more…</button>}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function QuickAction({ icon, label, onClick, color }) {
   return (
@@ -90,6 +129,8 @@ export default function Dashboard() {
         <StatCard label="Avg. Ticket" value={data.avgTicket} prefix="$" decimals={2} icon={<Receipt size={18} />} color="purple" />
         <StatCard label="Outstanding" value={data.outstandingAmount} prefix="$" decimals={2} icon={<AlertTriangle size={18} />} color="red" sub={`${data.overdueInvoices} overdue`} onClick={() => navigate('/invoices')} />
       </div>
+
+      <ToDoWidget user={user} navigate={navigate} />
 
       {naItems.length > 0 && (
         <Card className="p-5 mb-6">

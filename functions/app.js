@@ -17,6 +17,7 @@ app.use('/api/billing', require('./routes/billing'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/pricebook', require('./routes/pricebook'));
 app.use('/api/purchasing', require('./routes/purchasing'));
+app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/payroll', require('./routes/payroll'));
 app.use('/api/dashboard', require('./routes/dashboard'));
