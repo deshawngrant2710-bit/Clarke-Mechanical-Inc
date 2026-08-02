@@ -1,0 +1,11 @@
+{
+  "appId": "org.clarkemechanicalinc.app",
+  "appName": "Clarke Mechanical",
+  "webDir": "dist",
+  "server": {
+    "iosScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}

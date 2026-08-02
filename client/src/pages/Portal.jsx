@@ -947,6 +947,14 @@ function ProfileModal({ open, onClose, profile, onDone }) {
     } catch (e) { toast.error(e.response?.data?.error || 'Could not update'); }
     finally { setSaving(false); }
   }
+  async function deleteAccount() {
+    if (!window.confirm('Permanently delete your account? You will be signed out and lose access to the portal. This cannot be undone.')) return;
+    try {
+      await api.delete('/portal/account');
+      localStorage.removeItem('token'); localStorage.removeItem('user');
+      window.location.href = '/login';
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not delete your account'); }
+  }
   return (
     <Modal open={open} onClose={onClose} title="My Contact Info" subtitle="Keep your details up to date">
       <div className="space-y-3">
@@ -971,6 +979,10 @@ function ProfileModal({ open, onClose, profile, onDone }) {
         <div className="flex justify-end gap-2 pt-2">
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>
           <Btn onClick={save} loading={saving}>{saving ? 'Saving…' : 'Save'}</Btn>
+        </div>
+        <div className="border-t border-slate-100 pt-3 mt-1">
+          <button onClick={deleteAccount} className="text-xs font-medium text-red-600 hover:text-red-700">Delete my account</button>
+          <p className="text-[11px] text-slate-400 mt-1">Permanently removes your login and portal access.</p>
         </div>
       </div>
     </Modal>

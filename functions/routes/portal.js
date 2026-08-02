@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
-const { db, list, getById, findWhere, create, update, nameMap } = require('../lib/db');
+const { db, list, getById, findWhere, create, update, remove, nameMap } = require('../lib/db');
 const { authMiddleware } = require('../middleware/auth');
 const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
@@ -353,6 +353,19 @@ router.put('/profile', async (req, res) => {
   if ((phone || null) !== (current?.phone || null)) { patch.phone_verified = false; patch.phone_verify_code = null; }
   const saved = await update('customers', ids[0], patch);
   res.json({ id: saved.id, name: saved.name, email: saved.email, phone: saved.phone, address: saved.address, city: saved.city, state: saved.state, zip: saved.zip, email_opt_in: saved.email_opt_in, sms_opt_in: saved.sms_opt_in, email_verified: !!saved.email_verified, phone_verified: !!saved.phone_verified });
+});
+
+// DELETE /portal/account — the customer permanently deletes their own login/account.
+// Business/service records are retained as required for accounting, but the login and
+// portal access are removed. (Required by the App Store for apps with sign-up.)
+router.delete('/account', async (req, res) => {
+  try {
+    await remove('users', req.user.id);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[portal] account delete failed:', e.message);
+    res.status(500).json({ error: 'Could not delete your account. Please contact us.' });
+  }
 });
 
 // ---- Contact verification ----

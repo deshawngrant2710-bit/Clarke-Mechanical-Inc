@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar';
 import Logo from './components/Logo';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
+import Privacy from './pages/Privacy';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
 import CustomerDetail from './pages/CustomerDetail';
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
           </Route>
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/privacy" element={<Privacy />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/customers" element={<Customers />} />

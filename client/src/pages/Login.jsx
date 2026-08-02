@@ -242,6 +242,9 @@ export default function Login() {
               Trouble signing in? Call us at <a href={`tel:${biz.business_phone}`} className="font-medium text-slate-500 hover:text-slate-700">{biz.business_phone}</a>
             </p>
           )}
+          <p className="text-[11px] text-slate-400 text-center mt-3">
+            <a href="/privacy" className="hover:text-slate-600">Privacy Policy</a>
+          </p>
 
         </div>
       </div>
