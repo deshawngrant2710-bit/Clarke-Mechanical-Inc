@@ -127,8 +127,10 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
 
       <div class="totals">
         <div class="row"><span>Subtotal</span><span>${money(doc.subtotal)}</span></div>
+        ${doc.discount ? `<div class="row"><span>Discount</span><span>−${money(doc.discount)}</span></div>` : ''}
         <div class="row"><span>Tax</span><span>${money(doc.tax_amount)}</span></div>
         <div class="grand"><span>${isInvoice && !isPaid ? 'Amount Due' : 'Total'}</span><span>${money(doc.total)}</span></div>
+        ${doc.deposit ? `<div class="row" style="margin-top:6px"><span>Deposit requested</span><span>${money(doc.deposit)}</span></div>` : ''}
       </div>
 
       ${receiptBlock}

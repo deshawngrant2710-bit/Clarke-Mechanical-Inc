@@ -75,6 +75,8 @@ The website is currently running an **older version** than your phone. When you 
 
 | Time Clock — **break tracking** (start/end, netted out of hours), **overtime** (>40h/wk), **shift-vs-billable** summary (breaks + OT shown), **missed clock-out warning**, **correction requests** (tech) with **manager approval/deny**, and **entry approval**. Clock-in/out GPS and offline clock-in (via the sync queue) already existed. | Shared. Backend: `functions/routes/time.js` (break/approve/correction endpoints + net hours). **Deploy to Render.** Frontend: `src/pages/TimeClock.jsx`. |
 
+| Quotes & Invoices — **discount** ($ off, tax applied after discount) and **deposit** (amount requested up front) controls, on the create modals, totals, and the customer PDF. | Shared. Backend: `functions/routes/billing.js` (`calcTotals` + handlers). **Deploy to Render.** Frontend: `Quotes.jsx`, `Invoices.jsx`, `src/lib/printDoc.js`. Other list items (partial payments, invoice PDF/email, receipt, reminders, approve/reject, quote→job, job→invoice) already existed; e-signature-on-quote, Good/Better/Best, quote reminders, and SMS remain (SMS needs Twilio). |
+
 ## Add new entries here as we go
 
 - _(new app-only or shared changes will be logged here)_

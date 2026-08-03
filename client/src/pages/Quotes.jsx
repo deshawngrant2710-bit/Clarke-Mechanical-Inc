@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
 const emptyItem = () => ({ description: '', quantity: 1, unit_price: 0 });
-const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, notes: '' });
+const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, discount: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Quotes() {
@@ -114,8 +114,9 @@ export default function Quotes() {
     });
   }
   const subtotal = form.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-  const tax = subtotal * form.tax_rate;
-  const total = subtotal + tax;
+  const discount = Math.min(Math.max(Number(form.discount) || 0, 0), subtotal);
+  const tax = (subtotal - discount) * form.tax_rate;
+  const total = subtotal - discount + tax;
 
   async function previewQuote() {
     if (!form.customer_id) return toast.error('Pick a customer first');
@@ -260,6 +261,14 @@ export default function Quotes() {
           <div className="rounded-xl border border-slate-200 p-4 text-sm space-y-2.5 max-w-xs ml-auto">
             <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-medium tabular-nums">{money(subtotal)}</span></div>
             <div className="flex justify-between items-center text-slate-600">
+              <span className="flex items-center gap-2">Discount $
+                <input type="number" min="0" step="0.01" value={form.discount || ''}
+                  onChange={e => setForm(f => ({ ...f, discount: e.target.value }))}
+                  className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+              </span>
+              <span className="font-medium tabular-nums text-emerald-600">{discount ? `−${money(discount)}` : money(0)}</span>
+            </div>
+            <div className="flex justify-between items-center text-slate-600">
               <span className="flex items-center gap-2">Tax
                 <span className="inline-flex items-center gap-1">
                   <input type="number" min="0" step="0.01" value={taxInput}
@@ -271,6 +280,14 @@ export default function Quotes() {
               <span className="font-medium tabular-nums">{money(tax)}</span>
             </div>
             <div className="flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-200 text-base"><span>Total</span><span className="tabular-nums">{money(total)}</span></div>
+            <div className="flex justify-between items-center text-slate-600 pt-1">
+              <span className="flex items-center gap-2">Deposit $
+                <input type="number" min="0" step="0.01" value={form.deposit || ''}
+                  onChange={e => setForm(f => ({ ...f, deposit: e.target.value }))}
+                  className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+              </span>
+              <span className="text-xs text-slate-400">requested up front</span>
+            </div>
           </div>
 
           <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />

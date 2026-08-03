@@ -8,10 +8,12 @@ const settings = require('../lib/settings');
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
 
-function calcTotals(items, taxRate) {
+function calcTotals(items, taxRate, discount = 0) {
   const subtotal = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
-  const tax_amount = subtotal * taxRate;
-  return { subtotal, tax_amount, total: subtotal + tax_amount };
+  const discount_amount = Math.min(Math.max(Number(discount) || 0, 0), subtotal);
+  const taxable = subtotal - discount_amount;
+  const tax_amount = taxable * taxRate;
+  return { subtotal, discount_amount, tax_amount, total: taxable + tax_amount };
 }
 const withItemTotals = (items = []) => items.map(i => ({
   id: i.id || uuid(), description: i.description, quantity: Number(i.quantity) || 0,
@@ -60,15 +62,15 @@ router.get('/invoices/:id', async (req, res) => {
 });
 
 router.post('/invoices', async (req, res) => {
-  const { customer_id, job_id, status, issue_date, due_date, items = [], tax_rate, notes } = req.body;
+  const { customer_id, job_id, status, issue_date, due_date, items = [], tax_rate, notes, discount, deposit } = req.body;
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
+  const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, rate, discount);
   const invoice_number = await nextNumber('invoices', 'CL');
   const saved = await create('invoices', uuid(), {
     invoice_number, customer_id: customer_id || null, job_id: job_id || null, status: status || 'draft',
-    issue_date: issue_date || null, due_date: due_date || null, subtotal, tax_rate: rate, tax_amount, total,
-    notes: notes || null, items: lineItems,
+    issue_date: issue_date || null, due_date: due_date || null, subtotal, discount: discount_amount, tax_rate: rate, tax_amount, total,
+    deposit: Number(deposit) || 0, notes: notes || null, items: lineItems,
   });
   res.status(201).json(saved);
 });
@@ -76,12 +78,13 @@ router.post('/invoices', async (req, res) => {
 router.put('/invoices/:id', async (req, res) => {
   const existing = await getById('invoices', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Invoice not found' });
-  const { customer_id, job_id, status, issue_date, due_date, items = [], tax_rate = 0.0875, notes } = req.body;
+  const { customer_id, job_id, status, issue_date, due_date, items = [], tax_rate = 0.0875, notes, discount, deposit } = req.body;
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, tax_rate);
+  const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, tax_rate, discount);
   const saved = await update('invoices', req.params.id, {
     customer_id: customer_id || null, job_id: job_id || null, status, issue_date: issue_date || null,
-    due_date: due_date || null, subtotal, tax_rate, tax_amount, total, notes: notes || null, items: lineItems,
+    due_date: due_date || null, subtotal, discount: discount_amount, tax_rate, tax_amount, total,
+    deposit: Number(deposit) || 0, notes: notes || null, items: lineItems,
   });
   res.json(saved);
 });
@@ -124,28 +127,29 @@ async function emailEstimateSent(quote, prevStatus) {
 // POST /billing/quotes/preview — render the estimate exactly as the customer will
 // receive it (the branded email), without saving or sending. Used for "preview".
 router.post('/quotes/preview', async (req, res) => {
-  const { customer_id, items = [], tax_rate, expiry_date, notes, quote_number } = req.body;
+  const { customer_id, items = [], tax_rate, expiry_date, notes, quote_number, discount, deposit } = req.body;
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
+  const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, rate, discount);
   const customer = customer_id ? await getById('customers', customer_id) : null;
   const entity = {
     quote_number: quote_number || 'DRAFT', customer_name: customer?.name || 'Customer',
-    items: lineItems, subtotal, tax_amount, total, expiry_date: expiry_date || null, notes: notes || null,
+    items: lineItems, subtotal, discount: discount_amount, tax_amount, total, deposit: Number(deposit) || 0, expiry_date: expiry_date || null, notes: notes || null,
   };
   const { subject, html } = await render('quote', entity);
   res.json({ subject, html });
 });
 
 router.post('/quotes', async (req, res) => {
-  const { customer_id, status, issue_date, expiry_date, items = [], tax_rate, notes } = req.body;
+  const { customer_id, status, issue_date, expiry_date, items = [], tax_rate, notes, discount, deposit } = req.body;
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, rate);
+  const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, rate, discount);
   const quote_number = await nextNumber('quotes', 'QUO', true);
   const saved = await create('quotes', uuid(), {
     quote_number, customer_id: customer_id || null, status: status || 'draft', issue_date: issue_date || null,
-    expiry_date: expiry_date || null, subtotal, tax_rate: rate, tax_amount, total, notes: notes || null, items: lineItems,
+    expiry_date: expiry_date || null, subtotal, discount: discount_amount, tax_rate: rate, tax_amount, total,
+    deposit: Number(deposit) || 0, notes: notes || null, items: lineItems,
   });
   res.status(201).json(saved);
   emailEstimateSent(saved, null);
@@ -154,12 +158,12 @@ router.post('/quotes', async (req, res) => {
 router.put('/quotes/:id', async (req, res) => {
   const existing = await getById('quotes', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Quote not found' });
-  const { customer_id, status, issue_date, expiry_date, items = [], tax_rate = 0.0875, notes } = req.body;
+  const { customer_id, status, issue_date, expiry_date, items = [], tax_rate = 0.0875, notes, discount, deposit } = req.body;
   const lineItems = withItemTotals(items);
-  const { subtotal, tax_amount, total } = calcTotals(lineItems, tax_rate);
+  const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, tax_rate, discount);
   const saved = await update('quotes', req.params.id, {
     customer_id: customer_id || null, status, issue_date: issue_date || null, expiry_date: expiry_date || null,
-    subtotal, tax_rate, tax_amount, total, notes: notes || null, items: lineItems,
+    subtotal, discount: discount_amount, tax_rate, tax_amount, total, deposit: Number(deposit) || 0, notes: notes || null, items: lineItems,
   });
   res.json(saved);
   emailEstimateSent(saved, existing.status);
