@@ -115,7 +115,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-dvh flex native-safe-y">
       {/* Left brand panel */}
       <div className="hidden lg:flex items-center justify-center w-[45%] bg-white p-12 border-r border-slate-200">
         <Logo variant="full" height={96} />

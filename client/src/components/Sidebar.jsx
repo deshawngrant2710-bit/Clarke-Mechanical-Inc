@@ -47,7 +47,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         onClick={onClose}
         className={`fixed inset-0 z-30 bg-slate-900/50 lg:hidden transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       />
-      <aside className={`fixed lg:sticky inset-y-0 left-0 top-0 z-40 flex flex-col w-64 h-screen bg-gradient-to-b from-slate-900 to-slate-950 text-white shrink-0 border-r border-slate-800 transform transition-transform duration-200 ease-out ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside className={`fixed lg:sticky inset-y-0 left-0 top-0 z-40 flex flex-col w-64 h-dvh bg-gradient-to-b from-slate-900 to-slate-950 text-white shrink-0 border-r border-slate-800 transform transition-transform duration-200 ease-out ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800/80">
           <Logo variant="icon" height={36} className="shrink-0" />
@@ -71,7 +71,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         )}
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="flex-1 min-h-0 px-3 pt-4 pb-6 overflow-y-auto overscroll-contain app-nav">
         {navGroups.map(group => (
           <div key={group.label} className="mb-5">
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">{group.label}</p>
@@ -107,8 +107,8 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         ))}
       </nav>
 
-      {/* User */}
-      <div className="px-4 py-4 border-t border-slate-800/80 safe-bottom">
+      {/* User (hidden in the native app — replaced by the bottom bar + My Account panel) */}
+      <div className="px-4 py-4 border-t border-slate-800/80 safe-bottom sidebar-user">
         <NavLink to="/account" onClick={onClose}
           className="flex items-center gap-3 mb-3 -mx-1 px-1 py-1 rounded-lg hover:bg-slate-800/60 transition-colors">
           <div className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-xs font-bold uppercase shadow-md">

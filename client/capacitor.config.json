@@ -2,10 +2,12 @@
   "appId": "org.clarkemechanicalinc.app",
   "appName": "Clarke Mechanical",
   "webDir": "dist",
+  "backgroundColor": "#f8fafc",
   "server": {
     "iosScheme": "https"
   },
   "ios": {
-    "contentInset": "always"
+    "contentInset": "never",
+    "backgroundColor": "#f8fafc"
   }
 }

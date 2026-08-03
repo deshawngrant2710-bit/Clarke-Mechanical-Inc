@@ -3,9 +3,48 @@ const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
 const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
+const settings = require('../lib/settings');
 
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
+
+// Auto-prepare a DRAFT invoice from a completed job's parts & labor (parts logged
+// during the visit; a "Labor" line is just a part the tech adds). If the job came
+// from an estimate and nothing was logged, fall back to the quote's line items so
+// the office starts from the approved amount. Never creates a second invoice.
+async function maybeAutoInvoice(job, prevStatus) {
+  try {
+    if (!job || job.status !== 'completed' || prevStatus === 'completed') return;
+    const existing = await findWhere('invoices', 'job_id', job.id);
+    if (existing.length) return; // already has an invoice
+    let items = (job.parts || []).map(p => ({
+      description: p.name, quantity: Number(p.quantity) || 1, unit_price: Number(p.unit_price) || 0,
+    }));
+    if (!items.length && job.quote_id) {
+      const quote = await getById('quotes', job.quote_id);
+      if (quote?.items?.length) items = quote.items.map(i => ({ description: i.description, quantity: i.quantity, unit_price: i.unit_price }));
+    }
+    const rate = Number(await settings.get('default_tax_rate')) || 0.0875;
+    const lineItems = items.map(i => ({
+      id: uuid(), description: i.description || 'Item', quantity: Number(i.quantity) || 0,
+      unit_price: Number(i.unit_price) || 0, total: (Number(i.quantity) || 0) * (Number(i.unit_price) || 0),
+    }));
+    const subtotal = lineItems.reduce((s, i) => s + i.total, 0);
+    const tax_amount = subtotal * rate;
+    const all = await list('invoices');
+    const seq = all.filter(x => (x.invoice_number || '').startsWith('CL-')).length + 1;
+    const invoice_number = `CL-${String(seq).padStart(4, '0')}`;
+    await create('invoices', uuid(), {
+      invoice_number, customer_id: job.customer_id || null, job_id: job.id, status: 'draft',
+      issue_date: new Date().toISOString().slice(0, 10), due_date: null,
+      subtotal, tax_rate: rate, tax_amount, total: subtotal + tax_amount,
+      notes: `Auto-prepared from job ${job.title || ''}`.trim(), items: lineItems,
+      auto_prepared: true,
+    });
+  } catch (e) {
+    console.error('[jobs] auto-invoice failed:', e.message);
+  }
+}
 
 // Auto-email the customer when a job crosses into "scheduled" or "completed".
 async function notifyOnStatusChange(job, prevStatus) {
@@ -145,6 +184,7 @@ router.put('/:id', async (req, res) => {
   const saved = await update('jobs', req.params.id, patch);
   res.json(saved);
   notifyOnStatusChange(saved, existing.status); // best-effort, after response
+  maybeAutoInvoice(saved, existing.status);     // auto-draft invoice when completed
 });
 
 // POST /jobs/:id/confirm-booking — office confirms a customer's held appointment:
@@ -237,6 +277,7 @@ router.post('/:id/signoff', async (req, res) => {
     signature, signed_by: signed_by || 'Customer', signed_at: new Date().toISOString(), ...extra,
   });
   res.json(saved);
+  maybeAutoInvoice(saved, job.status); // best-effort, after response
 });
 
 router.delete('/:id', async (req, res) => {

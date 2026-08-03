@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -26,7 +27,38 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        // Make the WKWebView edge-to-edge: hide the scroll indicators, disable the
+        // elastic rubber-band bounce, and use a page-matching background so a black
+        // strip is never exposed at the top or bottom. Safe-area spacing is then
+        // handled entirely in CSS (single, consistent edge-to-edge strategy).
+        configureWebViewScroll()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.configureWebViewScroll()
+        }
+    }
+
+    private func configureWebViewScroll() {
+        guard let rootView = window?.rootViewController?.view,
+              let webView = AppDelegate.findWebView(in: rootView) else { return }
+        let pageBackground = UIColor(red: 248.0 / 255.0, green: 250.0 / 255.0, blue: 252.0 / 255.0, alpha: 1.0) // #f8fafc
+        webView.isOpaque = false
+        webView.backgroundColor = pageBackground
+        let scroll = webView.scrollView
+        scroll.backgroundColor = pageBackground
+        scroll.showsVerticalScrollIndicator = false
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.bounces = false
+        scroll.alwaysBounceVertical = false
+        scroll.alwaysBounceHorizontal = false
+        scroll.contentInsetAdjustmentBehavior = .never
+    }
+
+    private static func findWebView(in view: UIView) -> WKWebView? {
+        if let webView = view as? WKWebView { return webView }
+        for subview in view.subviews {
+            if let found = findWebView(in: subview) { return found }
+        }
+        return nil
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

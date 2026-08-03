@@ -7,7 +7,7 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -63,6 +63,15 @@ export default function Quotes() {
       toast.success('Estimate duplicated');
       load();
     } catch (err) { toast.error(err.response?.data?.error || 'Could not duplicate'); }
+  }
+
+  async function convertToJob(e, q) {
+    e.stopPropagation();
+    try {
+      const { data } = await api.post(`/billing/quotes/${q.id}/convert-to-job`);
+      toast.success(data.already ? 'Opening the linked job' : 'Job created from estimate');
+      navigate(`/jobs/${data.job_id || data.id}`);
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not convert to job'); }
   }
 
   async function convertToInvoice(e, q) {
@@ -174,6 +183,9 @@ export default function Quotes() {
                 <Cell align="right"><Badge status={q.status} /></Cell>
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1">
+                    {q.converted_job_id
+                      ? <button onClick={e => { e.stopPropagation(); navigate(`/jobs/${q.converted_job_id}`); }} title="Open linked job" className="text-blue-500 hover:text-blue-700 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Briefcase size={15} /></button>
+                      : ['accepted', 'sent'].includes(q.status) && <button onClick={e => convertToJob(e, q)} title="Convert to job" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Briefcase size={15} /></button>}
                     {q.status === 'accepted' && <button onClick={e => convertToInvoice(e, q)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><FileText size={15} /></button>}
                     <button onClick={e => duplicateQuote(e, q)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
                     <button onClick={e => handleEmail(e, q.id)} title="Email quote to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>

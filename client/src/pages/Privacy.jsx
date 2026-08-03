@@ -4,7 +4,7 @@ import Logo from '../components/Logo';
 export default function Privacy() {
   const updated = 'August 2026';
   return (
-    <div className="min-h-screen bg-slate-50 py-10 px-4">
+    <div className="min-h-dvh bg-slate-50 py-10 px-4 native-safe-y">
       <div className="max-w-2xl mx-auto">
         <div className="flex justify-center mb-6"><Logo variant="full" height={44} /></div>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-7 sm:p-9 text-slate-700 leading-relaxed">

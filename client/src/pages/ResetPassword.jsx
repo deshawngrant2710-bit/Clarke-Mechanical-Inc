@@ -32,7 +32,7 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
+    <div className="min-h-dvh flex items-center justify-center p-6 bg-slate-50 native-safe-y">
       <div className="w-full max-w-sm animate-fade-in">
         <div className="flex justify-center mb-8">
           <div className="bg-white rounded-2xl shadow-lg px-6 py-4"><Logo variant="full" height={48} /></div>

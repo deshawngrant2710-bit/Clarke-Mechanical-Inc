@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Badge, Spinner } from '../components/UI';
+import MobileDispatch from '../components/MobileDispatch';
 import { LayoutList } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -13,28 +14,66 @@ const COLUMNS = [
   { id: 'completed', label: 'Completed' },
 ];
 
+const fullAddress = (job, c) =>
+  job.address || (c ? [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ') : '') || '';
+
 export default function Dispatch() {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dragId, setDragId] = useState(null);
+  const today = new Date().toISOString().slice(0, 10);
 
-  function load() { api.get('/jobs').then(r => { setJobs(r.data); setLoading(false); }); }
+  function load() {
+    Promise.all([
+      api.get('/jobs'),
+      api.get('/customers'),
+      api.get('/employees'),
+      api.get('/jobs/route/list', { params: { date: today } }).catch(() => ({ data: { jobs: [] } })),
+    ]).then(([j, c, e, rl]) => {
+      const custById = Object.fromEntries(c.data.map(x => [x.id, x]));
+      const coord = Object.fromEntries((rl.data.jobs || []).map(x => [x.id, x]));
+      const enriched = j.data.map(job => {
+        const cust = custById[job.customer_id];
+        const rlj = coord[job.id];
+        return {
+          ...job,
+          customer_phone: cust?.phone || rlj?.customer_phone || null,
+          address: fullAddress(job, cust) || rlj?.address || '',
+          lat: rlj?.lat ?? null,
+          lng: rlj?.lng ?? null,
+        };
+      });
+      setJobs(enriched);
+      setEmployees(e.data);
+      setLoading(false);
+    });
+  }
   useEffect(load, []);
 
   async function move(job, status) {
     if (!job || job.status === status) return;
     setJobs(js => js.map(j => (j.id === job.id ? { ...j, status } : j)));
-    try { await api.put(`/jobs/${job.id}`, { ...job, status }); }
+    try { await api.put(`/jobs/${job.id}`, { status }); }
     catch { toast.error('Could not update job'); load(); }
+  }
+
+  async function assign(job, techId) {
+    const name = techId ? (employees.find(e => e.id === techId)?.name || null) : null;
+    setJobs(js => js.map(j => (j.id === job.id ? { ...j, technician_id: techId || null, technician_name: name } : j)));
+    try { await api.put(`/jobs/${job.id}`, { technician_id: techId || null }); toast.success(techId ? 'Technician assigned' : 'Unassigned'); }
+    catch { toast.error('Could not reassign'); load(); }
   }
 
   if (loading) return <Spinner />;
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Dispatch" subtitle="Drag jobs between stages" icon={<LayoutList size={20} />} />
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <PageHeader title="Dispatch" subtitle="Assign and track jobs" icon={<LayoutList size={20} />} />
+
+      {/* Desktop: drag-and-drop board (unchanged) */}
+      <div className="hidden lg:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {COLUMNS.map(col => {
           const colJobs = jobs.filter(j => j.status === col.id);
           return (
@@ -65,6 +104,9 @@ export default function Dispatch() {
           );
         })}
       </div>
+
+      {/* Mobile: card list with quick actions, reassign + move sheets, availability */}
+      <MobileDispatch jobs={jobs} employees={employees} onMove={move} onAssign={assign} today={today} />
     </div>
   );
 }

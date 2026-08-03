@@ -334,6 +334,9 @@ export default function JobDetail() {
             </div>
             <h1 className="text-section-title text-slate-900">{job.title}</h1>
             <p className="text-xs text-slate-400 mt-1 font-mono">Job #{id.slice(0, 8).toUpperCase()}</p>
+            {job.quote_number && (
+              <p className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1"><FileText size={12} /> From estimate {job.quote_number}</p>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {!cancelled && <Btn variant="outline" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>}

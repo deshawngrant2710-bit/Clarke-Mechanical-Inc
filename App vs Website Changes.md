@@ -27,6 +27,8 @@ Anything not wrapped that way applies to **both** the app and the website.
 | Stop iOS auto-enlarging text | Kept text sizes consistent | `src/index.css` → `html.native-app` |
 | Extra padding under the "Sign out" button | Kept it above the iPhone home-swipe bar | `src/components/Sidebar.jsx` (`safe-bottom` class) + `src/index.css` |
 | Bottom tab bar (most-used areas + More) | Native app-style quick navigation on phones | `src/components/BottomNav.jsx`, `src/lib/roles.js` (`bottomNavForRole`), wired in `src/App.jsx` |
+| iOS edge-to-edge / scroll fix — no scroll indicator, no rubber-band bounce, no black strip, safe-area header + bottom nav, single scroll container | Native WKWebView settings in `ios/App/App/AppDelegate.swift` + `capacitor.config.json` (`contentInset: never`, background `#f8fafc`). CSS under `html.native-app` in `src/index.css`. Web-side `viewport-fit=cover` (harmless on web) and `min-h-screen`→`min-h-dvh` (renders identically on desktop). **Desktop unchanged.** |
+| Hide sidebar name/sign-out block | Bottom bar covered it; sign-out now in My Account panel | `src/components/Sidebar.jsx` (`sidebar-user` class) + `src/index.css`. Website still shows it. |
 
 ---
 
@@ -39,6 +41,9 @@ Anything not wrapped that way applies to **both** the app and the website.
 | Privacy Policy link on the login screen | Points users/reviewers to the policy. Fine on both. |
 | All business features (jobs, invoices, estimates, scheduling, etc.) | This is the core product — shared by design. |
 | My Account panel (`/account`) — view/edit name & phone, change password, sign out; delete account for customers | Useful for every role on web and app. Backend: `GET/PUT /api/auth/me` in `functions/routes/auth.js`. **Backend must be deployed to Render** for Save to work. |
+| Customers & Jobs: card layout on phone-width screens (tables on desktop) | Fixes squeezed/cut-off email & technician fields on mobile. Responsive by breakpoint — **desktop website is unchanged** (still tables). `src/pages/Customers.jsx`, `src/pages/Jobs.jsx` |
+| Workflow connection: Quote→Job one-click conversion + auto-prepared draft invoice when a job completes | Shared (web + app). Backend: `POST /billing/quotes/:id/convert-to-job` and `maybeAutoInvoice()` in `functions/routes/jobs.js`. **Backend must be deployed to Render.** UI: Convert-to-Job button on Quotes; "From estimate" link on the job. |
+| Dispatch: mobile card list (grouped by status) with quick actions, Move/Reassign bottom sheets, swipe actions, estimated travel time + technician availability badges + conflict warnings | Drag-and-drop is hard on phones. **Desktop keeps drag-and-drop unchanged.** Travel time is estimated from job coordinates (no live GPS) via a swappable function so Apple Maps / Google / GPS can be added later. `src/pages/Dispatch.jsx`, `src/components/MobileDispatch.jsx`, `src/lib/dispatch.js` |
 
 ---
 

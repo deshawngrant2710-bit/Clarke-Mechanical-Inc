@@ -117,6 +117,9 @@ export default function Customers() {
             action={!search && filter === 'all' && <Btn onClick={() => setModal(true)}><Plus size={16} /> Add Customer</Btn>}
           />
         ) : (
+          <>
+          {/* Desktop: table */}
+          <div className="hidden lg:block">
           <Table head={[
             { label: 'Customer' }, { label: 'Contact' }, { label: 'Location' },
             { label: 'Open Jobs', align: 'right' }, { label: 'Lifetime', align: 'right' },
@@ -163,6 +166,36 @@ export default function Customers() {
               </Row>
             ))}
           </Table>
+          </div>
+
+          {/* Mobile: cards (fixes squeezed email/contact fields) */}
+          <div className="lg:hidden divide-y divide-slate-100">
+            {filtered.map(c => (
+              <button key={c.id} onClick={() => navigate(`/customers/${c.id}`)} className="w-full text-left p-4 flex gap-3 active:bg-slate-50">
+                <Avatar name={c.name} className="w-10 h-10 text-sm shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-slate-800 truncate">{c.name}</p>
+                    {c.balance_due > 0
+                      ? <span className="text-sm font-semibold text-red-600 shrink-0">{money(c.balance_due)}</span>
+                      : <span className="text-xs font-medium text-emerald-600 shrink-0 mt-0.5">Paid</span>}
+                  </div>
+                  {c.business_name && (c.first_name || c.last_name) && (
+                    <p className="text-xs text-slate-500 truncate">{[c.first_name, c.last_name].filter(Boolean).join(' ')}</p>
+                  )}
+                  {c.phone && <p className="flex items-center gap-1.5 text-xs text-slate-600 mt-1"><Phone size={12} className="text-slate-400 shrink-0" />{c.phone}</p>}
+                  {c.email && <p className="flex items-center gap-1.5 text-xs text-slate-500"><Mail size={12} className="text-slate-400 shrink-0" /><span className="truncate">{c.email}</span></p>}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs">
+                    {c.open_jobs > 0 && <span className="inline-flex items-center gap-1 text-blue-700"><span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-blue-100 font-semibold">{c.open_jobs}</span>open</span>}
+                    {c.city && <span className="flex items-center gap-1 text-slate-500"><MapPin size={11} className="text-slate-400" />{c.city}{c.state ? `, ${c.state}` : ''}</span>}
+                    {isThisMonth(c.created_at) && <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">New</span>}
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-slate-300 self-center shrink-0" />
+              </button>
+            ))}
+          </div>
+          </>
         )}
       </Card>
 

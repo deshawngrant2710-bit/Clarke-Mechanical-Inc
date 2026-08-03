@@ -121,6 +121,9 @@ export default function Jobs() {
             message={search || statusFilter ? 'Try adjusting your search or filters.' : 'Create your first work order to dispatch a technician.'}
             action={!search && !statusFilter && <Btn onClick={() => setModal(true)}><Plus size={16} /> New Job</Btn>} />
         ) : (
+          <>
+          {/* Desktop: table */}
+          <div className="hidden lg:block">
           <Table head={[
             { label: 'Job' }, { label: 'Customer' }, { label: 'Technician' },
             { label: 'Priority' }, { label: 'Scheduled' }, { label: 'Status', align: 'right' }, { label: '' },
@@ -168,6 +171,45 @@ export default function Jobs() {
               </Row>
             ))}
           </Table>
+          </div>
+
+          {/* Mobile: cards (technician selector gets full width — no more cut-off) */}
+          <div className="lg:hidden divide-y divide-slate-100">
+            {filtered.map(job => (
+              <div key={job.id} onClick={() => navigate(`/jobs/${job.id}`)} className="p-4 active:bg-slate-50">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{job.title}</p>
+                    {job.job_type && <p className="text-xs text-slate-400">{job.job_type}</p>}
+                  </div>
+                  <Badge status={job.status} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
+                  {job.customer_name && <span className="truncate max-w-full">{job.customer_name}</span>}
+                  <Badge status={job.priority} />
+                  {job.scheduled_date
+                    ? <span className="text-slate-500">{new Date(job.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{job.scheduled_time ? ` · ${job.scheduled_time}` : ''}</span>
+                    : <span className="text-slate-400">Unscheduled</span>}
+                </div>
+                <div className="mt-2.5 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  {job.status === 'completed' ? (
+                    <span className="flex-1 text-sm text-slate-600 inline-flex items-center gap-1.5">
+                      {job.technician_name || employees.find(u => u.id === job.technician_id)?.name || <span className="text-slate-300">Unassigned</span>}
+                      <Lock size={11} className="text-slate-300" />
+                    </span>
+                  ) : (
+                    <select value={job.technician_id || ''} onChange={e => assignTech(job, e.target.value)}
+                      className="flex-1 min-w-0 text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white outline-none focus:border-blue-500">
+                      <option value="">Unassigned</option>
+                      {employees.filter(u => u.role === 'technician' || u.also_technician).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  )}
+                  <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-lg transition-colors shrink-0"><Copy size={16} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </Card>
 

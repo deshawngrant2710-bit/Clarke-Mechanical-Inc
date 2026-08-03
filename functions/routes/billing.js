@@ -170,6 +170,43 @@ router.delete('/quotes/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /billing/quotes/:id/convert-to-job — turn an (approved) estimate into a job
+// without re-entering anything. Links the job back to the quote so the workflow
+// stays connected: Quote → approval → Job → dispatch → … → invoice.
+router.post('/quotes/:id/convert-to-job', async (req, res) => {
+  const quote = await getById('quotes', req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  if (quote.converted_job_id) {
+    return res.json({ job_id: quote.converted_job_id, already: true });
+  }
+  const customer = quote.customer_id ? await getById('customers', quote.customer_id) : null;
+  const address = customer ? [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ') : '';
+  const title = (quote.title && quote.title.trim())
+    || quote.items?.[0]?.description
+    || `Job from estimate ${quote.quote_number}`;
+  const job = await create('jobs', uuid(), {
+    title,
+    description: quote.notes || null,
+    customer_id: quote.customer_id || null,
+    technician_id: null,
+    additional_technician_ids: [],
+    status: 'pending',
+    priority: 'normal',
+    job_type: quote.job_type || null,
+    scheduled_date: null,
+    scheduled_time: null,
+    completed_date: null,
+    address: address || null,
+    notes: null,
+    // links back to the estimate
+    quote_id: quote.id,
+    quote_number: quote.quote_number,
+    quote_total: quote.total || 0,
+  });
+  await update('quotes', req.params.id, { converted_job_id: job.id });
+  res.status(201).json(job);
+});
+
 /* ---------------- PAYMENTS ---------------- */
 router.post('/invoices/:id/payments', async (req, res) => {
   const invoice = await getById('invoices', req.params.id);

@@ -51,16 +51,18 @@ function Layout() {
     return <Navigate to={homeForRole(user.role)} replace />;
   }
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-dvh bg-slate-50">
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
       <div className="flex flex-col flex-1 min-w-0">
-        {/* Mobile top bar */}
-        <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 h-14 px-4 bg-white border-b border-slate-200">
-          <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
-            <Menu size={22} />
-          </button>
-          <Logo variant="icon" height={26} />
-          <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
+        {/* Mobile top bar — app-header adds the top safe-area inset in the native app */}
+        <header className="app-header lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200">
+          <div className="flex items-center gap-3 h-14 px-4">
+            <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
+              <Menu size={22} />
+            </button>
+            <Logo variant="icon" height={26} />
+            <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
+          </div>
         </header>
         <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 app-content-pad">
           <div className="mx-auto max-w-[1400px]">

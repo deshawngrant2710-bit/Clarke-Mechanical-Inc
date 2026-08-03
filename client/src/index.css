@@ -46,13 +46,29 @@ body {
 /*  These do NOT affect the website.                                   */
 /* ------------------------------------------------------------------ */
 html.native-app { -webkit-text-size-adjust: 100%; } /* stop iOS auto-enlarging text */
+/* Edge-to-edge native app: page-matching background (never black), contain the
+   off-canvas drawer, and no rubber-band bounce in any direction. The document
+   is the single vertical scroll container. */
 html.native-app,
-html.native-app body {
-  overflow-x: hidden;          /* contain off-canvas drawer; no side-slide */
-  overscroll-behavior-x: none; /* kill horizontal rubber-band bounce */
-}
 html.native-app body,
-html.native-app #root { width: 100%; max-width: 100%; overflow-x: hidden; }
+html.native-app #root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overscroll-behavior: none;   /* no elastic bounce → no black strip */
+  background: #f8fafc;         /* matches the native WKWebView background */
+}
+/* Hide inner scrollbars (the native WKWebView indicator is also hidden in Swift). */
+html.native-app ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+html.native-app * { scrollbar-width: none; }
+/* Mobile header fills the status-bar / Dynamic Island area (top safe inset). */
+html.native-app .app-header { padding-top: env(safe-area-inset-top); }
+/* Public full-screen pages (login/reset/privacy) respect top & bottom safe areas. */
+html.native-app .native-safe-y {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
 /* lift bottom-anchored UI above the home indicator */
 html.native-app .safe-bottom { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
 /* bottom tab bar: keep buttons above the home indicator */
@@ -60,6 +76,14 @@ html.native-app .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom); 
 /* give page content room so the bottom bar never covers it (phone widths only) */
 @media (max-width: 1023px) {
   html.native-app .app-content-pad { padding-bottom: calc(4.75rem + env(safe-area-inset-bottom)); }
+}
+/* in the app, drop the sidebar's name/sign-out block (the bottom bar covers it;
+   sign-out now lives in the My Account panel). Website keeps it. */
+html.native-app .sidebar-user { display: none; }
+/* side menu scrolls on its own, with room to clear the home bar / bottom edge */
+html.native-app .app-nav {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Brand-tinted text selection. */
@@ -115,6 +139,10 @@ html.native-app .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom); 
   60%  { transform: scale(1.15); }
   100% { transform: scale(1); opacity: 1; }
 }
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
 @keyframes pulse-ring {
   0%   { box-shadow: 0 0 0 0 rgb(34 197 94 / 0.45); }
   70%  { box-shadow: 0 0 0 6px rgb(34 197 94 / 0); }
@@ -125,6 +153,7 @@ html.native-app .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom); 
 .animate-fade-in-scale { animation: fade-in-scale 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-slide-down    { animation: slide-down 0.18s ease-out both; }
 .animate-pop           { animation: pop 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-slide-up      { animation: slide-up 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 /* Stagger helper — apply to a container's children */
 .stagger > * { animation: fade-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
