@@ -1,12 +1,18 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
 
 // Single source of truth for nav + access control. `roles` = who may see/reach each item.
 export const NAV_GROUPS = [
+  {
+    label: 'Field',
+    items: [
+      { to: '/field', label: 'Field Mode', icon: Smartphone, roles: ['technician'] },
+    ],
+  },
   {
     label: 'Overview',
     items: [
@@ -80,7 +86,7 @@ const ITEM_BY_PATH = Object.fromEntries(ALL_ITEMS.map(i => [i.to, i]));
 const BOTTOM_PRIMARY = {
   admin:      ['/', '/jobs', '/schedule', '/invoices'],
   office:     ['/', '/jobs', '/schedule', '/invoices'],
-  technician: ['/', '/jobs', '/schedule', '/time-clock'],
+  technician: ['/field', '/jobs', '/schedule', '/time-clock'],
   customer:   ['/portal'],
 };
 // Returns the item objects (to/label/icon) for a role's bottom bar, access-checked.

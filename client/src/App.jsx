@@ -37,6 +37,7 @@ import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
 import TimeClock from './pages/TimeClock';
+import FieldMode from './pages/FieldMode';
 import { canAccess, homeForRole } from './lib/roles';
 
 function Layout() {
@@ -121,6 +122,7 @@ export default function App() {
             <Route path="/portal" element={<Portal />} />
             <Route path="/account" element={<Account />} />
             <Route path="/time-clock" element={<TimeClock />} />
+            <Route path="/field" element={<FieldMode />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

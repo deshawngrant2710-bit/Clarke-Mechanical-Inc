@@ -172,7 +172,7 @@ router.put('/:id', async (req, res) => {
   const existing = await getById('jobs', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Job not found' });
   const fields = ['title', 'description', 'customer_id', 'technician_id', 'additional_technician_ids', 'status', 'priority',
-    'job_type', 'scheduled_date', 'scheduled_time', 'completed_date', 'address', 'notes'];
+    'job_type', 'scheduled_date', 'scheduled_time', 'completed_date', 'address', 'notes', 'work_started_at', 'work_ended_at'];
   const patch = {};
   for (const f of fields) if (f in req.body) patch[f] = req.body[f] ?? null;
   if ('additional_technician_ids' in patch) patch.additional_technician_ids = Array.isArray(patch.additional_technician_ids) ? patch.additional_technician_ids : [];
