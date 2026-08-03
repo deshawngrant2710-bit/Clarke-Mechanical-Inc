@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -53,7 +53,10 @@ export const NAV_GROUPS = [
   },
   {
     label: 'My Account',
-    items: [{ to: '/portal', label: 'My Portal', icon: LayoutList, roles: ['customer'] }],
+    items: [
+      { to: '/account', label: 'My Account', icon: UserCircle, roles: [...STAFF, 'customer'] },
+      { to: '/portal', label: 'My Portal', icon: LayoutList, roles: ['customer'] },
+    ],
   },
 ];
 
@@ -70,6 +73,21 @@ export function navGroupsForRole(role) {
 export function homeForRole(role) {
   const first = ALL_ITEMS.find(i => i.roles.includes(role));
   return first ? first.to : '/portal';
+}
+
+// --- Mobile bottom-nav (app only): the most-used areas per role ---
+const ITEM_BY_PATH = Object.fromEntries(ALL_ITEMS.map(i => [i.to, i]));
+const BOTTOM_PRIMARY = {
+  admin:      ['/', '/jobs', '/schedule', '/invoices'],
+  office:     ['/', '/jobs', '/schedule', '/invoices'],
+  technician: ['/', '/jobs', '/schedule', '/time-clock'],
+  customer:   ['/portal'],
+};
+// Returns the item objects (to/label/icon) for a role's bottom bar, access-checked.
+export function bottomNavForRole(role) {
+  return (BOTTOM_PRIMARY[role] || [])
+    .map(p => ITEM_BY_PATH[p])
+    .filter(i => i && i.roles.includes(role));
 }
 
 // May this role open this pathname? Detail routes inherit their base (e.g. /jobs/123 → /jobs).

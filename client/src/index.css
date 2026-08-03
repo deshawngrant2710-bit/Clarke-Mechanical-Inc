@@ -41,6 +41,27 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* ------------------------------------------------------------------ */
+/*  Native mobile app only (class added at runtime in main.jsx).       */
+/*  These do NOT affect the website.                                   */
+/* ------------------------------------------------------------------ */
+html.native-app { -webkit-text-size-adjust: 100%; } /* stop iOS auto-enlarging text */
+html.native-app,
+html.native-app body {
+  overflow-x: hidden;          /* contain off-canvas drawer; no side-slide */
+  overscroll-behavior-x: none; /* kill horizontal rubber-band bounce */
+}
+html.native-app body,
+html.native-app #root { width: 100%; max-width: 100%; overflow-x: hidden; }
+/* lift bottom-anchored UI above the home indicator */
+html.native-app .safe-bottom { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+/* bottom tab bar: keep buttons above the home indicator */
+html.native-app .bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom); }
+/* give page content room so the bottom bar never covers it (phone widths only) */
+@media (max-width: 1023px) {
+  html.native-app .app-content-pad { padding-bottom: calc(4.75rem + env(safe-area-inset-bottom)); }
+}
+
 /* Brand-tinted text selection. */
 ::selection { background: rgb(37 99 235 / 0.16); color: #0f172a; }
 

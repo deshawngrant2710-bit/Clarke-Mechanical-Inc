@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { Menu } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
+import BottomNav from './components/BottomNav';
 import Logo from './components/Logo';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
@@ -23,6 +24,7 @@ import InspectionDetail from './pages/InspectionDetail';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
+import Account from './pages/Account';
 import Support from './pages/Support';
 import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
@@ -60,12 +62,13 @@ function Layout() {
           <Logo variant="icon" height={26} />
           <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
         </header>
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 app-content-pad">
           <div className="mx-auto max-w-[1400px]">
             <Outlet />
           </div>
         </main>
       </div>
+      <BottomNav onOpenMenu={() => setNavOpen(true)} />
     </div>
   );
 }
@@ -114,6 +117,7 @@ export default function App() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
+            <Route path="/account" element={<Account />} />
             <Route path="/time-clock" element={<TimeClock />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

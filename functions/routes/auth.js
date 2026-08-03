@@ -139,4 +139,31 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/auth/me — the current user's own account info (works for every role).
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const u = await getById('users', req.user.id);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone || null });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Could not load your account' });
+  }
+});
+
+// PUT /api/auth/me — update your own name / phone (works for every role).
+router.put('/me', authMiddleware, async (req, res) => {
+  try {
+    const patch = {};
+    if (typeof req.body.name === 'string' && req.body.name.trim()) patch.name = req.body.name.trim();
+    if ('phone' in req.body) patch.phone = req.body.phone ? String(req.body.phone).trim() : null;
+    if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nothing to update' });
+    const saved = await update('users', req.user.id, patch);
+    res.json({ id: saved.id, name: saved.name, email: saved.email, role: saved.role, phone: saved.phone || null });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Could not update your account' });
+  }
+});
+
 module.exports = router;

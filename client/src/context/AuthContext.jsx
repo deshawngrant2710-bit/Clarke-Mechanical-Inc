@@ -19,7 +19,16 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  // Merge changes into the current user and persist (e.g. after editing the account panel).
+  function updateUser(patch) {
+    setUser(prev => {
+      const next = { ...prev, ...patch };
+      localStorage.setItem('user', JSON.stringify(next));
+      return next;
+    });
+  }
+
+  return <AuthContext.Provider value={{ user, login, logout, updateUser }}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => useContext(AuthContext);
