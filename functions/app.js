@@ -10,6 +10,9 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// Dedupe offline sync retries (requests carrying an X-Op-Id header).
+app.use(require('./middleware/idempotency'));
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/jobs', require('./routes/jobs'));

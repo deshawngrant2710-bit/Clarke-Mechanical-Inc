@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -18,6 +18,7 @@ export const NAV_GROUPS = [
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: STAFF },
       { to: '/tasks', label: 'To-Do', icon: CheckSquare, roles: STAFF },
+      { to: '/sync', label: 'Sync', icon: RefreshCw, roles: STAFF },
       { to: '/assistant', label: 'Assistant', icon: Sparkles, roles: ['admin', 'office'] },
     ],
   },

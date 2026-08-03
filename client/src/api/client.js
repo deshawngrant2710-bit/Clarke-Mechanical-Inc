@@ -22,4 +22,8 @@ api.interceptors.response.use(
   }
 );
 
+// Install the offline layer (caches reads + queues whitelisted tech mutations).
+import { installOffline } from '../lib/offlineSync';
+installOffline(api);
+
 export default api;

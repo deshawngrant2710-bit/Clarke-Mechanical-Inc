@@ -171,10 +171,28 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const existing = await getById('jobs', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Job not found' });
+
+  // Offline conflict guard: if this job was changed on the server by a DIFFERENT
+  // device after the copy this request is based on, don't silently overwrite —
+  // return 409 so the change can be reviewed. (`x-force: true` overrides.)
+  const base = req.headers['x-base-updated-at'];
+  const device = req.headers['x-device-id'];
+  const force = String(req.headers['x-force'] || '') === 'true';
+  if (!force && base && existing.updated_at && existing.updated_at > base
+      && existing.updated_by_device && existing.updated_by_device !== device) {
+    return res.status(409).json({
+      error: 'conflict',
+      message: 'This job was changed by someone else while you were offline.',
+      server: existing,
+    });
+  }
+
   const fields = ['title', 'description', 'customer_id', 'technician_id', 'additional_technician_ids', 'status', 'priority',
     'job_type', 'scheduled_date', 'scheduled_time', 'completed_date', 'address', 'notes', 'work_started_at', 'work_ended_at'];
   const patch = {};
   for (const f of fields) if (f in req.body) patch[f] = req.body[f] ?? null;
+  patch.updated_by = req.user.id;
+  if (device) patch.updated_by_device = device;
   if ('additional_technician_ids' in patch) patch.additional_technician_ids = Array.isArray(patch.additional_technician_ids) ? patch.additional_technician_ids : [];
   // Lock the assigned technician(s) once a job is completed — they can't be reassigned.
   if (existing.status === 'completed') {

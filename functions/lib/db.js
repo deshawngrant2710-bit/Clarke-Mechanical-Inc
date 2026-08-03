@@ -63,7 +63,7 @@ async function create(collection, id, data) {
 }
 
 async function update(collection, id, patch) {
-  await db.collection(collection).doc(id).set(patch, { merge: true });
+  await db.collection(collection).doc(id).set({ ...patch, updated_at: new Date().toISOString() }, { merge: true });
   return getById(collection, id);
 }
 

@@ -3,8 +3,10 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'rea
 import { Toaster } from 'react-hot-toast';
 import { Menu } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { OfflineProvider } from './context/OfflineContext';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
+import OfflineBanner from './components/OfflineBanner';
 import Logo from './components/Logo';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
@@ -38,6 +40,7 @@ import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
 import TimeClock from './pages/TimeClock';
 import FieldMode from './pages/FieldMode';
+import SyncQueue from './pages/SyncQueue';
 import { canAccess, homeForRole } from './lib/roles';
 
 function Layout() {
@@ -55,6 +58,7 @@ function Layout() {
     <div className="flex min-h-dvh bg-slate-50">
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
       <div className="flex flex-col flex-1 min-w-0">
+        <OfflineBanner />
         {/* Mobile top bar — app-header adds the top safe-area inset in the native app */}
         <header className="app-header lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200">
           <div className="flex items-center gap-3 h-14 px-4">
@@ -85,6 +89,7 @@ function PublicRoute() {
 export default function App() {
   return (
     <AuthProvider>
+      <OfflineProvider>
       <BrowserRouter>
         <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
         <Routes>
@@ -123,10 +128,12 @@ export default function App() {
             <Route path="/account" element={<Account />} />
             <Route path="/time-clock" element={<TimeClock />} />
             <Route path="/field" element={<FieldMode />} />
+            <Route path="/sync" element={<SyncQueue />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </OfflineProvider>
     </AuthProvider>
   );
 }
