@@ -6,6 +6,9 @@ function describe(it) {
   const u = it.url || '';
   const d = it.data || {};
   const m = (it.method || '').toLowerCase();
+  if (u === '/customers' && m === 'post') return `New customer${d.name ? `: ${d.name}` : ''}`;
+  if (u === '/jobs' && m === 'post') return `New job${d.title ? `: ${d.title}` : ''}`;
+  if (u === '/billing/quotes' && m === 'post') return 'New estimate';
   if (/\/jobs\/[^/]+\/parts$/.test(u)) return `Add part${d.name ? `: ${d.name}` : ''}`;
   if (/\/jobs\/[^/]+\/photos$/.test(u)) return 'Upload photo';
   if (/\/jobs\/[^/]+\/signoff$/.test(u)) return 'Customer signature';

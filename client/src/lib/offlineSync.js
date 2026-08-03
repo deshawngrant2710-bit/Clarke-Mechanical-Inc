@@ -30,6 +30,27 @@ function currentTech() {
 }
 const opId = () => 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 
+// temp-id → real-id map, built as offline-created records sync. Persisted so it
+// survives app restarts while dependents are still queued.
+let idMap = {};
+async function loadIdMap() { try { const c = await idbGet('cache', '__idmap'); if (c?.data) idMap = c.data; } catch { /* ignore */ } }
+async function persistIdMap() { try { await idbSet('cache', '__idmap', { data: idMap, at: Date.now() }); } catch { /* ignore */ } }
+const remapUrl = (url) => { let u = url || ''; for (const t in idMap) if (u.includes(t)) u = u.split(t).join(idMap[t]); return u; };
+function remapDeep(v) {
+  if (v == null) return v;
+  if (typeof v === 'string') return idMap[v] || v;
+  if (Array.isArray(v)) return v.map(remapDeep);
+  if (typeof v === 'object') { const o = {}; for (const k in v) o[k] = remapDeep(v[k]); return o; }
+  return v;
+}
+function hasTmp(v) {
+  if (v == null) return false;
+  if (typeof v === 'string') return v.startsWith('tmp-');
+  if (Array.isArray(v)) return v.some(hasTmp);
+  if (typeof v === 'object') return Object.values(v).some(hasTmp);
+  return false;
+}
+
 // --- observable state for the UI ---
 const listeners = new Set();
 let state = { online: navigator.onLine !== false, pending: 0, failed: 0, syncing: false, lastSync: null, items: [] };
@@ -46,12 +67,18 @@ async function refreshCounts() {
 }
 
 // --- what may be cached / queued ---
-const CACHE_GET = [/^\/jobs(\?|$)/, /^\/jobs\/[^/]+$/, /^\/customers(\?|$)/, /^\/employees(\?|$)/, /^\/inspections(\?|$)/, /^\/auth\/me$/];
+const CACHE_GET = [/^\/jobs(\?|$)/, /^\/jobs\/[^/]+$/, /^\/customers(\?|$)/, /^\/employees(\?|$)/, /^\/inspections(\?|$)/, /^\/billing\/quotes(\?|$)/, /^\/auth\/me$/];
 const isCacheableGet = (url) => CACHE_GET.some(r => r.test((url || '').split('#')[0]));
+
+// New-record creates that may happen offline (Phase 2). Each maps to the list
+// cache to optimistically insert into.
+const CREATE_LISTS = { '/customers': true, '/jobs': true, '/billing/quotes': true };
+const isCreate = (cfg) => (cfg.method || '').toLowerCase() === 'post' && CREATE_LISTS[cfg.url] === true;
 
 function isQueueable(cfg) {
   const m = (cfg.method || 'get').toLowerCase();
   const url = cfg.url || '';
+  if (isCreate(cfg)) return true;
   if (m === 'put' && /^\/jobs\/[^/]+$/.test(url)) {
     // only field edits offline — never scheduling / customer / assignment changes
     const allowed = ['status', 'notes', 'description', 'work_started_at', 'work_ended_at'];
@@ -97,14 +124,28 @@ async function applyOptimistic(item) {
   } catch { /* ignore */ }
 }
 
+async function addToListCache(url, entity) {
+  const c = await idbGet('cache', url);
+  if (c && Array.isArray(c.data)) { c.data = [entity, ...c.data]; await idbSet('cache', url, c); }
+}
+
 async function enqueue(cfg) {
+  const create = isCreate(cfg);
   const item = {
     opId: cfg.__opId || opId(), method: cfg.method || 'post', url: cfg.url, data: cfg.data ?? null,
-    status: 'pending', attempts: 0, error: null, force: false,
+    status: 'pending', attempts: 0, error: null, force: false, tmpId: null, createListKey: null,
     createdAt: new Date().toISOString(), deviceId: deviceId(), technician: currentTech(),
   };
+  if (create) {
+    item.tmpId = 'tmp-' + item.opId;
+    item.createListKey = cfg.url;
+    item.optimistic = { id: item.tmpId, ...(cfg.data || {}), _pending: true };
+    await addToListCache(cfg.url, item.optimistic);
+  } else {
+    item.optimistic = { queued: true, opId: item.opId };
+    await applyOptimistic(item);
+  }
   await idbSet('queue', null, item);
-  await applyOptimistic(item);
   await refreshCounts();
   return item;
 }
@@ -130,12 +171,28 @@ export async function processQueue() {
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     if (q.length) { state.syncing = true; emit(); }
     for (const item of q) {
+      const url = remapUrl(item.url);
+      const data = remapDeep(item.data);
+      // A dependency (e.g. an offline-created customer) hasn't synced yet — hold
+      // this item and try again on a later pass so we never send a temp id.
+      if (url.includes('tmp-') || hasTmp(data)) { item.status = 'pending'; await idbSet('queue', null, item); continue; }
       item.status = 'syncing'; await idbSet('queue', null, item); await refreshCounts();
       try {
-        await _api.request({
-          method: item.method, url: item.url, data: item.data, _skipQueue: true,
+        const resp = await _api.request({
+          method: item.method, url, data, _skipQueue: true,
           __opId: item.opId, __force: !!item.force,
         });
+        // A create just got its real id — record it and fix the cached list entry.
+        if (item.tmpId && resp?.data?.id) {
+          idMap[item.tmpId] = resp.data.id; await persistIdMap();
+          if (item.createListKey) {
+            const c = await idbGet('cache', item.createListKey);
+            if (c && Array.isArray(c.data)) {
+              c.data = c.data.map(e => (e.id === item.tmpId ? { ...e, id: resp.data.id, _pending: false } : e));
+              await idbSet('cache', item.createListKey, c);
+            }
+          }
+        }
         await idbDel('queue', item.opId);        // confirmed by server → drop it
       } catch (err) {
         if (err && err.response) {                // server answered → real error
@@ -211,12 +268,11 @@ export function installOffline(api) {
         }
         if (isQueueable(cfg)) {
           const item = await enqueue(cfg);
-          return { data: { queued: true, opId: item.opId }, status: 202, statusText: 'Queued', headers: {}, config: cfg, queued: true };
+          return { data: item.optimistic, status: 202, statusText: 'Queued', headers: {}, config: cfg, queued: true };
         }
       }
       return Promise.reject(error);
     }
   );
-  refreshCounts();
-  processQueue();
+  loadIdMap().finally(() => { refreshCounts(); processQueue(); });
 }
