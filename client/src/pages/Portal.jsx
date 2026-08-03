@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea, Select } from '../components/UI';
@@ -127,6 +128,15 @@ export default function Portal() {
     }).catch(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
+
+  // Deep-links from the customer "More" screen: ?tab=… selects a tab, ?profile=1 opens My Info.
+  const location = useLocation();
+  useEffect(() => {
+    const p = new URLSearchParams(location.search);
+    const t = p.get('tab');
+    if (t) setTab(t);
+    if (p.get('profile') === '1') setProfileModal(true);
+  }, [location.search]);
 
   const toggle = (id) => setExpanded(e => (e === id ? null : id));
 

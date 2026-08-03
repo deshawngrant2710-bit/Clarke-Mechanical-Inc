@@ -27,6 +27,9 @@ import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
 import Account from './pages/Account';
+import MoreCustomer from './pages/MoreCustomer';
+import AboutClarke from './pages/AboutClarke';
+import ReferEarn from './pages/ReferEarn';
 import Support from './pages/Support';
 import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
@@ -62,7 +65,7 @@ function Layout() {
         {/* Mobile top bar — app-header adds the top safe-area inset in the native app */}
         <header className="app-header lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200">
           <div className="flex items-center gap-3 h-14 px-4">
-            <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
+            <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="app-hamburger p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
               <Menu size={22} />
             </button>
             <Logo variant="icon" height={26} />
@@ -126,6 +129,9 @@ export default function App() {
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/more" element={<MoreCustomer />} />
+            <Route path="/about" element={<AboutClarke />} />
+            <Route path="/refer" element={<ReferEarn />} />
             <Route path="/time-clock" element={<TimeClock />} />
             <Route path="/field" element={<FieldMode />} />
             <Route path="/sync" element={<SyncQueue />} />

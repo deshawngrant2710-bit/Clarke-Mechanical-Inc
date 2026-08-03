@@ -182,7 +182,10 @@ export default function Jobs() {
                     <p className="font-semibold text-slate-800 truncate">{job.title}</p>
                     {job.job_type && <p className="text-xs text-slate-400">{job.job_type}</p>}
                   </div>
-                  <Badge status={job.status} />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {job._pending && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Pending</span>}
+                    <Badge status={job.status} />
+                  </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
                   {job.customer_name && <span className="truncate max-w-full">{job.customer_name}</span>}

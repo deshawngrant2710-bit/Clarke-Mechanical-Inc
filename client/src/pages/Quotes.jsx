@@ -48,11 +48,14 @@ export default function Quotes() {
     setForm(f); setTaxInput(defaultTaxPct); setModal(true);
   }
 
-  // Prefill + open the New Quote modal when arriving from an inspection.
+  // Prefill + open the New Quote modal when arriving from an inspection, or from the
+  // dashboard "Create" button (?new=1).
   useEffect(() => {
     if (location.state?.prefill) {
       setForm({ ...emptyForm(), ...location.state.prefill });
       setModal(true);
+    } else if (new URLSearchParams(location.search).get('new') === '1') {
+      openNew();
     }
   }, []);
 

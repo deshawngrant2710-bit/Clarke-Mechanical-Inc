@@ -40,6 +40,7 @@ export default function Invoices() {
     api.get('/pricebook').then(r => setPriceBook(r.data)).catch(() => {});
   }
   useEffect(load, []);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') openNew(); }, []);
 
   function openNew() {
     const f = emptyForm();

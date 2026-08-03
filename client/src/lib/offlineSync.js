@@ -53,7 +53,7 @@ function hasTmp(v) {
 
 // --- observable state for the UI ---
 const listeners = new Set();
-let state = { online: navigator.onLine !== false, pending: 0, failed: 0, syncing: false, lastSync: null, items: [] };
+let state = { online: navigator.onLine !== false, pending: 0, failed: 0, syncing: false, lastSync: null, lastWarm: null, warming: false, items: [] };
 function emit() { state = { ...state }; listeners.forEach(l => l(state)); }
 export function subscribe(fn) { listeners.add(fn); fn(state); return () => listeners.delete(fn); }
 export function getState() { return state; }
@@ -67,7 +67,15 @@ async function refreshCounts() {
 }
 
 // --- what may be cached / queued ---
-const CACHE_GET = [/^\/jobs(\?|$)/, /^\/jobs\/[^/]+$/, /^\/customers(\?|$)/, /^\/employees(\?|$)/, /^\/inspections(\?|$)/, /^\/billing\/quotes(\?|$)/, /^\/auth\/me$/];
+const CACHE_GET = [
+  /^\/jobs(\?|$)/, /^\/jobs\/[^/]+$/,
+  /^\/customers(\?|$)/, /^\/customers\/[^/]+$/,
+  /^\/employees(\?|$)/,
+  /^\/inspections(\?|$)/, /^\/inspections\/[^/]+$/,
+  /^\/billing\/quotes(\?|$)/, /^\/billing\/invoices(\?|$)/, /^\/billing\/invoices\/[^/]+$/,
+  /^\/pricebook(\?|$)/, /^\/settings(\?|$)/, /^\/dashboard(\?|$)/,
+  /^\/auth\/me$/,
+];
 const isCacheableGet = (url) => CACHE_GET.some(r => r.test((url || '').split('#')[0]));
 
 // New-record creates that may happen offline (Phase 2). Each maps to the list
@@ -85,6 +93,7 @@ function isQueueable(cfg) {
     const keys = Object.keys(cfg.data || {});
     return keys.length > 0 && keys.every(k => allowed.includes(k));
   }
+  if (m === 'put' && /^\/customers\/[^/]+$/.test(url)) return true; // edit customer contact offline
   if (m === 'post' && /^\/jobs\/[^/]+\/(parts|photos|signoff|en-route)$/.test(url)) return url.indexOf('en-route') === -1; // en-route emails; keep online
   if (m === 'delete' && /^\/jobs\/[^/]+\/(parts|photos)\/[^/]+$/.test(url)) return true;
   if ((m === 'post' || m === 'put') && /^\/inspections(\/[^/]+)?$/.test(url)) return true;
@@ -93,11 +102,11 @@ function isQueueable(cfg) {
 }
 
 // --- optimistic cache patch so offline reads reflect the change ---
-async function patchCachedJob(id, patch) {
-  const single = await idbGet('cache', `/jobs/${id}`);
-  if (single?.data) { single.data = { ...single.data, ...patch }; await idbSet('cache', `/jobs/${id}`, single); }
-  const list = await idbGet('cache', '/jobs');
-  if (list && Array.isArray(list.data)) { list.data = list.data.map(j => (j.id === id ? { ...j, ...patch } : j)); await idbSet('cache', '/jobs', list); }
+async function patchCachedRecord(listKey, id, patch) {
+  const single = await idbGet('cache', `${listKey}/${id}`);
+  if (single?.data) { single.data = { ...single.data, ...patch, _pending: true }; await idbSet('cache', `${listKey}/${id}`, single); }
+  const list = await idbGet('cache', listKey);
+  if (list && Array.isArray(list.data)) { list.data = list.data.map(r => (r.id === id ? { ...r, ...patch, _pending: true } : r)); await idbSet('cache', listKey, list); }
 }
 async function addToCachedJobArray(id, key, entry) {
   const single = await idbGet('cache', `/jobs/${id}`);
@@ -112,7 +121,9 @@ async function applyOptimistic(item) {
     const url = item.url;
     if (m === 'put') {
       const j = url.match(/^\/jobs\/([^/]+)$/);
-      if (j) await patchCachedJob(j[1], item.data || {});
+      if (j) { await patchCachedRecord('/jobs', j[1], item.data || {}); return; }
+      const c = url.match(/^\/customers\/([^/]+)$/);
+      if (c) { await patchCachedRecord('/customers', c[1], item.data || {}); return; }
       return;
     }
     if (m === 'post') {
@@ -210,6 +221,26 @@ export async function processQueue() {
   }
 }
 
+// Proactively pull down the datasets a technician needs, so they can go offline
+// having loaded everything (not just the screens they happened to open). Reads
+// go through the GET interceptor, which caches them.
+export async function warmCache() {
+  if (!_api || !localStorage.getItem('token')) return { ok: 0, failed: 0 };
+  state.warming = true; emit();
+  const core = ['/jobs', '/customers', '/employees', '/inspections', '/pricebook', '/billing/quotes', '/settings'];
+  let ok = 0, failed = 0;
+  for (const u of core) { try { await _api.get(u); ok++; } catch { failed++; } }
+  try {
+    const me = currentTech();
+    const list = (await idbGet('cache', '/jobs'))?.data || [];
+    const today = new Date().toISOString().slice(0, 10);
+    const mine = list.filter(j => (j.technician_id === me || (j.additional_technician_ids || []).includes(me)) && j.scheduled_date === today);
+    for (const j of mine) { try { await _api.get(`/jobs/${j.id}`); ok++; } catch { failed++; } }
+  } catch { /* ignore */ }
+  state.warming = false; state.lastWarm = new Date().toISOString(); emit();
+  return { ok, failed };
+}
+
 export async function retryFailed() {
   const q = await idbAll('queue');
   for (const it of q) if (it.status === 'failed') { it.status = 'pending'; it.error = null; await idbSet('queue', null, it); }
@@ -274,5 +305,11 @@ export function installOffline(api) {
       return Promise.reject(error);
     }
   );
-  loadIdMap().finally(() => { refreshCounts(); processQueue(); });
+  loadIdMap().finally(() => {
+    refreshCounts();
+    processQueue();
+    // Warm the cache shortly after load (best-effort) so an unplanned signal
+    // drop still leaves the tech with a usable copy of their day.
+    if (state.online !== false) setTimeout(() => { warmCache(); }, 4000);
+  });
 }

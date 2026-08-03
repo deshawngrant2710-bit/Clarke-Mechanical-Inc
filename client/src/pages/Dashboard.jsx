@@ -13,6 +13,7 @@ import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
   Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation, MessagesSquare, CheckSquare, Circle,
+  ChevronDown, Plus, X,
 } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import Logo from '../components/Logo';
@@ -75,8 +76,35 @@ function QuickAction({ icon, label, onClick, color }) {
   );
 }
 
+// Floating "Create" button — quick access to new Customer / Job / Quote / Invoice.
+function CreateFab({ navigate }) {
+  const [open, setOpen] = useState(false);
+  const actions = [
+    { label: 'Customer', icon: <UserPlus size={16} />, to: '/customers?new=1', color: 'bg-blue-600' },
+    { label: 'Job', icon: <Wrench size={16} />, to: '/jobs?new=1', color: 'bg-orange-600' },
+    { label: 'Quote', icon: <Receipt size={16} />, to: '/quotes?new=1', color: 'bg-violet-600' },
+    { label: 'Invoice', icon: <FilePlus size={16} />, to: '/invoices?new=1', color: 'bg-emerald-600' },
+  ];
+  return (
+    <div className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 z-40 flex flex-col items-end gap-2">
+      {open && actions.map(a => (
+        <button key={a.label} onClick={() => { setOpen(false); navigate(a.to); }}
+          className="flex items-center gap-2 pl-3 pr-4 py-2.5 rounded-full bg-white border border-slate-200 shadow-lg text-sm font-medium text-slate-700 animate-slide-up">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-white ${a.color}`}>{a.icon}</span>
+          {a.label}
+        </button>
+      ))}
+      <button onClick={() => setOpen(v => !v)} aria-label="Create"
+        className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white transition-transform ${open ? 'bg-slate-700 rotate-45' : 'bg-blue-600'}`}>
+        <Plus size={26} />
+      </button>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
+  const [showOverview, setShowOverview] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -102,6 +130,9 @@ export default function Dashboard() {
     .filter(s => s.count > 0)
     .map(s => ({ label: s.status.replace('-', ' '), value: s.count, color: STATUS_COLORS[s.status] || '#94a3b8' }));
 
+  const techs = data.technicians || [];
+  const availableTechs = techs.filter(t => !(t.active_jobs > 0)).length;
+
   return (
     <div className="animate-fade-in">
       {/* Hero */}
@@ -116,18 +147,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Top metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <StatCard label="Total Customers" value={data.totalCustomers} icon={<Users size={18} />} color="blue" onClick={() => navigate('/customers')} />
-        <StatCard label="Open Jobs" value={data.openJobs} icon={<Briefcase size={18} />} color="orange" sub={`${data.totalJobs} all-time`} onClick={() => navigate('/jobs')} />
-        <StatCard label="Today's Jobs" value={data.todayJobs} icon={<CalendarDays size={18} />} color="purple" sub={`${data.completedToday} completed`} onClick={() => navigate('/schedule')} />
-        <StatCard label="Monthly Revenue" value={data.monthlyRevenue} prefix="$" decimals={0} icon={<TrendingUp size={18} />} color="green" />
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Revenue Collected" value={data.totalRevenue} prefix="$" decimals={2} icon={<DollarSign size={18} />} color="green" />
-        <StatCard label="Pending Revenue" value={data.pendingRevenue} prefix="$" decimals={2} icon={<Clock size={18} />} color="blue" />
-        <StatCard label="Avg. Ticket" value={data.avgTicket} prefix="$" decimals={2} icon={<Receipt size={18} />} color="purple" />
-        <StatCard label="Outstanding" value={data.outstandingAmount} prefix="$" decimals={2} icon={<AlertTriangle size={18} />} color="red" sub={`${data.overdueInvoices} overdue`} onClick={() => navigate('/invoices')} />
+      {/* Priority — the most urgent things first */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+        <StatCard label="Today's Jobs" value={data.todayJobs} icon={<CalendarDays size={18} />} color="blue" sub={`${data.completedToday} completed`} onClick={() => navigate('/schedule')} />
+        <StatCard label="Emergency" value={data.emergencyJobs} icon={<AlertTriangle size={18} />} color="red" onClick={() => navigate('/jobs')} />
+        <StatCard label="Unassigned" value={na.unassignedJobs || 0} icon={<Briefcase size={18} />} color="orange" onClick={() => navigate('/dispatch')} />
+        <StatCard label="Outstanding" value={data.outstandingAmount} prefix="$" decimals={0} icon={<Receipt size={18} />} color="purple" sub={`${data.overdueInvoices} overdue`} onClick={() => navigate('/invoices')} />
+        <StatCard label="Techs Available" value={availableTechs} icon={<Users size={18} />} color="green" sub={`of ${techs.length}`} onClick={() => navigate('/dispatch')} />
       </div>
 
       <ToDoWidget user={user} navigate={navigate} />
@@ -146,28 +172,45 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Charts row */}
-      <div className="grid lg:grid-cols-3 gap-6 mb-6">
-        <Card className="lg:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-card-title text-slate-800">Revenue Trend</h2>
-              <p className="text-xs text-slate-400">Collected revenue · last 6 months</p>
+      {/* Business Overview — secondary financials + charts (collapsed to reduce scrolling) */}
+      <Card className="p-0 overflow-hidden mb-6">
+        <button onClick={() => setShowOverview(v => !v)} className="w-full flex items-center justify-between px-5 py-4">
+          <span className="flex items-center gap-2 text-card-title text-slate-800"><TrendingUp size={16} className="text-slate-400" /> Business Overview</span>
+          <ChevronDown size={18} className={`text-slate-400 transition-transform ${showOverview ? 'rotate-180' : ''}`} />
+        </button>
+        {showOverview && (
+          <div className="px-5 pb-5 space-y-6 border-t border-slate-100 pt-5">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <StatCard label="Total Customers" value={data.totalCustomers} icon={<Users size={18} />} color="blue" onClick={() => navigate('/customers')} />
+              <StatCard label="Open Jobs" value={data.openJobs} icon={<Briefcase size={18} />} color="orange" sub={`${data.totalJobs} all-time`} onClick={() => navigate('/jobs')} />
+              <StatCard label="Monthly Revenue" value={data.monthlyRevenue} prefix="$" decimals={0} icon={<TrendingUp size={18} />} color="green" />
+              <StatCard label="Revenue Collected" value={data.totalRevenue} prefix="$" decimals={2} icon={<DollarSign size={18} />} color="green" />
+              <StatCard label="Pending Revenue" value={data.pendingRevenue} prefix="$" decimals={2} icon={<Clock size={18} />} color="blue" />
+              <StatCard label="Avg. Ticket" value={data.avgTicket} prefix="$" decimals={2} icon={<Receipt size={18} />} color="purple" />
             </div>
-            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
-              <TrendingUp size={14} /> {money(data.totalRevenue)}
-            </span>
+            <div className="grid lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-2 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-card-title text-slate-800">Revenue Trend</h2>
+                    <p className="text-xs text-slate-400">Collected revenue · last 6 months</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
+                    <TrendingUp size={14} /> {money(data.totalRevenue)}
+                  </span>
+                </div>
+                <AreaChart data={data.revenueByMonth} />
+              </Card>
+              <Card className="p-5">
+                <h2 className="text-card-title text-slate-800 mb-4">Jobs by Status</h2>
+                {donutData.length > 0
+                  ? <DonutChart data={donutData} />
+                  : <p className="text-sm text-slate-400 py-10 text-center">No jobs yet</p>}
+              </Card>
+            </div>
           </div>
-          <AreaChart data={data.revenueByMonth} />
-        </Card>
-
-        <Card className="p-5">
-          <h2 className="text-card-title text-slate-800 mb-4">Jobs by Status</h2>
-          {donutData.length > 0
-            ? <DonutChart data={donutData} />
-            : <p className="text-sm text-slate-400 py-10 text-center">No jobs yet</p>}
-        </Card>
-      </div>
+        )}
+      </Card>
 
       {/* Quick actions */}
       <Card className="p-5 mb-6">
@@ -268,6 +311,8 @@ export default function Dashboard() {
           </div>
         )}
       </Card>
+
+      <CreateFab navigate={navigate} />
     </div>
   );
 }

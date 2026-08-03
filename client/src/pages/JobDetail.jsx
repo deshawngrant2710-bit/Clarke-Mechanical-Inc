@@ -760,8 +760,8 @@ export default function JobDetail() {
       </Modal>
 
       <TaskModal open={taskModal} onClose={() => setTaskModal(false)}
-        staff={employees.filter(u => u.role && u.role !== 'customer')} customers={customers} onDone={() => {}}
-        initial={{ customer_id: job.customer_id || '', title: `Follow-up: ${job.title}` }} />
+        staff={employees.filter(u => u.role && u.role !== 'customer')} customers={customers} jobs={[job]} onDone={() => {}}
+        initial={{ customer_id: job.customer_id || '', job_id: id, title: `Follow-up: ${job.title}` }} />
 
       <Modal open={signModal} onClose={() => setSignModal(false)} title="Capture Customer Sign-off" subtitle={job.title}>
         <div className="space-y-4">

@@ -33,6 +33,7 @@ export default function Customers() {
     api.get('/customers').then(r => { setCustomers(r.data); setLoading(false); });
   }
   useEffect(load, []);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setModal(true); }, []);
 
   const filtered = customers.filter(c => {
     const q = search.toLowerCase();
@@ -189,6 +190,7 @@ export default function Customers() {
                     {c.open_jobs > 0 && <span className="inline-flex items-center gap-1 text-blue-700"><span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-blue-100 font-semibold">{c.open_jobs}</span>open</span>}
                     {c.city && <span className="flex items-center gap-1 text-slate-500"><MapPin size={11} className="text-slate-400" />{c.city}{c.state ? `, ${c.state}` : ''}</span>}
                     {isThisMonth(c.created_at) && <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">New</span>}
+                    {c._pending && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Pending sync</span>}
                   </div>
                 </div>
                 <ChevronRight size={18} className="text-slate-300 self-center shrink-0" />

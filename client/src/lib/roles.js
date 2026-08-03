@@ -97,8 +97,12 @@ export function bottomNavForRole(role) {
     .filter(i => i && i.roles.includes(role));
 }
 
+// Utility routes any signed-in user may reach (not shown in the sidebar).
+const OPEN_ROUTES = ['/account', '/more', '/about', '/refer'];
+
 // May this role open this pathname? Detail routes inherit their base (e.g. /jobs/123 → /jobs).
 export function canAccess(role, pathname) {
+  if (OPEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) return true;
   if (pathname === '/') return ALL_ITEMS.find(i => i.to === '/').roles.includes(role);
   const item = ALL_ITEMS.find(i => i.to !== '/' && (pathname === i.to || pathname.startsWith(i.to + '/')));
   if (!item) return false;

@@ -64,6 +64,8 @@ html.native-app ::-webkit-scrollbar { width: 0; height: 0; display: none; }
 html.native-app * { scrollbar-width: none; }
 /* Mobile header fills the status-bar / Dynamic Island area (top safe inset). */
 html.native-app .app-header { padding-top: env(safe-area-inset-top); }
+/* In the app, navigation is the bottom bar + More screen — hide the drawer hamburger. */
+html.native-app .app-hamburger { display: none; }
 /* Public full-screen pages (login/reset/privacy) respect top & bottom safe areas. */
 html.native-app .native-safe-y {
   padding-top: env(safe-area-inset-top);

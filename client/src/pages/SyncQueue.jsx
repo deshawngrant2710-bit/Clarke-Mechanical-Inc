@@ -1,6 +1,6 @@
 import { useOffline } from '../context/OfflineContext';
 import PageHeader from '../components/PageHeader';
-import { RefreshCw, WifiOff, CheckCircle2, AlertTriangle, Clock, Trash2, UploadCloud } from 'lucide-react';
+import { RefreshCw, WifiOff, CheckCircle2, AlertTriangle, Clock, Trash2, UploadCloud, Download } from 'lucide-react';
 
 function describe(it) {
   const u = it.url || '';
@@ -40,13 +40,27 @@ export default function SyncQueue() {
     <div className="animate-fade-in max-w-2xl mx-auto">
       <PageHeader title="Sync" subtitle="Changes waiting to reach the server" icon={<RefreshCw size={20} />} />
 
-      <div className={`mb-4 flex items-center gap-2 text-sm px-3 py-2 rounded-xl ${o?.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+      <div className={`mb-3 flex items-center gap-2 text-sm px-3 py-2 rounded-xl ${o?.online ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
         {o?.online ? <CheckCircle2 size={16} /> : <WifiOff size={16} />}
         {o?.online ? 'Connected' : 'Offline — changes are saved on this device'}
         <span className="ml-auto flex gap-2">
           {o?.failed > 0 && <button onClick={o.retryFailed} className="text-blue-600 font-medium">Retry all</button>}
           {o?.pending > 0 && o?.online && <button onClick={o.sync} className="text-blue-600 font-medium">Sync now</button>}
         </span>
+      </div>
+
+      {/* Prepare for offline */}
+      <div className="mb-4 flex items-center gap-2 text-sm px-3 py-2 rounded-xl bg-white border border-slate-200">
+        <Download size={16} className="text-slate-400" />
+        <span className="text-slate-600">
+          {o?.warming ? 'Downloading your data…'
+            : o?.lastWarm ? `Saved for offline · ${new Date(o.lastWarm).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+              : 'Download your jobs & customers for offline use'}
+        </span>
+        <button onClick={o.warmCache} disabled={!o?.online || o?.warming}
+          className="ml-auto text-blue-600 font-medium disabled:text-slate-300">
+          {o?.warming ? 'Working…' : 'Download'}
+        </button>
       </div>
 
       {items.length === 0 ? (
