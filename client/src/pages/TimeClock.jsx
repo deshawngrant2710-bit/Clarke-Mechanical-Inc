@@ -5,7 +5,7 @@ import { Card, CardHeader, Btn, Modal, Select, Empty, SkeletonPage, StatCard, Av
 import { fileToProof } from '../lib/imageProof';
 import { getLocation, mapsLink } from '../lib/geo';
 import { useAuth } from '../context/AuthContext';
-import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin, Pencil, Trash2 } from 'lucide-react';
+import { Clock, LogIn, LogOut, Camera, FileText, Image as ImageIcon, Timer, CalendarClock, MapPin, Pencil, Trash2, Coffee, AlertTriangle, CheckCircle2, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'; }
@@ -53,6 +53,16 @@ export default function TimeClock() {
     catch (err) { toast.error(err.response?.data?.error || 'Could not delete'); }
   }
 
+  const isManager = user?.role === 'admin' || user?.role === 'office';
+  const [correctEntry, setCorrectEntry] = useState(null);
+  const activeBreaks = active?.breaks || [];
+  const onBreakNow = activeBreaks.length > 0 && !activeBreaks[activeBreaks.length - 1].end;
+
+  async function startBreak() { try { await api.post('/time/break/start'); load(); } catch (e) { toast.error(e.response?.data?.error || 'Could not start break'); } }
+  async function endBreak() { try { await api.post('/time/break/end'); load(); } catch (e) { toast.error(e.response?.data?.error || 'Could not end break'); } }
+  async function approveEntry(e) { try { await api.post(`/time/${e.id}/approve`, { approved: !e.approved }); load(); } catch { toast.error('Could not update approval'); } }
+  async function resolveCorrection(e, approve) { try { await api.post(`/time/${e.id}/resolve-correction`, { approve }); toast.success(approve ? 'Correction applied' : 'Correction denied'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Could not resolve'); } }
+
   // Block clocking out until the job you're clocked into is finished.
   function tryClockOut() {
     if (active?.job_id) {
@@ -83,6 +93,15 @@ export default function TimeClock() {
   }
   const maxH = Math.max(1, ...days7.map(d => d.hours));
 
+  // Overtime (>40h/week), break totals, and missed clock-out detection.
+  const OT = Math.max(0, weekHours - 40);
+  const weekBreakMin = myEntries.filter(e => e.clock_in && new Date(e.clock_in) >= weekStart).reduce((s, e) => s + (e.break_minutes || 0), 0);
+  const missed = (() => {
+    if (active && (Date.now() - new Date(active.clock_in)) > 16 * 3600000) return active;
+    return (isManager ? entries : myEntries).find(e => !e.clock_out && new Date(e.clock_in).toDateString() !== new Date().toDateString()) || null;
+  })();
+  const pendingCorrections = entries.filter(e => e.correction?.status === 'pending');
+
   return (
     <div className="animate-fade-in">
       <PageHeader title="Time Clock" subtitle="Clock in and out of your shifts" icon={<Clock size={20} />} />
@@ -96,9 +115,13 @@ export default function TimeClock() {
               <div>
                 <p className="text-sm text-slate-500">Clocked in at {fmtTime(active.clock_in)}{active.job_title ? <> · <span className="text-slate-700 font-medium">{active.job_title}</span></> : ''}</p>
                 <p className="text-2xl font-bold text-slate-800 tabular-nums">{elapsed(active.clock_in, now)}</p>
+                {onBreakNow && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 mt-1"><Coffee size={12} /> On break</span>}
               </div>
             </div>
-            <Btn variant="danger" size="lg" onClick={tryClockOut}><LogOut size={18} /> Clock Out</Btn>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Btn variant="outline" size="lg" onClick={onBreakNow ? endBreak : startBreak}><Coffee size={16} /> {onBreakNow ? 'End break' : 'Start break'}</Btn>
+              <Btn variant="danger" size="lg" onClick={tryClockOut}><LogOut size={18} /> Clock Out</Btn>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -114,12 +137,41 @@ export default function TimeClock() {
         )}
       </Card>
 
+      {/* Missed clock-out warning */}
+      {missed && (
+        <div className="mb-6 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          <AlertTriangle size={16} className="shrink-0" />
+          <span><span className="font-semibold">Missed clock-out.</span> A shift from {fmtDate(missed.clock_in)} is still open. {isManager ? 'Edit the entry to set the correct clock-out time.' : 'Ask your manager to correct it, or submit a correction request.'}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard label="Hours Today" value={todayHours} decimals={1} icon={<Timer size={18} />} color="blue" />
-        <StatCard label="This Week" value={weekHours} decimals={1} icon={<CalendarClock size={18} />} color="green" />
-        <StatCard label="My Shifts" value={myEntries.length} icon={<CalendarClock size={18} />} color="purple" />
-        <StatCard label="Status" value={active ? 'On the clock' : 'Off'} animate={false} icon={<Clock size={18} />} color={active ? 'green' : 'slate'} />
+        <StatCard label="Billable This Week" value={weekHours} decimals={1} icon={<CalendarClock size={18} />} color="green"
+          sub={`${(weekBreakMin / 60).toFixed(1)}h breaks${OT > 0 ? ` · ${OT.toFixed(1)}h OT` : ''}`} />
+        <StatCard label="Overtime (wk)" value={OT} decimals={1} icon={<AlertTriangle size={18} />} color={OT > 0 ? 'orange' : 'slate'} />
+        <StatCard label="Status" value={onBreakNow ? 'On break' : active ? 'On the clock' : 'Off'} animate={false} icon={<Clock size={18} />} color={onBreakNow ? 'orange' : active ? 'green' : 'slate'} />
       </div>
+
+      {/* Manager: pending correction requests */}
+      {isManager && pendingCorrections.length > 0 && (
+        <Card className="p-5 mb-6 border-amber-200">
+          <div className="flex items-center gap-2 mb-3"><FileText size={16} className="text-amber-500" /><h2 className="text-card-title text-slate-800">Correction requests ({pendingCorrections.length})</h2></div>
+          <div className="space-y-2">
+            {pendingCorrections.map(e => (
+              <div key={e.id} className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-slate-100">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800">{e.technician_name} · {fmtDate(e.clock_in)}</p>
+                  <p className="text-xs text-slate-500">Requested: {fmtTime(e.correction.requested_clock_in)} → {e.correction.requested_clock_out ? fmtTime(e.correction.requested_clock_out) : 'open'}</p>
+                  <p className="text-xs text-slate-500 italic">"{e.correction.reason}"</p>
+                </div>
+                <button onClick={() => resolveCorrection(e, true)} className="text-xs font-semibold text-white bg-emerald-600 px-3 py-1.5 rounded-lg">Approve</button>
+                <button onClick={() => resolveCorrection(e, false)} className="text-xs font-medium text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg">Deny</button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {!isAdmin && (
         <Card className="p-5 mb-6">
@@ -188,12 +240,18 @@ export default function TimeClock() {
                     </td>
                     <td className="px-5 py-3 text-right font-medium text-slate-800">{e.hours != null ? `${e.hours.toFixed(2)}` : '—'}</td>
                     <td className="px-5 py-3 text-right">
-                      <div className="inline-flex items-center gap-3 justify-end">
+                      <div className="inline-flex items-center gap-2.5 justify-end">
+                        {e.correction?.status === 'pending' && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Fix pending</span>}
                         {e.has_proof ? (
                           <button onClick={() => viewProof(e.id)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-xs font-medium">
                             {e.proof_type === 'pdf' ? <FileText size={13} /> : <ImageIcon size={13} />} View
                           </button>
                         ) : <span className="text-slate-300 text-xs">—</span>}
+                        {!isManager && e.technician_id === user?.id && e.clock_out && e.correction?.status !== 'pending' && (
+                          <button onClick={() => setCorrectEntry(e)} title="Request a correction" className="text-slate-400 hover:text-blue-600"><Edit3 size={13} /></button>
+                        )}
+                        {!isManager && e.approved && <span title={`Approved by ${e.approved_by || ''}`} className="text-emerald-600"><CheckCircle2 size={14} /></span>}
+                        {isManager && <button onClick={() => approveEntry(e)} title={e.approved ? `Approved by ${e.approved_by || ''} — tap to unapprove` : 'Approve'} className={e.approved ? 'text-emerald-600' : 'text-slate-300 hover:text-emerald-600'}><CheckCircle2 size={15} /></button>}
                         {isAdmin && <button onClick={() => setEditEntry(e)} title="Edit times" className="text-slate-400 hover:text-blue-600"><Pencil size={13} /></button>}
                         {isAdmin && <button onClick={() => deleteEntry(e)} title="Delete entry" className="text-slate-400 hover:text-red-600"><Trash2 size={13} /></button>}
                       </div>
@@ -210,6 +268,7 @@ export default function TimeClock() {
       <ClockOutModal open={clockOutOpen} onClose={() => setClockOutOpen(false)} onDone={load} />
 
       <EditTimeModal entry={editEntry} onClose={() => setEditEntry(null)} onDone={load} />
+      <CorrectionModal entry={correctEntry} onClose={() => setCorrectEntry(null)} onDone={load} />
 
       <Modal open={!!proofView} onClose={() => setProofView(null)} title="Proof of Work" size="lg">
         {proofView?.proof_type === 'pdf'
@@ -225,6 +284,51 @@ function toLocalInput(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function CorrectionModal({ entry, onClose, onDone }) {
+  const [ci, setCi] = useState('');
+  const [co, setCo] = useState('');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (entry) { setCi(toLocalInput(entry.clock_in)); setCo(toLocalInput(entry.clock_out)); setReason(''); } }, [entry]);
+  if (!entry) return null;
+
+  async function submit() {
+    if (!reason.trim()) return toast.error('Please explain the correction');
+    setSaving(true);
+    try {
+      await api.post(`/time/${entry.id}/request-correction`, {
+        clock_in: ci ? new Date(ci).toISOString() : null,
+        clock_out: co ? new Date(co).toISOString() : null,
+        reason,
+      });
+      toast.success('Correction requested — your manager will review it');
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not submit'); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={!!entry} onClose={onClose} title="Request a correction" subtitle="Your manager reviews and applies it" size="sm">
+      <div className="space-y-3">
+        <label className="block text-sm font-medium text-slate-700">Corrected clock-in
+          <input type="datetime-local" value={ci} onChange={e => setCi(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">Corrected clock-out
+          <input type="datetime-local" value={co} onChange={e => setCo(e.target.value)} className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+        </label>
+        <label className="block text-sm font-medium text-slate-700">Reason
+          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="e.g. Forgot to clock out — left site at 4:30pm"
+            className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={submit} loading={saving}>Submit request</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function EditTimeModal({ entry, onClose, onDone }) {

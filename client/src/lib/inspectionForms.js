@@ -11,8 +11,15 @@ export const PROPERTY_TYPES = [
 ];
 
 export const EQUIPMENT_TYPES = [
-  { id: 'boiler', label: 'Boiler / Heating' },
-  { id: 'ac', label: 'AC / Cooling' },
+  { id: 'ac', label: 'Air Conditioner' },
+  { id: 'heat_pump', label: 'Heat Pump' },
+  { id: 'furnace', label: 'Furnace' },
+  { id: 'boiler', label: 'Boiler' },
+  { id: 'mini_split', label: 'Mini-Split' },
+  { id: 'pm', label: 'Preventive Maintenance' },
+  { id: 'install_startup', label: 'Installation Startup' },
+  { id: 'refrigeration', label: 'Refrigeration' },
+  { id: 'water_heater', label: 'Water Heater' },
 ];
 
 // Free-text info captured at the top of every inspection.
@@ -103,6 +110,112 @@ export const CHECKLIST_SECTIONS = [
     ],
   },
   {
+    id: 'heat_pump',
+    title: 'Heat Pump',
+    scope: { equipment: ['heat_pump'] },
+    items: [
+      { key: 'hp_reversing', label: 'Reversing valve shifts (heat ↔ cool)' },
+      { key: 'hp_defrost', label: 'Defrost cycle initiates and terminates correctly' },
+      { key: 'hp_auxheat', label: 'Auxiliary / emergency heat energizes' },
+      { key: 'hp_bothmodes', label: 'Adequate output in both heating and cooling' },
+      { key: 'hp_coils', label: 'Indoor & outdoor coils clean' },
+      { key: 'hp_refrigerant', label: 'Refrigerant charge within spec' },
+      { key: 'hp_defrostboard', label: 'Defrost board / sensors functional' },
+      { key: 'hp_drain', label: 'Condensate drain clear' },
+    ],
+  },
+  {
+    id: 'furnace',
+    title: 'Furnace',
+    scope: { equipment: ['furnace'] },
+    items: [
+      { key: 'fur_ignition', label: 'Ignitor / pilot lights and flame is stable' },
+      { key: 'fur_heatex', label: 'Heat exchanger inspected — no cracks' },
+      { key: 'fur_gas', label: 'Gas / manifold pressure within spec' },
+      { key: 'fur_flue', label: 'Flue / venting clear and sealed' },
+      { key: 'fur_blower', label: 'Blower motor and wheel clean, runs quiet' },
+      { key: 'fur_filter', label: 'Air filter clean / replaced' },
+      { key: 'fur_limit', label: 'Limit & rollout switches functional' },
+      { key: 'fur_temprise', label: 'Temperature rise within nameplate range' },
+      { key: 'fur_co', label: 'CO test passed — no leakage' },
+    ],
+  },
+  {
+    id: 'mini_split',
+    title: 'Mini-Split',
+    scope: { equipment: ['mini_split'] },
+    items: [
+      { key: 'ms_indoor', label: 'Indoor head(s) clean, blower runs quiet' },
+      { key: 'ms_outdoor', label: 'Outdoor unit clean and secure' },
+      { key: 'ms_lineset', label: 'Line set insulated, no kinks or leaks' },
+      { key: 'ms_condensate', label: 'Condensate pump / line drains properly' },
+      { key: 'ms_filters', label: 'Filters cleaned / washed' },
+      { key: 'ms_remote', label: 'Remote / controls operate all modes' },
+      { key: 'ms_refrigerant', label: 'Refrigerant charge within spec' },
+    ],
+  },
+  {
+    id: 'refrigeration',
+    title: 'Refrigeration',
+    scope: { equipment: ['refrigeration'] },
+    items: [
+      { key: 'ref_boxtemp', label: 'Box / case holding target temperature' },
+      { key: 'ref_compressor', label: 'Compressor runs normally, no short-cycling' },
+      { key: 'ref_condenser', label: 'Condenser coil clean, fans operate' },
+      { key: 'ref_evaporator', label: 'Evaporator coil clean, no ice build-up' },
+      { key: 'ref_defrost', label: 'Defrost cycle / heaters function' },
+      { key: 'ref_doorseals', label: 'Door gaskets / seals intact' },
+      { key: 'ref_refrigerant', label: 'Refrigerant charge within spec' },
+      { key: 'ref_controls', label: 'Temperature controls / alarms set correctly' },
+    ],
+  },
+  {
+    id: 'water_heater',
+    title: 'Water Heater',
+    scope: { equipment: ['water_heater'] },
+    items: [
+      { key: 'wh_tpr', label: 'T&P relief valve tested and operational' },
+      { key: 'wh_temp', label: 'Temperature setting safe (≈120°F)' },
+      { key: 'wh_anode', label: 'Anode rod checked' },
+      { key: 'wh_element', label: 'Burner / heating elements operate' },
+      { key: 'wh_flue', label: 'Flue / venting clear (gas units)' },
+      { key: 'wh_leaks', label: 'No leaks at tank, valves, or connections' },
+      { key: 'wh_expansion', label: 'Expansion tank charged (if present)' },
+      { key: 'wh_flush', label: 'Tank flushed / sediment drained' },
+    ],
+  },
+  {
+    id: 'pm',
+    title: 'Preventive Maintenance',
+    scope: { equipment: ['pm'] },
+    items: [
+      { key: 'pm_filter', label: 'Filter inspected / replaced' },
+      { key: 'pm_coils', label: 'Coils cleaned as needed' },
+      { key: 'pm_drain', label: 'Condensate drain cleared and treated' },
+      { key: 'pm_electrical', label: 'Electrical connections tight; amps within spec' },
+      { key: 'pm_refrigerant', label: 'Refrigerant charge verified' },
+      { key: 'pm_belts', label: 'Belts / bearings inspected, lubricated' },
+      { key: 'pm_thermostat', label: 'Thermostat calibrated and cycling correctly' },
+      { key: 'pm_overall', label: 'Overall operation verified in all modes' },
+    ],
+  },
+  {
+    id: 'install_startup',
+    title: 'Installation Startup',
+    scope: { equipment: ['install_startup'] },
+    items: [
+      { key: 'is_mounting', label: 'Unit level, secure, proper clearances' },
+      { key: 'is_electrical', label: 'Electrical / breaker sized and correct' },
+      { key: 'is_lineset', label: 'Line set / piping brazed, pressure-tested' },
+      { key: 'is_vacuum', label: 'System evacuated to spec (micron level)' },
+      { key: 'is_charge', label: 'Refrigerant / water charge to manufacturer spec' },
+      { key: 'is_condensate', label: 'Condensate / drainage routed correctly' },
+      { key: 'is_startup', label: 'Startup readings within manufacturer range' },
+      { key: 'is_controls', label: 'Thermostat / controls configured' },
+      { key: 'is_orientation', label: 'Customer shown operation & warranty registered' },
+    ],
+  },
+  {
     id: 'commercial',
     title: 'Commercial Specifics',
     scope: { property: ['commercial'] },
@@ -133,6 +246,43 @@ export function sectionsFor(property, equipment) {
     if (s.scope?.equipment && !s.scope.equipment.includes(equipment)) return false;
     return true;
   });
+}
+
+// Numeric readings/measurements — stored in `info` under each key. Values are
+// free entry so a tech can note ranges; the unit is shown next to the field.
+export const READINGS_SECTIONS = [
+  {
+    id: 'cooling',
+    title: 'Readings — Cooling',
+    scope: { equipment: ['ac', 'heat_pump', 'mini_split', 'refrigeration', 'pm', 'install_startup'] },
+    items: [
+      { key: 'rd_suction', label: 'Suction pressure', unit: 'psi' },
+      { key: 'rd_head', label: 'Head / discharge pressure', unit: 'psi' },
+      { key: 'rd_superheat', label: 'Superheat', unit: '°F' },
+      { key: 'rd_subcool', label: 'Subcooling', unit: '°F' },
+      { key: 'rd_supply', label: 'Supply air temp', unit: '°F' },
+      { key: 'rd_return', label: 'Return air temp', unit: '°F' },
+      { key: 'rd_deltat', label: 'Temperature split (ΔT)', unit: '°F' },
+      { key: 'rd_amps', label: 'Compressor amps', unit: 'A' },
+    ],
+  },
+  {
+    id: 'combustion',
+    title: 'Readings — Combustion / Heating',
+    scope: { equipment: ['furnace', 'boiler', 'water_heater', 'pm', 'install_startup'] },
+    items: [
+      { key: 'rd_gas', label: 'Manifold / gas pressure', unit: 'in WC' },
+      { key: 'rd_stack', label: 'Stack / flue temp', unit: '°F' },
+      { key: 'rd_co', label: 'CO', unit: 'ppm' },
+      { key: 'rd_co2', label: 'CO₂', unit: '%' },
+      { key: 'rd_rise', label: 'Temperature rise', unit: '°F' },
+    ],
+  },
+];
+
+// Reading sections that apply for a given equipment selection.
+export function readingsFor(property, equipment) {
+  return READINGS_SECTIONS.filter(s => !s.scope?.equipment || s.scope.equipment.includes(equipment));
 }
 
 export const ANSWERS = [

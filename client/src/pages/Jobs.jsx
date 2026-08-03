@@ -6,8 +6,64 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Badge, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
-import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock } from 'lucide-react';
+import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock, User, DollarSign, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+function Chip({ children, icon, tone }) {
+  const cls = tone === 'muted' ? 'bg-slate-50 text-slate-400' : 'bg-slate-100 text-slate-600';
+  return <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${cls}`}>{icon}{children}</span>;
+}
+
+function PaymentChip({ invoice, jobStatus }) {
+  if (!invoice) {
+    if (jobStatus === 'completed' || jobStatus === 'awaiting-signoff') {
+      return <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500"><DollarSign size={11} />Unbilled</span>;
+    }
+    return null;
+  }
+  const map = {
+    paid: ['Paid', 'bg-emerald-100 text-emerald-700'],
+    overdue: ['Overdue', 'bg-red-100 text-red-700'],
+    partial: ['Partial', 'bg-amber-100 text-amber-700'],
+    sent: ['Awaiting payment', 'bg-amber-100 text-amber-700'],
+    draft: ['Draft invoice', 'bg-slate-100 text-slate-500'],
+    cancelled: ['Void', 'bg-slate-100 text-slate-400'],
+  };
+  const [label, cls] = map[invoice.status] || [invoice.status, 'bg-slate-100 text-slate-600'];
+  return <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${cls}`}><DollarSign size={11} />{label}</span>;
+}
+
+function AssignSheet({ job, techs, onClose, onAssign }) {
+  if (!job) return null;
+  return (
+    <div className="lg:hidden fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-slate-900/50 animate-fade-in" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 bg-white rounded-t-2xl shadow-2xl animate-slide-up max-h-[70vh] flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-semibold text-slate-800">Assign technician</h3>
+            <p className="text-xs text-slate-400 truncate">{job.title}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+        </div>
+        <div className="overflow-y-auto overscroll-contain p-3 safe-bottom space-y-1.5">
+          <button onClick={() => onAssign(job, '')} className="w-full text-left px-3 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-500 hover:bg-slate-50">Unassign</button>
+          {techs.map(t => {
+            const current = job.technician_id === t.id;
+            return (
+              <button key={t.id} onClick={() => onAssign(job, t.id)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-3 rounded-xl border text-sm ${current ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                <span className="font-medium text-slate-800 truncate">{t.name}</span>
+                {current && <span className="text-xs text-blue-500">Current</span>}
+              </button>
+            );
+          })}
+          {techs.length === 0 && <p className="text-sm text-slate-400 text-center py-4">No technicians yet</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
 const empty = { title: '', description: '', customer_id: '', technician_id: '', status: 'pending', priority: 'normal', job_type: '', scheduled_date: '', scheduled_time: '', address: '', notes: '' };
@@ -17,6 +73,8 @@ export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [assignJob, setAssignJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -47,9 +105,18 @@ export default function Jobs() {
   }
 
   function load() {
-    Promise.all([api.get('/jobs'), api.get('/customers'), api.get('/employees')])
-      .then(([j, c, e]) => { setJobs(j.data); setCustomers(c.data); setEmployees(e.data); setLoading(false); });
+    Promise.all([
+      api.get('/jobs'), api.get('/customers'), api.get('/employees'),
+      api.get('/billing/invoices').catch(() => ({ data: [] })),
+    ]).then(([j, c, e, inv]) => {
+      setJobs(j.data); setCustomers(c.data); setEmployees(e.data); setInvoices(inv.data || []); setLoading(false);
+    });
   }
+
+  // Latest invoice per job → payment chip.
+  const paymentByJob = {};
+  for (const inv of invoices) { if (inv.job_id) paymentByJob[inv.job_id] = inv; }
+  const techs = employees.filter(u => u.role === 'technician' || u.also_technician);
   useEffect(() => {
     load();
     const cid = params.get('customer_id');
@@ -173,48 +240,53 @@ export default function Jobs() {
           </Table>
           </div>
 
-          {/* Mobile: cards (technician selector gets full width — no more cut-off) */}
+          {/* Mobile: cards with clear chips + tap-to-assign technician */}
           <div className="lg:hidden divide-y divide-slate-100">
-            {filtered.map(job => (
-              <div key={job.id} onClick={() => navigate(`/jobs/${job.id}`)} className="p-4 active:bg-slate-50">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-800 truncate">{job.title}</p>
-                    {job.job_type && <p className="text-xs text-slate-400">{job.job_type}</p>}
+            {filtered.map(job => {
+              const inv = paymentByJob[job.id];
+              return (
+                <div key={job.id} className="p-4 active:bg-slate-50">
+                  <div onClick={() => navigate(`/jobs/${job.id}`)}>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-slate-800 min-w-0 truncate">{job.title}</p>
+                      {job._pending && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Pending</span>}
+                    </div>
+                    {job.customer_name && <p className="text-xs text-slate-500 truncate mt-0.5">{job.customer_name}</p>}
+
+                    {/* Chips */}
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <Badge status={job.status} />
+                      <Badge status={job.priority} />
+                      {job.job_type && <Chip icon={<Wrench size={11} />}>{job.job_type}</Chip>}
+                      {job.scheduled_date
+                        ? <Chip icon={<CalendarDays size={11} />}>{new Date(job.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{job.scheduled_time ? ` · ${job.scheduled_time}` : ''}</Chip>
+                        : <Chip tone="muted">Unscheduled</Chip>}
+                      <PaymentChip invoice={inv} jobStatus={job.status} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {job._pending && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Pending</span>}
-                    <Badge status={job.status} />
+
+                  {/* Technician — tap opens the assignment sheet */}
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <button
+                      onClick={() => job.status !== 'completed' && setAssignJob(job)}
+                      disabled={job.status === 'completed'}
+                      className={`flex-1 inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border text-left ${job.technician_name ? 'border-slate-200 text-slate-700' : 'border-dashed border-slate-300 text-amber-600'} disabled:opacity-70`}>
+                      <User size={14} className="text-slate-400 shrink-0" />
+                      <span className="truncate">{job.technician_name || employees.find(u => u.id === job.technician_id)?.name || 'Assign technician'}</span>
+                      {job.status === 'completed' ? <Lock size={12} className="text-slate-300 ml-auto shrink-0" /> : <ChevronRight size={14} className="text-slate-300 ml-auto shrink-0" />}
+                    </button>
+                    <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-lg transition-colors shrink-0"><Copy size={16} /></button>
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
-                  {job.customer_name && <span className="truncate max-w-full">{job.customer_name}</span>}
-                  <Badge status={job.priority} />
-                  {job.scheduled_date
-                    ? <span className="text-slate-500">{new Date(job.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{job.scheduled_time ? ` · ${job.scheduled_time}` : ''}</span>
-                    : <span className="text-slate-400">Unscheduled</span>}
-                </div>
-                <div className="mt-2.5 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                  {job.status === 'completed' ? (
-                    <span className="flex-1 text-sm text-slate-600 inline-flex items-center gap-1.5">
-                      {job.technician_name || employees.find(u => u.id === job.technician_id)?.name || <span className="text-slate-300">Unassigned</span>}
-                      <Lock size={11} className="text-slate-300" />
-                    </span>
-                  ) : (
-                    <select value={job.technician_id || ''} onChange={e => assignTech(job, e.target.value)}
-                      className="flex-1 min-w-0 text-sm border border-slate-200 rounded-lg px-2 py-2 bg-white outline-none focus:border-blue-500">
-                      <option value="">Unassigned</option>
-                      {employees.filter(u => u.role === 'technician' || u.also_technician).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  )}
-                  <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-lg transition-colors shrink-0"><Copy size={16} /></button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           </>
         )}
       </Card>
+
+      <AssignSheet job={assignJob} techs={techs} onClose={() => setAssignJob(null)}
+        onAssign={(j, id) => { assignTech(j, id); setAssignJob(null); }} />
 
       <Modal open={modal} onClose={() => setModal(false)} title="Create Job" subtitle="Log a new service work order">
         <div className="space-y-3">

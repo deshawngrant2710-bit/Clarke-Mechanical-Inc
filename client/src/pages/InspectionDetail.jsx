@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { fileToProof } from '../lib/imageProof';
 import SignaturePad from '../components/SignaturePad';
 import {
-  PROPERTY_TYPES, EQUIPMENT_TYPES, INFO_FIELDS, WORKORDER_FIELDS, ANSWERS, sectionsFor, propertyLabel, equipmentLabel,
+  PROPERTY_TYPES, EQUIPMENT_TYPES, INFO_FIELDS, WORKORDER_FIELDS, ANSWERS, sectionsFor, readingsFor, propertyLabel, equipmentLabel,
 } from '../lib/inspectionForms';
 
 const ANSWER_STYLE = {
@@ -161,6 +161,10 @@ export default function InspectionDetail() {
     return [
       box('Equipment &amp; Site', `<table style="width:100%;border-collapse:collapse;">${INFO_FIELDS.map(f => infoRow(f.label, info[f.key])).join('')}</table>`),
       box('Service', `${woRow('Problem reported', info.wo_complaint)}${woRow('Work performed', info.wo_work)}${woRow('Readings', info.wo_readings)}${woRow('Labor', info.wo_labor)}`),
+      (() => {
+        const rows = readingsFor(property, equipment).flatMap(s => s.items.map(it => (info[it.key] ? `<tr><td style="${cell}">${esc(it.label)}</td><td style="${cell}text-align:right">${esc(info[it.key])} ${esc(it.unit)}</td></tr>` : ''))).join('');
+        return rows ? box('Readings &amp; measurements', `<table style="width:100%;border-collapse:collapse;">${rows}</table>`) : '';
+      })(),
       box('Checklist', `<table style="width:100%;border-collapse:collapse;"><tr><td style="color:#94a3b8;font-size:11px;">Item</td><td style="color:#94a3b8;font-size:11px;text-align:right;">Result</td><td style="color:#94a3b8;font-size:11px;">Note</td></tr>${checkRows}</table>`),
       box('Parts used', `<table style="width:100%;border-collapse:collapse;"><tr><td style="color:#94a3b8;font-size:11px;">Part</td><td style="color:#94a3b8;font-size:11px;text-align:right;">Qty</td></tr>${partRows}</table>`),
       recommendations ? box('Recommendations', `<div style="font-size:13px;color:#334155;">${esc(recommendations)}</div>`) : '',
@@ -256,6 +260,30 @@ export default function InspectionDetail() {
           ))}
         </div>
       </Card>
+
+      {/* Readings & measurements */}
+      {readingsFor(property, equipment).length > 0 && (
+        <Card className="p-5 mb-6">
+          <CardHeader title="Readings & measurements" icon={<Wrench size={15} />} />
+          {readingsFor(property, equipment).map(sec => (
+            <div key={sec.id} className="mt-3">
+              <p className="text-xs font-semibold uppercase text-slate-400 mb-2">{sec.title}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {sec.items.map(r => (
+                  <div key={r.key}>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">{r.label}</label>
+                    <div className="relative">
+                      <input value={info[r.key] || ''} onChange={e => setInfo(p => ({ ...p, [r.key]: e.target.value }))}
+                        className="w-full pr-12 px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">{r.unit}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {/* Parts used */}
       <Card className="p-5 mb-6">

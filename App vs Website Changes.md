@@ -65,6 +65,16 @@ The website is currently running an **older version** than your phone. When you 
 
 | To-Do upgrades — job & invoice links (in addition to customer), **recurring tasks** (spawn next on complete: daily/weekly/biweekly/monthly), **reminder** datetime, **comments** thread, and overdue/due-today coloring. | Shared (web + app). Backend: `functions/routes/tasks.js` (fields + `/tasks/:id/comments` + recurrence spawn). **Deploy to Render.** Frontend: `src/pages/Tasks.jsx`, job prefill in `JobDetail.jsx`. **Push notification delivery is NOT included** — that needs the Capacitor Push Notifications plugin + Apple push key (separate task). |
 
+| Jobs mobile cards — clear chips (Status, Priority, Job type, Appointment date/time, Payment status, Technician) and **tap-to-assign** technician via a bottom sheet instead of an inline dropdown in every row. | Mobile only (desktop table unchanged). Payment chip derived from the job's linked invoice (`/billing/invoices`). `src/pages/Jobs.jsx`. Frontend-only. |
+
+| Schedule redesign — **Agenda / Day / Week / Month** views (defaults to Agenda on phones, Month on desktop), technician filter (+ Unassigned), unassigned-jobs banner, **job-count badges** on month dates, **time-block** rows, **emergency color-coding** (red), and tap-a-date-shows-jobs-beneath in Month view. | `src/pages/Schedule.jsx`. Frontend-only. Loads `/employees` for the tech filter. |
+
+| Route page — numbered stops (existing) + **optimize order** (nearest-neighbour), **ETAs** per stop, **technician location** (device GPS) with a "you are here" marker + route start, **Start navigation** per stop, **On my way** (en-route notify), **delay alerts** (past-ETA + not done), **unassigned stops** in amber, a connecting route line, and a **collapsible stop list** on mobile. | `src/pages/RouteMap.jsx` (reuses `src/lib/dispatch.js` travel logic). Added `NSLocationWhenInUseUsageDescription` to `ios/App/App/Info.plist` for GPS. Frontend + Info.plist — **rebuild in Xcode** (no Render deploy). |
+
+| Inspections — 9 HVAC templates (Air Conditioner, Heat Pump, Furnace, Boiler, Mini-Split, Preventive Maintenance, Installation Startup, Refrigeration, Water Heater), each with its own pass/fail checklist + structured **readings** (with units) that flow into the PDF report. Photos, serial (info fields), notes, and customer signature already existed. | Frontend-only. `src/lib/inspectionForms.js` (equipment types, checklist sections, `READINGS_SECTIONS`/`readingsFor`), `src/pages/InspectionDetail.jsx` (readings card + PDF box). New-inspection modal picks up the templates automatically. |
+
+| Time Clock — **break tracking** (start/end, netted out of hours), **overtime** (>40h/wk), **shift-vs-billable** summary (breaks + OT shown), **missed clock-out warning**, **correction requests** (tech) with **manager approval/deny**, and **entry approval**. Clock-in/out GPS and offline clock-in (via the sync queue) already existed. | Shared. Backend: `functions/routes/time.js` (break/approve/correction endpoints + net hours). **Deploy to Render.** Frontend: `src/pages/TimeClock.jsx`. |
+
 ## Add new entries here as we go
 
 - _(new app-only or shared changes will be logged here)_

@@ -22,6 +22,11 @@ function cleanLoc(loc) {
   return { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy || null };
 }
 
+// Break helpers.
+const closeOpenBreaks = (breaks, at) => (breaks || []).map(b => (b.end ? b : { ...b, end: at }));
+const breakMinutes = (breaks) => (breaks || []).reduce((m, b) => (b.start && b.end ? m + (new Date(b.end) - new Date(b.start)) / 60000 : m), 0);
+const onBreak = (entry) => { const b = entry?.breaks || []; return b.length > 0 && !b[b.length - 1].end; };
+
 router.post('/clock-in', async (req, res) => {
   if (await openEntry(req.user.id)) return res.status(409).json({ error: "You're already clocked in" });
   const { job_id, location } = req.body;
@@ -40,6 +45,7 @@ router.post('/clock-in', async (req, res) => {
     job_id: job_id || null, job_title,
     clock_in: new Date().toISOString(), clock_in_location: cleanLoc(location),
     clock_out: null, clock_out_location: null, proof: null, proof_type: null, hours: null,
+    breaks: [], break_minutes: 0, approved: false,
   });
   res.status(201).json({ ...entry, proof: undefined });
 });
@@ -59,11 +65,81 @@ router.post('/clock-out', async (req, res) => {
   const { proof, proof_type, location } = req.body;
   if (!proof) return res.status(400).json({ error: 'A photo of the work is required before clocking out' });
   const clockOut = new Date().toISOString();
-  const hours = Math.round(((new Date(clockOut) - new Date(e.clock_in)) / 3600000) * 100) / 100;
+  const breaks = closeOpenBreaks(e.breaks, clockOut);
+  const gross = (new Date(clockOut) - new Date(e.clock_in)) / 3600000;
+  const brkMin = breakMinutes(breaks);
+  const net = Math.max(0, gross - brkMin / 60);
   await update('time_entries', e.id, {
-    clock_out: clockOut, clock_out_location: cleanLoc(location), proof, proof_type: proof_type || 'image', hours,
+    clock_out: clockOut, clock_out_location: cleanLoc(location), proof, proof_type: proof_type || 'image',
+    breaks, break_minutes: Math.round(brkMin),
+    gross_hours: Math.round(gross * 100) / 100, hours: Math.round(net * 100) / 100,
   });
   const saved = await getById('time_entries', e.id);
+  res.json({ ...saved, proof: undefined });
+});
+
+// Break start / end (on the open shift).
+router.post('/break/start', async (req, res) => {
+  const e = await openEntry(req.user.id);
+  if (!e) return res.status(400).json({ error: "You're not clocked in" });
+  if (onBreak(e)) return res.status(409).json({ error: "You're already on a break" });
+  const breaks = [...(e.breaks || []), { start: new Date().toISOString(), end: null }];
+  const saved = await update('time_entries', e.id, { breaks });
+  res.json({ ...saved, proof: undefined });
+});
+router.post('/break/end', async (req, res) => {
+  const e = await openEntry(req.user.id);
+  if (!e) return res.status(400).json({ error: "You're not clocked in" });
+  if (!onBreak(e)) return res.status(409).json({ error: "You're not on a break" });
+  const breaks = (e.breaks || []).map((b, i, arr) => (i === arr.length - 1 ? { ...b, end: new Date().toISOString() } : b));
+  const saved = await update('time_entries', e.id, { breaks });
+  res.json({ ...saved, proof: undefined });
+});
+
+// Manager approval of a timesheet entry.
+router.post('/:id/approve', async (req, res) => {
+  if (!['admin', 'office'].includes(req.user.role)) return res.status(403).json({ error: 'Only a manager can approve' });
+  const e = await getById('time_entries', req.params.id);
+  if (!e) return res.status(404).json({ error: 'Not found' });
+  const approve = req.body.approved !== false;
+  const saved = await update('time_entries', req.params.id, {
+    approved: approve, approved_by: approve ? req.user.name : null, approved_at: approve ? new Date().toISOString() : null,
+  });
+  res.json({ ...saved, proof: undefined });
+});
+
+// A technician requests a correction to their own entry.
+router.post('/:id/request-correction', async (req, res) => {
+  const e = await getById('time_entries', req.params.id);
+  if (!e) return res.status(404).json({ error: 'Not found' });
+  if (req.user.role !== 'admin' && e.technician_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  const { clock_in, clock_out, reason } = req.body;
+  if (!reason || !reason.trim()) return res.status(400).json({ error: 'Please explain the correction' });
+  const correction = {
+    requested_clock_in: clock_in ? new Date(clock_in).toISOString() : e.clock_in,
+    requested_clock_out: clock_out ? new Date(clock_out).toISOString() : e.clock_out,
+    reason: reason.trim(), status: 'pending', by: req.user.name, at: new Date().toISOString(),
+  };
+  const saved = await update('time_entries', req.params.id, { correction });
+  res.json({ ...saved, proof: undefined });
+});
+
+// A manager approves or denies a correction request.
+router.post('/:id/resolve-correction', async (req, res) => {
+  if (!['admin', 'office'].includes(req.user.role)) return res.status(403).json({ error: 'Only a manager can resolve corrections' });
+  const e = await getById('time_entries', req.params.id);
+  if (!e || !e.correction) return res.status(404).json({ error: 'No correction to resolve' });
+  const approve = req.body.approve === true;
+  let patch;
+  if (approve) {
+    const ci = e.correction.requested_clock_in, co = e.correction.requested_clock_out;
+    if (co && new Date(co) <= new Date(ci)) return res.status(400).json({ error: 'Clock-out must be after clock-in' });
+    const hours = co ? Math.round(((new Date(co) - new Date(ci)) / 3600000) * 100) / 100 : null;
+    patch = { clock_in: ci, clock_out: co, hours, correction: { ...e.correction, status: 'approved', resolved_by: req.user.name, resolved_at: new Date().toISOString() } };
+  } else {
+    patch = { correction: { ...e.correction, status: 'denied', resolved_by: req.user.name, resolved_at: new Date().toISOString() } };
+  }
+  const saved = await update('time_entries', req.params.id, patch);
   res.json({ ...saved, proof: undefined });
 });
 
@@ -76,8 +152,10 @@ router.get('/', async (req, res) => {
   res.json(entries.slice(0, 100).map(e => ({
     id: e.id, technician_id: e.technician_id, technician_name: e.technician_name,
     job_id: e.job_id || null, job_title: e.job_title || null,
-    clock_in: e.clock_in, clock_out: e.clock_out, hours: e.hours, proof_type: e.proof_type, has_proof: !!e.proof,
+    clock_in: e.clock_in, clock_out: e.clock_out, hours: e.hours, gross_hours: e.gross_hours ?? null,
+    break_minutes: e.break_minutes || 0, proof_type: e.proof_type, has_proof: !!e.proof,
     clock_in_location: e.clock_in_location || null, clock_out_location: e.clock_out_location || null,
+    approved: !!e.approved, approved_by: e.approved_by || null, correction: e.correction || null,
   })));
 });
 
