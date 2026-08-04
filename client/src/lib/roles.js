@@ -98,7 +98,7 @@ export function bottomNavForRole(role) {
 }
 
 // Utility routes any signed-in user may reach (not shown in the sidebar).
-const OPEN_ROUTES = ['/account', '/more', '/about', '/refer'];
+const OPEN_ROUTES = ['/account', '/more', '/about', '/refer', '/addresses', '/notifications', '/security'];
 
 // May this role open this pathname? Detail routes inherit their base (e.g. /jobs/123 → /jobs).
 export function canAccess(role, pathname) {

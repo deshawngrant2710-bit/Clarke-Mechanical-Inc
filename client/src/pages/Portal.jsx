@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea, Select } from '../components/UI';
@@ -130,6 +130,7 @@ export default function Portal() {
   useEffect(() => { load(); }, []);
 
   // Deep-links from the customer "More" screen: ?tab=… selects a tab, ?profile=1 opens My Info.
+  const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
     const p = new URLSearchParams(location.search);
@@ -231,14 +232,19 @@ export default function Portal() {
 
   if (loading) return <Spinner />;
 
-  const tabs = [
-    { id: 'jobs', label: 'My Services', count: jobs.length },
-    { id: 'invoices', label: 'My Invoices', count: invoices.length },
-    { id: 'quotes', label: 'My Estimates', count: quotes.length },
+  // Account tabs stay on the dashboard; support lives in its own view (from More).
+  const accountTabs = [
+    { id: 'jobs', label: 'Services', count: jobs.length },
+    { id: 'invoices', label: 'Invoices', count: invoices.length },
+    { id: 'quotes', label: 'Estimates', count: quotes.length },
+  ];
+  const supportTabs = [
     { id: 'help', label: 'Help & Support' },
     { id: 'faq', label: 'FAQ' },
     { id: 'assistant', label: 'Assistant' },
   ];
+  const inSupport = supportTabs.some(t => t.id === tab);
+  const tabs = inSupport ? supportTabs : accountTabs;
 
   const today = new Date().toISOString().slice(0, 10);
   const nextAppt = [...jobs]
@@ -247,11 +253,16 @@ export default function Portal() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title={`Welcome, ${me?.name?.split(' ')[0] || 'there'}`} subtitle="Your Clarke Mechanical account" icon={<UserCircle size={20} />}>
-        {me?.linked && <>
-          <Btn variant="outline" onClick={() => setProfileModal(true)}><Pencil size={15} /> My Info</Btn>
-          <Btn onClick={() => setReqModal(true)}><Plus size={16} /> Request Service</Btn>
-        </>}
+      <PageHeader
+        title={inSupport ? 'Support' : `Welcome, ${me?.name?.split(' ')[0] || 'there'}`}
+        subtitle={inSupport ? 'Help, FAQ & live chat' : 'Your Clarke Mechanical account'}
+        icon={inSupport ? <HelpCircle size={20} /> : <UserCircle size={20} />}>
+        {inSupport
+          ? <Btn variant="outline" onClick={() => setTab('jobs')}>← Account</Btn>
+          : me?.linked && <>
+              <Btn variant="outline" onClick={() => navigate('/account')}><Pencil size={15} /> My Profile</Btn>
+              <Btn onClick={() => setReqModal(true)}><Plus size={16} /> Request Service</Btn>
+            </>}
       </PageHeader>
 
       {!me?.linked ? (
@@ -264,6 +275,7 @@ export default function Portal() {
         </Card>
       ) : (
         <>
+          {!inSupport && (<>
           {nextAppt && (
             <Card className="p-4 mb-6 border-l-4 border-blue-500 bg-blue-50/40">
               <div className="flex items-center gap-3">
@@ -299,17 +311,25 @@ export default function Portal() {
                 )}
                 {(me.profile?.address || me.profile?.city) && <span className="flex items-center gap-2"><MapPin size={14} className="text-slate-400" />{[me.profile.address, me.profile.city, me.profile.state].filter(Boolean).join(', ')}</span>}
               </div>
-              <button onClick={() => setPwModal(true)} className="text-xs font-medium text-slate-500 hover:text-blue-600 flex items-center gap-1.5"><Lock size={12} /> Change password</button>
             </div>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <StatCard label="Active Services" value={me.stats.openJobs} icon={<Briefcase size={18} />} color="blue" />
-            <StatCard label="Invoices" value={me.stats.invoiceCount} icon={<FileText size={18} />} color="purple" />
-            <button type="button" onClick={() => setTab('invoices')} className="text-left w-full transition-transform hover:-translate-y-0.5" title="View invoices">
-              <StatCard label="Balance Due" value={me.stats.balanceDue} prefix="$" decimals={2} icon={<DollarSign size={18} />} color={me.stats.balanceDue > 0 ? 'orange' : 'green'} sub={me.stats.balanceDue > 0 ? 'Tap to view invoices' : ''} />
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-xs font-medium text-slate-500">Active Services</p>
+              <p className="text-2xl font-bold text-slate-900 tabular-nums leading-tight">{me.stats.openJobs}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <p className="text-xs font-medium text-slate-500">Invoices</p>
+              <p className="text-2xl font-bold text-slate-900 tabular-nums leading-tight">{me.stats.invoiceCount}</p>
+            </div>
+            <button type="button" onClick={() => setTab('invoices')} title="View invoices"
+              className="col-span-2 text-left rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-blue-300 transition-colors">
+              <p className="text-xs font-medium text-slate-500">Balance Due{me.stats.balanceDue > 0 ? ' · tap to view' : ''}</p>
+              <p className={`text-2xl font-bold tabular-nums leading-tight ${me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>${Number(me.stats.balanceDue || 0).toFixed(2)}</p>
             </button>
           </div>
+          </>)}
 
           <div className="flex gap-1 mb-4 bg-white border border-slate-200 rounded-lg p-1 w-fit flex-wrap">
             {tabs.map(t => (

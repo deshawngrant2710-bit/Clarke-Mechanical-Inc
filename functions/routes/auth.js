@@ -2,8 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
-const { db, findOne, create, getById, update, remove } = require('../lib/db');
+const { db, list, findOne, create, getById, update, remove } = require('../lib/db');
 const { JWT_SECRET, authMiddleware } = require('../middleware/auth');
+const { referralCode } = require('../lib/referral');
 const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
 
@@ -90,6 +91,21 @@ router.post('/register', async (req, res) => {
         address: null, city: null, state: null, zip: null,
         notes: 'Self-registered via customer portal',
       });
+    }
+
+    // Record a referral if they signed up via a referral code/link.
+    const ref = (req.body.ref || '').trim().toUpperCase();
+    if (ref) {
+      try {
+        const users = await list('users');
+        const referrer = users.find(u => referralCode(u) === ref);
+        if (referrer && referrer.id !== id) {
+          await create('referrals', uuid(), {
+            referrer_user_id: referrer.id, referrer_name: referrer.name, code: ref,
+            new_user_id: id, new_name: name, new_email: email, status: 'pending', created_at: new Date().toISOString(),
+          });
+        }
+      } catch (e) { console.error('[auth] referral record failed:', e.message); }
     }
 
     const token = jwt.sign({ id, name, email, role }, JWT_SECRET, { expiresIn: '7d' });

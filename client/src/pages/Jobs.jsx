@@ -7,6 +7,8 @@ import {
   StatCard, SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
 import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock, User, DollarSign, X } from 'lucide-react';
+import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
+import SheetSelect from '../components/SheetSelect';
 import toast from 'react-hot-toast';
 
 function Chip({ children, icon, tone }) {
@@ -70,12 +72,12 @@ const empty = { title: '', description: '', customer_id: '', technician_id: '', 
 const isToday = (d) => d === new Date().toISOString().slice(0, 10);
 
 export default function Jobs() {
-  const [jobs, setJobs] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [invoices, setInvoices] = useState([]);
+  const [jobs, setJobs] = useState(() => cacheGet('/jobs') || []);
+  const [customers, setCustomers] = useState(() => cacheGet('/customers') || []);
+  const [employees, setEmployees] = useState(() => cacheGet('/employees') || []);
+  const [invoices, setInvoices] = useState(() => cacheGet('/billing/invoices') || []);
   const [assignJob, setAssignJob] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cacheHas('/jobs'));
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [modal, setModal] = useState(false);
@@ -110,6 +112,7 @@ export default function Jobs() {
       api.get('/billing/invoices').catch(() => ({ data: [] })),
     ]).then(([j, c, e, inv]) => {
       setJobs(j.data); setCustomers(c.data); setEmployees(e.data); setInvoices(inv.data || []); setLoading(false);
+      cacheSet('/jobs', j.data); cacheSet('/customers', c.data); cacheSet('/employees', e.data); cacheSet('/billing/invoices', inv.data || []);
     });
   }
 
@@ -288,34 +291,38 @@ export default function Jobs() {
       <AssignSheet job={assignJob} techs={techs} onClose={() => setAssignJob(null)}
         onAssign={(j, id) => { assignTech(j, id); setAssignJob(null); }} />
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Create Job" subtitle="Log a new service work order">
+      <Modal open={modal} onClose={() => setModal(false)} title="Create Job" subtitle="Log a new service work order"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
+            <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Job'}</Btn>
+          </div>
+        }>
         <div className="space-y-3">
           <Input label="Job Title *" value={form.title} valid={form.title.trim().length > 2} onChange={e => f({ title: e.target.value })} placeholder="e.g. AC Repair - Unit 3B" />
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Customer" value={form.customer_id} onChange={e => {
-              const c = customers.find(x => x.id === e.target.value);
-              const addr = c ? [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ') : '';
-              f(addr ? { customer_id: e.target.value, address: addr } : { customer_id: e.target.value });
-            }}>
-              <option value="">Select customer</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select label="Technician" value={form.technician_id} onChange={e => f({ technician_id: e.target.value })}>
-              <option value="">Unassigned</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </Select>
+            <SheetSelect label="Customer" title="Select customer" searchable placeholder="Select customer"
+              value={form.customer_id}
+              options={customers.map(c => ({ value: c.id, label: c.name }))}
+              onChange={v => {
+                const c = customers.find(x => x.id === v);
+                const addr = c ? [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ') : '';
+                f(addr ? { customer_id: v, address: addr } : { customer_id: v });
+              }} />
+            <SheetSelect label="Technician" title="Assign technician" searchable placeholder="Unassigned"
+              value={form.technician_id}
+              options={employees.map(e => ({ value: e.id, label: e.name }))}
+              onChange={v => f({ technician_id: v })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Job Type" value={form.job_type} onChange={e => f({ job_type: e.target.value })}>
-              <option value="">Select type</option>
-              {JOB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </Select>
-            <Select label="Priority" value={form.priority} onChange={e => f({ priority: e.target.value })}>
-              <option value="low">Low</option>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </Select>
+            <SheetSelect label="Job Type" title="Job type" placeholder="Select type"
+              value={form.job_type}
+              options={JOB_TYPES.map(t => ({ value: t, label: t }))}
+              onChange={v => f({ job_type: v })} />
+            <SheetSelect label="Priority" title="Priority" placeholder={null}
+              value={form.priority}
+              options={[{ value: 'low', label: 'Low' }, { value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }, { value: 'urgent', label: 'Urgent' }]}
+              onChange={v => f({ priority: v })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Scheduled Date" type="date" value={form.scheduled_date} onChange={e => f({ scheduled_date: e.target.value })} />
@@ -323,10 +330,6 @@ export default function Jobs() {
           </div>
           <Input label="Job Address" value={form.address} onChange={e => f({ address: e.target.value })} placeholder="Service address" />
           <Textarea label="Description" value={form.description} onChange={e => f({ description: e.target.value })} />
-          <div className="flex justify-end gap-2 pt-2">
-            <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
-            <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Job'}</Btn>
-          </div>
         </div>
       </Modal>
     </div>

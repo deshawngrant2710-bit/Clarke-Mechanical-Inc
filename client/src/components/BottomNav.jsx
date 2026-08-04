@@ -29,12 +29,12 @@ export default function BottomNav({ onOpenMenu = () => {} }) {
         ? location.pathname.startsWith('/more') || location.pathname.startsWith('/about') || location.pathname.startsWith('/refer') || location.pathname.startsWith('/account')
         : location.pathname === '/portal' && (t.tab ? curTab === t.tab : !curTab);
     return (
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch justify-around bg-white/95 backdrop-blur border-t border-slate-200 bottom-nav-safe">
+      <nav className="bottom-nav-bar lg:hidden shrink-0 flex items-stretch justify-around bg-white/95 backdrop-blur border-t border-slate-200">
         {CUSTOMER_TABS.map(t => {
           const active = activeOf(t);
           return (
             <button key={t.label} onClick={() => navigate(t.to)}
-              className={`flex flex-col items-center justify-center flex-1 gap-0.5 py-2 text-[11px] font-medium transition-colors ${active ? 'text-purple-600' : 'text-slate-500'}`}>
+              className={`flex flex-col items-center justify-center flex-1 gap-0.5 py-2 text-[11px] font-medium transition-colors ${active ? 'text-blue-600' : 'text-slate-500'}`}>
               <t.icon size={22} className="shrink-0" />
               <span>{t.label}</span>
             </button>
@@ -51,7 +51,7 @@ export default function BottomNav({ onOpenMenu = () => {} }) {
     `flex flex-col items-center justify-center flex-1 gap-0.5 py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-blue-600' : 'text-slate-500'}`;
 
   return (
-    <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch justify-around bg-white/95 backdrop-blur border-t border-slate-200 bottom-nav-safe">
+    <nav className="bottom-nav-bar lg:hidden shrink-0 flex items-stretch justify-around bg-white/95 backdrop-blur border-t border-slate-200">
       {items.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} end={to === '/'} className={itemCls}>
           <Icon size={22} className="shrink-0" />

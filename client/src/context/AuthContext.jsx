@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react';
+import { clearCache } from '../lib/queryCache';
 
 const AuthContext = createContext(null);
 
@@ -16,6 +17,7 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    clearCache();
     setUser(null);
   }
 

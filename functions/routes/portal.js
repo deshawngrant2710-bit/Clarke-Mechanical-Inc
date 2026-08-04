@@ -4,6 +4,7 @@ const { db, list, getById, findWhere, create, update, remove, nameMap } = requir
 const { authMiddleware } = require('../middleware/auth');
 const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
+const { referralCode } = require('../lib/referral');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -366,6 +367,21 @@ router.delete('/account', async (req, res) => {
     console.error('[portal] account delete failed:', e.message);
     res.status(500).json({ error: 'Could not delete your account. Please contact us.' });
   }
+});
+
+// GET /portal/referrals — the customer's referral code, share link, reward text,
+// and the people they've referred (with status).
+router.get('/referrals', async (req, res) => {
+  const me = await getById('users', req.user.id);
+  const code = referralCode(me || req.user);
+  const site = (await settings.get('business_website')) || 'https://clarkemechanicalinc.org';
+  const link = `${site.replace(/\/+$/, '')}/?ref=${encodeURIComponent(code)}`;
+  const reward = (await settings.get('referral_reward'))
+    || "When a friend you refer completes their first service with us, we'll add a thank-you credit to your account. Contact our office for current reward details.";
+  const referrals = (await findWhere('referrals', 'referrer_user_id', req.user.id))
+    .map(r => ({ id: r.id, name: r.new_name || r.new_email || 'A friend', status: r.status || 'pending', created_at: r.created_at }))
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  res.json({ code, link, reward, referrals });
 });
 
 // ---- Contact verification ----

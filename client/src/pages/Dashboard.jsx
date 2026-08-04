@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { cacheGet, cacheSet } from '../lib/queryCache';
 import { StatCard, Card, CardHeader, Badge, Avatar, SkeletonPage, Btn } from '../components/UI';
 
 // Open today's stops as a multi-stop route in Google Maps.
@@ -103,13 +104,13 @@ function CreateFab({ navigate }) {
 }
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(() => cacheGet('/dashboard') || null);
   const [showOverview, setShowOverview] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
   useEffect(() => {
-    api.get('/dashboard').then(r => setData(r.data)).catch(console.error);
+    api.get('/dashboard').then(r => { setData(r.data); cacheSet('/dashboard', r.data); }).catch(console.error);
   }, []);
 
   if (!data) return <SkeletonPage stats={data?.scope === 'technician' ? 4 : 8} />;

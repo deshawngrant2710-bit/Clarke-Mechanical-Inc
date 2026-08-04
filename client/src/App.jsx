@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Menu } from 'lucide-react';
@@ -30,6 +30,9 @@ import Account from './pages/Account';
 import MoreCustomer from './pages/MoreCustomer';
 import AboutClarke from './pages/AboutClarke';
 import ReferEarn from './pages/ReferEarn';
+import ServiceAddresses from './pages/ServiceAddresses';
+import NotificationSettings from './pages/NotificationSettings';
+import Security from './pages/Security';
 import Support from './pages/Support';
 import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
@@ -52,18 +55,38 @@ function Layout() {
   const [navOpen, setNavOpen] = useState(false);
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setNavOpen(false); }, [location.pathname]);
+
+  // Remember each route's scroll position in the main content area, and restore
+  // it when returning (so switching tabs doesn't jump you back to the top).
+  const mainRef = useRef(null);
+  const scrollPositions = useRef({});
+  const isRestoring = useRef(false);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const onScroll = () => { if (!isRestoring.current) scrollPositions.current[location.pathname] = el.scrollTop; };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [location.pathname]);
+  useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    isRestoring.current = true;
+    el.scrollTop = scrollPositions.current[location.pathname] ?? 0;
+    requestAnimationFrame(() => { isRestoring.current = false; });
+  }, [location.pathname]);
   if (!user) return <Navigate to="/login" replace />;
   // Role guard: send users to their home if they hit a page they can't access.
   if (!canAccess(user.role, location.pathname)) {
     return <Navigate to={homeForRole(user.role)} replace />;
   }
   return (
-    <div className="flex min-h-dvh bg-slate-50">
+    <div className="app-root flex min-h-dvh bg-slate-50">
       <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="app-shell flex flex-col flex-1 min-w-0">
         <OfflineBanner />
-        {/* Mobile top bar — app-header adds the top safe-area inset in the native app */}
-        <header className="app-header lg:hidden sticky top-0 z-30 bg-white border-b border-slate-200">
+        {/* Mobile top bar — fixed in the shell (never scrolls under the Dynamic Island) */}
+        <header className="app-header lg:hidden shrink-0 bg-white border-b border-slate-200">
           <div className="flex items-center gap-3 h-14 px-4">
             <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="app-hamburger p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
               <Menu size={22} />
@@ -72,13 +95,13 @@ function Layout() {
             <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
           </div>
         </header>
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 app-content-pad">
+        <main ref={mainRef} className="app-content flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
             <Outlet />
           </div>
         </main>
+        <BottomNav onOpenMenu={() => setNavOpen(true)} />
       </div>
-      <BottomNav onOpenMenu={() => setNavOpen(true)} />
     </div>
   );
 }
@@ -132,6 +155,9 @@ export default function App() {
             <Route path="/more" element={<MoreCustomer />} />
             <Route path="/about" element={<AboutClarke />} />
             <Route path="/refer" element={<ReferEarn />} />
+            <Route path="/addresses" element={<ServiceAddresses />} />
+            <Route path="/notifications" element={<NotificationSettings />} />
+            <Route path="/security" element={<Security />} />
             <Route path="/time-clock" element={<TimeClock />} />
             <Route path="/field" element={<FieldMode />} />
             <Route path="/sync" element={<SyncQueue />} />

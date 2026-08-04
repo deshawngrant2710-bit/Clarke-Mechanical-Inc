@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Badge, Btn, Spinner } from '../components/UI';
+import { cacheGet, cacheSet } from '../lib/queryCache';
+import SheetSelect from '../components/SheetSelect';
 import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, AlertTriangle, UserX } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths,
@@ -47,8 +49,8 @@ function JobRow({ job, navigate }) {
 }
 
 export default function Schedule() {
-  const [jobs, setJobs] = useState(null);
-  const [employees, setEmployees] = useState([]);
+  const [jobs, setJobs] = useState(() => cacheGet('/jobs') || null);
+  const [employees, setEmployees] = useState(() => cacheGet('/employees') || []);
   const [view, setView] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 1024 ? 'agenda' : 'month'));
   const [cursor, setCursor] = useState(new Date());   // anchor date for day/week/month
   const [selected, setSelected] = useState(new Date());
@@ -56,8 +58,8 @@ export default function Schedule() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get('/jobs').then(r => setJobs(r.data));
-    api.get('/employees').then(r => setEmployees(r.data)).catch(() => {});
+    api.get('/jobs').then(r => { setJobs(r.data); cacheSet('/jobs', r.data); });
+    api.get('/employees').then(r => { setEmployees(r.data); cacheSet('/employees', r.data); }).catch(() => {});
   }, []);
   if (!jobs) return <Spinner />;
 
@@ -97,12 +99,11 @@ export default function Schedule() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${view === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}>{label}</button>
           ))}
         </div>
-        <select value={tech} onChange={e => setTech(e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white outline-none focus:border-blue-500">
-          <option value="">All technicians</option>
-          <option value="unassigned">Unassigned only</option>
-          {techs.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <div className="w-44">
+          <SheetSelect title="Filter by technician" placeholder={null} value={tech}
+            options={[{ value: '', label: 'All technicians' }, { value: 'unassigned', label: 'Unassigned only' }, ...techs.map(t => ({ value: t.id, label: t.name }))]}
+            onChange={setTech} />
+        </div>
         {view !== 'agenda' && (
           <div className="flex items-center gap-1 ml-auto">
             <button onClick={goToday} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Today</button>

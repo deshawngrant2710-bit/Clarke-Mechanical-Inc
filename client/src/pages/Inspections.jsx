@@ -6,20 +6,21 @@ import { Card, CardHeader, Btn, Badge, Modal, Select, Empty, Spinner } from '../
 import { ClipboardCheck, Plus, Building2, Home, Link2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { PROPERTY_TYPES, EQUIPMENT_TYPES, propertyLabel, equipmentLabel } from '../lib/inspectionForms';
+import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
 
 export default function Inspections() {
   const navigate = useNavigate();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState(() => cacheGet('/inspections') || []);
+  const [loading, setLoading] = useState(() => !cacheHas('/inspections'));
   const [filter, setFilter] = useState('all');
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ property_type: 'residential', equipment_type: 'boiler' });
   const [creating, setCreating] = useState(false);
 
   function load() {
-    api.get('/inspections').then(r => { setItems(r.data); setLoading(false); });
+    api.get('/inspections').then(r => { setItems(r.data); cacheSet('/inspections', r.data); setLoading(false); });
   }
   useEffect(load, []);
 

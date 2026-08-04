@@ -184,27 +184,49 @@ export function SearchInput({ value, onChange, placeholder = 'Search…', icon, 
 /* ================================================================== */
 /*  Modal — animated                                                   */
 /* ================================================================== */
-export function Modal({ open, onClose, title, subtitle, children, size = 'lg' }) {
+let _openModalCount = 0;
+export function Modal({ open, onClose, title, subtitle, children, footer, size = 'lg' }) {
   useEffect(() => {
     if (!open) return;
     function onKey(e) { if (e.key === 'Escape') onClose?.(); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+  // While any modal is open, flag the document so the bottom nav can hide (app).
+  useEffect(() => {
+    if (!open) return;
+    _openModalCount += 1;
+    document.documentElement.classList.add('modal-open');
+    return () => {
+      _openModalCount = Math.max(0, _openModalCount - 1);
+      if (_openModalCount === 0) document.documentElement.classList.remove('modal-open');
+    };
+  }, [open]);
   if (!open) return null;
-  const sizes = { sm: 'max-w-md', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
+  const sizes = { sm: 'lg:max-w-md', md: 'lg:max-w-lg', lg: 'lg:max-w-2xl', xl: 'lg:max-w-4xl' };
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex lg:items-start lg:justify-center lg:p-6">
       <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizes[size]} my-8 animate-fade-in-scale`}>
-        <div className="flex items-start justify-between px-6 py-4 border-b border-slate-100">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">{title}</h2>
+      {/* Full-screen sheet on phones; centered card on desktop. */}
+      <div className={`relative bg-white shadow-2xl w-full flex flex-col h-full lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-2xl animate-fade-in-scale ${sizes[size]}`}>
+        {/* Sticky header */}
+        <div className="shrink-0 flex items-start justify-between gap-3 px-4 lg:px-6 py-4 border-b border-slate-100"
+          style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-slate-800 truncate">{title}</h2>
             {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center text-xl leading-none transition-colors">×</button>
+          <button onClick={onClose} aria-label="Close" className="shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center text-xl leading-none transition-colors">×</button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        {/* Scrollable body */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 lg:px-6 py-5">{children}</div>
+        {/* Sticky footer (keyboard- & home-indicator-safe) */}
+        {footer && (
+          <div className="shrink-0 border-t border-slate-100 bg-white px-4 lg:px-6 py-3"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

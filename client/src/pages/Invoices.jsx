@@ -10,15 +10,17 @@ import {
 import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
+import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
+import SheetSelect from '../components/SheetSelect';
 
 const emptyItem = () => ({ description: '', quantity: 1, unit_price: 0 });
 const emptyForm = () => ({ customer_id: '', job_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', items: [emptyItem()], tax_rate: 0.0875, discount: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Invoices() {
-  const [invoices, setInvoices] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [invoices, setInvoices] = useState(() => cacheGet('/billing/invoices') || []);
+  const [customers, setCustomers] = useState(() => cacheGet('/customers') || []);
+  const [loading, setLoading] = useState(() => !cacheHas('/billing/invoices'));
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [modal, setModal] = useState(false);
@@ -34,6 +36,7 @@ export default function Invoices() {
     Promise.all([api.get('/billing/invoices'), api.get('/customers'), api.get('/billing/config')])
       .then(([inv, cust, cfg]) => {
         setInvoices(inv.data); setCustomers(cust.data);
+        cacheSet('/billing/invoices', inv.data); cacheSet('/customers', cust.data);
         setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.0875) * 10000) / 100));
         setLoading(false);
       });
@@ -184,18 +187,23 @@ export default function Invoices() {
         )}
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="New Invoice" subtitle="Build and send a professional invoice" size="xl">
+      <Modal open={modal} onClose={() => setModal(false)} title="New Invoice" subtitle="Build and send a professional invoice" size="xl"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
+            <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Invoice'}</Btn>
+          </div>
+        }>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Select label="Customer" value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}>
-              <option value="">Select customer</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select label="Status" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="paid">Paid</option>
-            </Select>
+            <SheetSelect label="Customer" title="Select customer" searchable placeholder="Select customer"
+              value={form.customer_id}
+              options={customers.map(c => ({ value: c.id, label: c.name }))}
+              onChange={v => setForm(f => ({ ...f, customer_id: v }))} />
+            <SheetSelect label="Status" title="Status" placeholder={null}
+              value={form.status}
+              options={[{ value: 'draft', label: 'Draft' }, { value: 'sent', label: 'Sent' }, { value: 'paid', label: 'Paid' }]}
+              onChange={v => setForm(f => ({ ...f, status: v }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Issue Date" type="date" value={form.issue_date} onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))} />
@@ -272,10 +280,6 @@ export default function Invoices() {
           </div>
 
           <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
-          <div className="flex justify-end gap-2 pt-2">
-            <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
-            <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Invoice'}</Btn>
-          </div>
         </div>
       </Modal>
     </div>

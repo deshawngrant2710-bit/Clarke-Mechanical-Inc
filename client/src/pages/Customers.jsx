@@ -7,6 +7,7 @@ import {
   SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
 import { Plus, Search, Phone, Mail, MapPin, Users, UserPlus, CalendarPlus, DollarSign, ChevronRight } from 'lucide-react';
+import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import toast from 'react-hot-toast';
 
 const empty = { business_name: '', first_name: '', last_name: '', email: '', phone: '', address: '', city: '', state: '', zip: '', notes: '' };
@@ -20,8 +21,8 @@ function isThisMonth(dateStr) {
 }
 
 export default function Customers() {
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState(() => cacheGet('/customers') || []);
+  const [loading, setLoading] = useState(() => !cacheHas('/customers'));
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all'); // all | active | balance | new
   const [modal, setModal] = useState(false);
@@ -30,7 +31,7 @@ export default function Customers() {
   const navigate = useNavigate();
 
   function load() {
-    api.get('/customers').then(r => { setCustomers(r.data); setLoading(false); });
+    api.get('/customers').then(r => { setCustomers(r.data); cacheSet('/customers', r.data); setLoading(false); });
   }
   useEffect(load, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setModal(true); }, []);

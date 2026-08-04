@@ -49,25 +49,45 @@ html.native-app { -webkit-text-size-adjust: 100%; } /* stop iOS auto-enlarging t
 /* Edge-to-edge native app: page-matching background (never black), contain the
    off-canvas drawer, and no rubber-band bounce in any direction. The document
    is the single vertical scroll container. */
+/* Fixed app shell: the outer document / WKWebView never scrolls — only the
+   .app-content region does. The shell owns the top & bottom safe-area insets so
+   the header stays below the Dynamic Island and content never slides under it. */
 html.native-app,
 html.native-app body,
 html.native-app #root {
   width: 100%;
-  max-width: 100%;
-  min-height: 100dvh;
+  height: 100%;
+  overflow: hidden;            /* body / webview must NOT scroll */
+  overscroll-behavior: none;
+  background: #f8fafc;
+}
+html.native-app .app-root { height: 100dvh; overflow: hidden; }
+html.native-app .app-shell {
+  height: 100dvh;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top);      /* protect the top of the screen */
+  padding-bottom: env(safe-area-inset-bottom); /* protect the home indicator */
+}
+html.native-app .app-content {
+  flex: 1 1 auto;
+  min-height: 0;               /* let the flex child actually scroll */
+  overflow-y: auto;
   overflow-x: hidden;
-  overscroll-behavior: none;   /* no elastic bounce → no black strip */
-  background: #f8fafc;         /* matches the native WKWebView background */
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
 }
 /* Hide inner scrollbars (the native WKWebView indicator is also hidden in Swift). */
 html.native-app ::-webkit-scrollbar { width: 0; height: 0; display: none; }
 html.native-app * { scrollbar-width: none; }
-/* Mobile header fills the status-bar / Dynamic Island area (top safe inset). */
-html.native-app .app-header { padding-top: env(safe-area-inset-top); }
 /* In the app, navigation is the bottom bar + More screen — hide the drawer hamburger. */
 html.native-app .app-hamburger { display: none; }
-/* Public full-screen pages (login/reset/privacy) respect top & bottom safe areas. */
+/* Hide the bottom nav while a modal (Create Job / Invoice / etc.) is open. */
+html.native-app.modal-open .bottom-nav-bar { display: none; }
+/* Public full-screen pages (login/reset/privacy) get their own safe scroll area. */
 html.native-app .native-safe-y {
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }

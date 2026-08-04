@@ -100,6 +100,7 @@ export default function Login() {
           email: form.email.trim().toLowerCase(),
           phone: form.phone.trim(),
           password: form.password,
+          ref: new URLSearchParams(window.location.search).get('ref') || undefined,
         });
         login(data.token, data.user);
       } else {

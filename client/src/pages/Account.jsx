@@ -124,7 +124,8 @@ export default function Account() {
         </button>
       </form>
 
-      {/* Password */}
+      {/* Password — staff manage it here; customers use the dedicated Security page. */}
+      {user?.role !== 'customer' && (
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-5">
         <button type="button" onClick={() => setShowPw(v => !v)} className="w-full flex items-center justify-between">
           <span className="flex items-center gap-2 text-card-title"><Lock size={16} className="text-slate-500" /> Change password</span>
@@ -148,12 +149,7 @@ export default function Account() {
           </form>
         )}
       </div>
-
-      {/* Sign out */}
-      <button onClick={signOut}
-        className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm px-4 py-3 rounded-2xl shadow-sm transition mb-5">
-        <LogOut size={16} /> Sign out
-      </button>
+      )}
 
       {/* Danger zone — customers can delete their own account (App Store requirement) */}
       {user?.role === 'customer' && (

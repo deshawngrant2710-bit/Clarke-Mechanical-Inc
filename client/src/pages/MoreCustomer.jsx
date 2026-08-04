@@ -1,19 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { navGroupsForRole } from '../lib/roles';
+import api from '../api/client';
+import { navGroupsForRole, bottomNavForRole } from '../lib/roles';
 import {
-  User, MapPin, CreditCard, Bell, HelpCircle, FileText, Gift, Info, ChevronRight, LogOut,
+  User, MapPin, CreditCard, Bell, HelpCircle, FileText, Gift, Info, ChevronRight, LogOut, Lock,
 } from 'lucide-react';
 
-// Customer menu — rows route to real destinations (no duplicate pages).
+// Customer menu — one clear destination each (no duplicated settings).
 const CUSTOMER_MENU = [
   { label: 'My Profile', icon: User, to: '/account' },
-  { label: 'Service Addresses', icon: MapPin, to: '/portal?profile=1' },
+  { label: 'Service Addresses', icon: MapPin, to: '/addresses' },
+  { label: 'Notification Settings', icon: Bell, to: '/notifications' },
+  { label: 'Security', icon: Lock, to: '/security' },
   { label: 'Payment Methods', icon: CreditCard, to: '/portal?tab=invoices' },
-  { label: 'Notification Settings', icon: Bell, to: '/portal?profile=1' },
-  { label: 'Help & Support', icon: HelpCircle, to: '/portal?tab=help' },
   { label: 'Documents', icon: FileText, to: '/portal?tab=invoices' },
+  { label: 'Help & Support', icon: HelpCircle, to: '/portal?tab=help' },
   { label: 'Refer & Earn', icon: Gift, to: '/refer' },
   { label: 'About Clarke Mechanical', icon: Info, to: '/about' },
 ];
@@ -21,18 +23,31 @@ const CUSTOMER_MENU = [
 const roleLabel = { admin: 'Administrator', office: 'Office', technician: 'Technician', customer: 'Customer' };
 
 export default function MoreCustomer() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
 
+  // The menu is fully static + the profile comes from the already-stored user,
+  // so this renders instantly. Refresh the profile silently in the background —
+  // never block the page on a request.
+  useEffect(() => {
+    api.get('/auth/me')
+      .then(r => updateUser({ name: r.data.name, email: r.data.email, phone: r.data.phone }))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isCustomer = user?.role === 'customer';
-  // Customers get the account menu; staff get a styled list of all their sections.
+  // Customers get the account menu. Staff get the rest of their sections — minus
+  // the pages that already have a dedicated bottom tab, and minus My Account
+  // (the purple profile card above already opens it), so nothing is duplicated.
+  const bottomPaths = bottomNavForRole(user?.role).map(i => i.to);
   const menu = isCustomer
     ? CUSTOMER_MENU
-    : [
-        { label: 'My Account', icon: User, to: '/account' },
-        ...navGroupsForRole(user?.role).flatMap(g => g.items).map(i => ({ label: i.label, icon: i.icon, to: i.to })),
-      ];
+    : navGroupsForRole(user?.role)
+        .flatMap(g => g.items)
+        .filter(i => !bottomPaths.includes(i.to) && i.to !== '/account')
+        .map(i => ({ label: i.label, icon: i.icon, to: i.to }));
 
   const initials = (user?.name || '?').trim().split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase() || '?';
   function doLogout() { logout(); navigate('/login'); }
@@ -44,11 +59,13 @@ export default function MoreCustomer() {
       {/* Profile card — whole card opens the account page */}
       <button onClick={() => navigate('/account')}
         className="w-full flex items-center gap-3 text-left rounded-2xl p-4 text-white shadow-md active:opacity-95"
-        style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}>
+        style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}>
         <span className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg shrink-0">{initials}</span>
         <span className="min-w-0 flex-1">
           <span className="block font-semibold truncate">{user?.name || 'Your account'}</span>
-          <span className="block text-white/80 text-sm truncate">{isCustomer ? user?.email : (roleLabel[user?.role] || user?.email)}</span>
+          {(isCustomer ? user?.email : (roleLabel[user?.role] || user?.email))
+            ? <span className="block text-white/80 text-sm truncate">{isCustomer ? user?.email : (roleLabel[user?.role] || user?.email)}</span>
+            : <span className="block mt-1 h-3 w-32 rounded bg-white/25 animate-pulse" />}
         </span>
         <ChevronRight size={20} className="text-white/80 shrink-0" />
       </button>
