@@ -26,6 +26,7 @@ import InspectionDetail from './pages/InspectionDetail';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
+import Appointments from './pages/Appointments';
 import Account from './pages/Account';
 import MoreCustomer from './pages/MoreCustomer';
 import AboutClarke from './pages/AboutClarke';
@@ -151,6 +152,7 @@ export default function App() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
+            <Route path="/appointments" element={<Appointments />} />
             <Route path="/account" element={<Account />} />
             <Route path="/more" element={<MoreCustomer />} />
             <Route path="/about" element={<AboutClarke />} />

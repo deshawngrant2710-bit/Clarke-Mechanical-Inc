@@ -8,7 +8,7 @@ import { bottomNavForRole } from '../lib/roles';
 // website) and only on phone-sized screens (lg:hidden).
 const CUSTOMER_TABS = [
   { label: 'Home', icon: Home, to: '/portal', tab: null },
-  { label: 'Appointments', icon: CalendarDays, to: '/portal?tab=jobs', tab: 'jobs' },
+  { label: 'Appointments', icon: CalendarDays, to: '/appointments', tab: 'appointments' },
   { label: 'Invoices', icon: FileText, to: '/portal?tab=invoices', tab: 'invoices' },
   { label: 'More', icon: MoreHorizontal, to: '/more', tab: 'more' },
 ];
@@ -24,10 +24,11 @@ export default function BottomNav({ onOpenMenu = () => {} }) {
   // Customers get the 4-tab layout with a purple accent on the active tab.
   if (user.role === 'customer') {
     const curTab = new URLSearchParams(location.search).get('tab');
-    const activeOf = (t) =>
-      t.tab === 'more'
-        ? location.pathname.startsWith('/more') || location.pathname.startsWith('/about') || location.pathname.startsWith('/refer') || location.pathname.startsWith('/account')
-        : location.pathname === '/portal' && (t.tab ? curTab === t.tab : !curTab);
+    const activeOf = (t) => {
+      if (t.tab === 'more') return location.pathname.startsWith('/more') || location.pathname.startsWith('/about') || location.pathname.startsWith('/refer') || location.pathname.startsWith('/account');
+      if (t.tab === 'appointments') return location.pathname.startsWith('/appointments');
+      return location.pathname === '/portal' && (t.tab ? curTab === t.tab : !curTab);
+    };
     return (
       <nav className="bottom-nav-bar lg:hidden shrink-0 flex items-stretch justify-around bg-white/95 backdrop-blur border-t border-slate-200">
         {CUSTOMER_TABS.map(t => {

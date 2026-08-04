@@ -97,3 +97,10 @@ The website is currently running an **older version** than your phone. When you 
 - **Backend** (`functions/`): new `lib/referral.js` generates a stable per-user code (e.g. `JANE-3F9A`). `GET /portal/referrals` returns `{ code, link, reward, referrals[] }`. Signup (`POST /auth/register`) records a `pending` referral in the `referrals` collection when a `?ref=CODE` is present. Reward text is configurable via the `referral_reward` setting; share link uses the `business_website` setting.
 - **Frontend** (`client/`): `ReferEarn.jsx` now shows the customer's name ("Referred by …"), their unique code + shareable link (both with copy buttons), a prewritten share message, the clearly-defined reward, and a live list of their referrals with Pending/Completed badges. `Login.jsx` passes `?ref=` through on signup.
 - Applies to app and website (same portal). No SMS/push involved.
+
+## Dedicated Appointments page (customer)
+- Problem: the bottom-nav "Appointments" tab pointed at `/portal?tab=jobs`, but the Portal home already defaulted to that Services tab — so tapping it just highlighted, nothing changed.
+- New `/appointments` route/page with **Upcoming** and **Service History** sections, plus Reschedule / Cancel / Sign-off / Review / photos.
+- Extracted the job list + its Reschedule/Sign-off/Review modals out of `Portal.jsx` into a shared `components/CustomerJobs.jsx` (no duplication — one implementation).
+- Portal home trimmed: removed the "Services" tab (keeps Invoices + Estimates); the "Next appointment" card is now tappable and links to `/appointments`; added `?request=1` deep-link so the new page's Request Service button opens the booking modal.
+- Bottom-nav Appointments tab now points to `/appointments` (app only; website unchanged).
