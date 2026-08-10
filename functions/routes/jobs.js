@@ -4,6 +4,7 @@ const { db, list, getById, create, update, remove, findWhere, nameMap } = requir
 const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
 const { notifyCustomerBySms } = require('../lib/sms');
+const { runAppointmentReminders } = require('../lib/reminders');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -369,6 +370,18 @@ router.post('/:id/en-route', async (req, res) => {
     await notifyCustomerBySms(customer, `${biz}: your technician${tech2?.name ? ` ${tech2.name}` : ''} is on the way for "${job.title}". Reply STOP to opt out.`);
   } catch (e) { console.error('[jobs] en-route notify failed:', e.message); }
   res.json({ ok: true, en_route_at: now });
+});
+
+// POST /jobs/send-reminders — staff-triggered appointment reminders (same run as the
+// daily cron). Body: { date?: 'YYYY-MM-DD', force?: true }. Defaults to tomorrow.
+router.post('/send-reminders', requireRole('admin', 'office'), async (req, res) => {
+  try {
+    const result = await runAppointmentReminders({ date: (req.body.date || '').trim(), force: !!req.body.force });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[jobs] send-reminders failed:', e.message);
+    res.status(500).json({ error: 'Could not send reminders' });
+  }
 });
 
 // Parts / materials used on a job.

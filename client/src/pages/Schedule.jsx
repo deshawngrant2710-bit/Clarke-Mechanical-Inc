@@ -5,7 +5,9 @@ import PageHeader from '../components/PageHeader';
 import { Card, Badge, Btn, Spinner } from '../components/UI';
 import { cacheGet, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, AlertTriangle, UserX } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalIcon, AlertTriangle, UserX, BellRing } from 'lucide-react';
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths,
   addDays, subDays, startOfWeek, addWeeks, subWeeks,
@@ -55,7 +57,22 @@ export default function Schedule() {
   const [cursor, setCursor] = useState(new Date());   // anchor date for day/week/month
   const [selected, setSelected] = useState(new Date());
   const [tech, setTech] = useState('');               // '' all | id | 'unassigned'
+  const [remLoading, setRemLoading] = useState(false);
+  const { user } = useAuth();
   const navigate = useNavigate();
+
+  async function sendReminders() {
+    if (remLoading) return;
+    setRemLoading(true);
+    try {
+      const { data } = await api.post('/jobs/send-reminders', {});
+      const { total = 0, texted = 0, emailed = 0, date } = data || {};
+      if (!total) toast(`No appointments scheduled for ${date} — nothing to remind.`);
+      else toast.success(`Reminders sent for ${total} appointment${total === 1 ? '' : 's'} on ${date} (${texted} text, ${emailed} email).`);
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Could not send reminders');
+    } finally { setRemLoading(false); }
+  }
 
   useEffect(() => {
     api.get('/jobs').then(r => { setJobs(r.data); cacheSet('/jobs', r.data); });
@@ -88,6 +105,11 @@ export default function Schedule() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Schedule" subtitle="Dispatch calendar & job planning" icon={<CalIcon size={20} />}>
+        {['admin', 'office'].includes(user?.role) && (
+          <Btn variant="outline" onClick={sendReminders} loading={remLoading} title="Text & email tomorrow's customers a reminder">
+            <BellRing size={16} /> Send reminders
+          </Btn>
+        )}
         <Btn onClick={() => navigate('/jobs?new=1')}><Plus size={16} /> New Job</Btn>
       </PageHeader>
 
