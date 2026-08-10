@@ -120,3 +120,13 @@ The website is currently running an **older version** than your phone. When you 
 - Cron endpoint accepts the secret as `?key=` query param (or `x-cron-key` header) and works via GET or POST — so simple schedulers work with just a URL.
 - New staff endpoint `POST /api/jobs/send-reminders` (admin/office only) runs the same reminder logic on demand.
 - Schedule page: admin/office see a **Send reminders** button in the header that texts + emails tomorrow's scheduled customers and reports how many were sent.
+
+## Sona call leads → service requests (Quo webhook)
+- New `functions/routes/quo.js` (`POST /api/quo/call-summary`) receives Quo's `call.summary.completed` webhook. Guarded by a secret in the URL (`?key=QUO_WEBHOOK_KEY`).
+- Parses Sona's structured job fields (`jobs[].result.data`) — fuzzy-matches name, phone, email, address, problem, preferred time, and emergency flag — plus the AI call summary/next-steps.
+- Matches an existing customer by email or phone (E.164), or creates a new customer, then creates a **pending job** (job_type "Phone Request (Sona)", source "sona") so it shows up in Jobs/dashboard for the office to confirm. Idempotent by `sona_call_id`. Urgent calls get priority "high".
+- **Env var:** `QUO_WEBHOOK_KEY=9d1a9230fa6c5d7791d3c6e4ee43d7ab3a303eb0154c1b23`
+- **Register once** (needs Quo API key): POST https://api.quo.com/v1/webhooks/call-summaries with event `call.summary.completed` and url `.../api/quo/call-summary?key=<QUO_WEBHOOK_KEY>`.
+
+### AI-lead badge
+- Jobs captured by Sona (`source: "sona"`) show a violet "AI call" badge in the Jobs list (desktop table + mobile cards) so the office knows the lead came from the AI phone agent and should be confirmed. Frontend-only.

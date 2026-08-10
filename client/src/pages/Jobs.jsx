@@ -6,7 +6,15 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Badge, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
-import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock, User, DollarSign, X } from 'lucide-react';
+import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock, User, DollarSign, X, Bot } from 'lucide-react';
+
+// Small badge marking a job that came in through the Sona AI phone agent.
+const AiLead = () => (
+  <span title="Captured by the Sona AI phone assistant — review and confirm with the customer"
+    className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-100 px-1.5 py-0.5 rounded-full shrink-0">
+    <Bot size={11} /> AI call
+  </span>
+);
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
 import toast from 'react-hot-toast';
@@ -201,7 +209,10 @@ export default function Jobs() {
             {filtered.map(job => (
               <Row key={job.id} onClick={() => navigate(`/jobs/${job.id}`)}>
                 <Cell>
-                  <p className="font-semibold text-slate-800">{job.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-slate-800">{job.title}</p>
+                    {job.source === 'sona' && <AiLead />}
+                  </div>
                   {job.job_type && <p className="text-xs text-slate-400">{job.job_type}</p>}
                 </Cell>
                 <Cell><span className="text-sm text-slate-600">{job.customer_name || <span className="text-slate-300">—</span>}</span></Cell>
@@ -252,7 +263,10 @@ export default function Jobs() {
                   <div onClick={() => navigate(`/jobs/${job.id}`)}>
                     <div className="flex items-start justify-between gap-2">
                       <p className="font-semibold text-slate-800 min-w-0 truncate">{job.title}</p>
-                      {job._pending && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Pending</span>}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {job.source === 'sona' && <AiLead />}
+                        {job._pending && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">Pending</span>}
+                      </div>
                     </div>
                     {job.customer_name && <p className="text-xs text-slate-500 truncate mt-0.5">{job.customer_name}</p>}
 
