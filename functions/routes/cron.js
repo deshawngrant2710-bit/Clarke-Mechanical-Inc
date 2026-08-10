@@ -12,11 +12,14 @@ const settings = require('../lib/settings');
 const router = express.Router();
 
 // Every route here requires the secret. Returns 404 (not 401) when unconfigured
-// so the endpoint is invisible until you set CRON_KEY.
+// so the endpoint is invisible until you set CRON_KEY. The secret may be provided
+// either as an `x-cron-key` header or a `?key=` query param (so a plain GET from a
+// simple scheduler works without custom headers).
 router.use((req, res, next) => {
   const key = process.env.CRON_KEY;
   if (!key) return res.status(404).json({ error: 'Not found' });
-  if ((req.headers['x-cron-key'] || '') !== key) return res.status(401).json({ error: 'Unauthorized' });
+  const provided = req.headers['x-cron-key'] || req.query.key || '';
+  if (provided !== key) return res.status(401).json({ error: 'Unauthorized' });
   next();
 });
 
@@ -28,10 +31,10 @@ function apptWhen(job) {
   return when;
 }
 
-// POST /api/cron/appointment-reminders — text/email a reminder for jobs scheduled
-// on the target day (defaults to tomorrow). Idempotent: skips jobs already reminded.
-// Optional body/query: ?date=YYYY-MM-DD to override the target day.
-router.post('/appointment-reminders', async (req, res) => {
+// GET or POST /api/cron/appointment-reminders — text/email a reminder for jobs
+// scheduled on the target day (defaults to tomorrow). Idempotent: skips jobs
+// already reminded. Optional ?date=YYYY-MM-DD to override the target day.
+async function appointmentReminders(req, res) {
   try {
     const override = (req.query.date || req.body?.date || '').trim();
     let target = override;
@@ -71,6 +74,9 @@ router.post('/appointment-reminders', async (req, res) => {
     console.error('[cron] appointment-reminders failed:', e.message);
     res.status(500).json({ error: 'Reminder run failed' });
   }
-});
+}
+
+router.get('/appointment-reminders', appointmentReminders);
+router.post('/appointment-reminders', appointmentReminders);
 
 module.exports = router;
