@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Empty, Spinner, Btn } from '../components/UI';
 import CustomerJobs from '../components/CustomerJobs';
+import ServiceRequestModal from '../components/ServiceRequestModal';
 import { CalendarDays, Plus, UserCircle } from 'lucide-react';
 import { cacheGet, cacheSet } from '../lib/queryCache';
 
 export default function Appointments() {
-  const navigate = useNavigate();
   const [me, setMe] = useState(() => cacheGet('portal_me') || null);
   const [jobs, setJobs] = useState(() => cacheGet('portal_jobs') || []);
   const [loading, setLoading] = useState(!cacheGet('portal_jobs'));
+  const [reqModal, setReqModal] = useState(false);
 
   function load() {
     return Promise.all([api.get('/portal/me'), api.get('/portal/jobs')])
@@ -24,7 +24,7 @@ export default function Appointments() {
   }
   useEffect(() => { load(); }, []);
 
-  const requestService = () => navigate('/portal?request=1');
+  const requestService = () => setReqModal(true);
 
   if (loading) return <Spinner />;
 
@@ -48,6 +48,8 @@ export default function Appointments() {
       ) : (
         <CustomerJobs jobs={jobs} me={me} onReload={load} onRequestService={requestService} grouped />
       )}
+
+      <ServiceRequestModal open={reqModal} onClose={() => setReqModal(false)} onDone={load} />
     </div>
   );
 }

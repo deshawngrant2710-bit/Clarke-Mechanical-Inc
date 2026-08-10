@@ -76,8 +76,11 @@ export function navGroupsForRole(role) {
     .filter(g => g.items.length > 0);
 }
 
-// The landing route for a role (first item they can see).
+// The landing route for a role. Customers land on their portal home (not the
+// shared "My Account" page, which happens to be the first nav item they can see).
+const HOME_BY_ROLE = { customer: '/portal', technician: '/field' };
 export function homeForRole(role) {
+  if (HOME_BY_ROLE[role]) return HOME_BY_ROLE[role];
   const first = ALL_ITEMS.find(i => i.roles.includes(role));
   return first ? first.to : '/portal';
 }
@@ -98,7 +101,7 @@ export function bottomNavForRole(role) {
 }
 
 // Utility routes any signed-in user may reach (not shown in the sidebar).
-const OPEN_ROUTES = ['/account', '/more', '/about', '/refer', '/addresses', '/notifications', '/security'];
+const OPEN_ROUTES = ['/account', '/more', '/about', '/refer', '/addresses', '/notifications', '/security', '/appointments'];
 
 // May this role open this pathname? Detail routes inherit their base (e.g. /jobs/123 → /jobs).
 export function canAccess(role, pathname) {

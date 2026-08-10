@@ -33,6 +33,7 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/assistant', require('./routes/assistant'));
+app.use('/api/cron', require('./routes/cron'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

@@ -3,10 +3,13 @@ const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
+const { notifyCustomerBySms } = require('../lib/sms');
 const settings = require('../lib/settings');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
+
+const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function calcTotals(items, taxRate, discount = 0) {
   const subtotal = items.reduce((s, i) => s + (i.quantity || 0) * (i.unit_price || 0), 0);
@@ -118,9 +121,12 @@ async function emailEstimateSent(quote, prevStatus) {
   if (quote.status !== 'sent' || quote.status === prevStatus || !quote.customer_id) return;
   try {
     const customer = await getById('customers', quote.customer_id);
-    if (!customer?.email) return;
-    const { subject, html } = await render('quote', { ...quote, customer_name: customer.name });
-    await sendMail({ type: 'quote', to: customer.email, toName: customer.name, subject, html, relatedId: quote.id, customerId: quote.customer_id, sentBy: 'Automated' });
+    if (customer?.email) {
+      const { subject, html } = await render('quote', { ...quote, customer_name: customer.name });
+      await sendMail({ type: 'quote', to: customer.email, toName: customer.name, subject, html, relatedId: quote.id, customerId: quote.customer_id, sentBy: 'Automated' });
+    }
+    const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+    await notifyCustomerBySms(customer, `${biz}: your estimate ${quote.quote_number || ''} for ${money(quote.total)} is ready. View and approve it in your account. Reply STOP to opt out.`);
   } catch (e) { console.error('[billing] estimate email failed:', e.message); }
 }
 
@@ -285,6 +291,9 @@ router.post('/invoices/remind-overdue', async (req, res) => {
       const amountPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
       const { subject, html } = await render('invoice_reminder', { ...invoice, customer_name: customer.name, amountPaid });
       await sendMail({ type: 'invoice_reminder', to: customer.email, toName: customer.name, subject, html, relatedId: invoice.id, customerId: invoice.customer_id, sentBy: req.user.name });
+      const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+      const due = Math.max(0, (invoice.total || 0) - amountPaid);
+      await notifyCustomerBySms(customer, `${biz}: invoice ${invoice.invoice_number || ''} of ${money(due)} is past due. Please pay in your account. Reply STOP to opt out.`);
       sent++;
     } catch (e) { console.error('[billing] bulk remind:', e.message); }
   }
@@ -303,6 +312,9 @@ router.post('/invoices/:id/remind', async (req, res) => {
     const entity = { ...invoice, customer_name: customer.name, amountPaid };
     const { subject, html } = await render('invoice_reminder', entity);
     await sendMail({ type: 'invoice_reminder', to: customer.email, toName: customer.name, subject, html, relatedId: invoice.id, customerId: invoice.customer_id, sentBy: req.user.name });
+    const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+    const due = Math.max(0, (invoice.total || 0) - amountPaid);
+    await notifyCustomerBySms(customer, `${biz}: a reminder about invoice ${invoice.invoice_number || ''} of ${money(due)}. Please pay in your account. Reply STOP to opt out.`);
     res.json({ ok: true });
   } catch (e) {
     console.error('[billing] reminder failed:', e.message);

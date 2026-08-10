@@ -104,3 +104,13 @@ The website is currently running an **older version** than your phone. When you 
 - Extracted the job list + its Reschedule/Sign-off/Review modals out of `Portal.jsx` into a shared `components/CustomerJobs.jsx` (no duplication — one implementation).
 - Portal home trimmed: removed the "Services" tab (keeps Invoices + Estimates); the "Next appointment" card is now tappable and links to `/appointments`; added `?request=1` deep-link so the new page's Request Service button opens the booking modal.
 - Bottom-nav Appointments tab now points to `/appointments` (app only; website unchanged).
+
+### Appointments page — follow-ups
+- Fixed: tapping Appointments landed on My Account. The role guard (`canAccess`) didn't allow `/appointments`, so customers were bounced to their role home (which resolved to `/account`). Added `/appointments` to the open-routes list.
+- Booking now opens directly on the Appointments page (its own `ServiceRequestModal`) instead of routing to the Portal. Extracted `ServiceRequestModal` into `components/ServiceRequestModal.jsx`, shared by Portal and Appointments.
+
+## Text messaging via Quo (formerly OpenPhone)
+- New `functions/lib/sms.js` — `sendSms`/`notifyCustomerBySms` using the Quo REST API (`POST https://api.quo.com/v1/messages`, `Authorization: <API_KEY>`, body `{content, from, to:[E.164]}`). Includes E.164 normalization and opt-out respect (`sms_opt_in === false` is skipped). Replaces the old Twilio stub.
+- Wired texts into: phone-number verification (portal), appointment confirmation (job → scheduled), "on my way" en-route (jobs), estimate ready (billing), and invoice reminders — single + bulk overdue (billing). Each is best-effort and sends alongside the existing email; failures never block the request.
+- New `functions/routes/cron.js` (`POST /api/cron/appointment-reminders`) guarded by an `x-cron-key` header (env `CRON_KEY`). Texts + emails day-before reminders for jobs scheduled the target day (defaults to tomorrow), idempotent via `reminder_sent_at`. Point a daily external cron at it.
+- **Env vars to set on Render:** `QUO_API_KEY`, `QUO_FROM` (your Quo number, E.164 like `+1XXXXXXXXXX`), optional `QUO_USER_ID`, and `CRON_KEY` (any random string) for reminders. Texting US numbers also requires completing Quo US carrier (10DLC) registration.

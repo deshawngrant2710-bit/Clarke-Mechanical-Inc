@@ -5,6 +5,7 @@ const { authMiddleware } = require('../middleware/auth');
 const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
 const { referralCode } = require('../lib/referral');
+const { smsConfigured, sendSms } = require('../lib/sms');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -386,16 +387,6 @@ router.get('/referrals', async (req, res) => {
 
 // ---- Contact verification ----
 const genCode = () => String(Math.floor(100000 + Math.random() * 900000));
-const smsConfigured = () => !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM);
-async function sendSms(to, body) {
-  const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN, from = process.env.TWILIO_FROM;
-  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-    method: 'POST',
-    headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${tok}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ To: to, From: from, Body: body }),
-  });
-  if (!r.ok) throw new Error(`Twilio ${r.status}`);
-}
 
 // Email a 6-digit verification code.
 router.post('/verify/email/send', async (req, res) => {

@@ -3,10 +3,20 @@ const { v4: uuid } = require('uuid');
 const { db, list, getById, create, update, remove, findWhere, nameMap } = require('../lib/db');
 const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
+const { notifyCustomerBySms } = require('../lib/sms');
 const settings = require('../lib/settings');
 
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
+
+// Friendly date/time for text messages, e.g. "Tue, Aug 12 at 8:00 AM–12:00 PM".
+function apptWhen(job) {
+  if (!job.scheduled_date) return '';
+  let when = new Date(job.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  if (job.booking_window) when += ` (${job.booking_window})`;
+  else if (job.scheduled_time) when += ` at ${job.scheduled_time}`;
+  return when;
+}
 
 // Auto-prepare a DRAFT invoice from a completed job's parts & labor (parts logged
 // during the visit; a "Labor" line is just a part the tech adds). If the job came
@@ -54,11 +64,18 @@ async function notifyOnStatusChange(job, prevStatus) {
     const type = map[job.status];
     if (!type) return;
     const customer = await getById('customers', job.customer_id);
-    if (!customer?.email) return;
     const tech = job.technician_id ? await getById('users', job.technician_id) : null;
-    const entity = { ...job, customer_name: customer.name, technician_name: tech?.name };
-    const { subject, html } = await render(type, entity);
-    await sendMail({ type, to: customer.email, toName: customer.name, subject, html, relatedId: job.id, customerId: job.customer_id, sentBy: 'Automated' });
+    if (customer?.email) {
+      const entity = { ...job, customer_name: customer.name, technician_name: tech?.name };
+      const { subject, html } = await render(type, entity);
+      await sendMail({ type, to: customer.email, toName: customer.name, subject, html, relatedId: job.id, customerId: job.customer_id, sentBy: 'Automated' });
+    }
+    // Text an appointment confirmation when a visit is scheduled.
+    if (job.status === 'scheduled') {
+      const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+      const when = apptWhen(job);
+      await notifyCustomerBySms(customer, `${biz}: your appointment for "${job.title}" is confirmed${when ? ` for ${when}` : ''}. Reply STOP to opt out.`);
+    }
   } catch (e) { console.error('[jobs] notify failed:', e.message); }
 }
 
@@ -347,6 +364,9 @@ router.post('/:id/en-route', async (req, res) => {
         <p>See you soon!</p></div>`;
       await sendMail({ type: 'job_en_route', to: customer.email, toName: customer.name, subject: `Your technician is on the way — ${job.title}`, html, relatedId: job.id, customerId: job.customer_id, sentBy: tech?.name || 'Automated' });
     }
+    const tech2 = job.technician_id ? await getById('users', job.technician_id) : null;
+    const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+    await notifyCustomerBySms(customer, `${biz}: your technician${tech2?.name ? ` ${tech2.name}` : ''} is on the way for "${job.title}". Reply STOP to opt out.`);
   } catch (e) { console.error('[jobs] en-route notify failed:', e.message); }
   res.json({ ok: true, en_route_at: now });
 });
