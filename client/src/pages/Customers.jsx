@@ -203,9 +203,10 @@ export default function Customers() {
         )}
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Add Customer" subtitle="Create a new customer account">
+      <Modal open={modal} onClose={() => setModal(false)} title="Add Customer" subtitle="Create a new customer account" size="xl">
         <div className="space-y-3">
-          <Input label="Business name (optional)" icon={<Users size={15} />} value={form.business_name} onChange={e => setForm(f => ({ ...f, business_name: e.target.value }))} hint="Leave blank for a residential customer and use the contact name below" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Input label="Business name (optional)" className="lg:col-span-2" icon={<Users size={15} />} value={form.business_name} onChange={e => setForm(f => ({ ...f, business_name: e.target.value }))} hint="Leave blank for a residential customer and use the contact name below" />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Contact first name" value={form.first_name} onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))} />
             <Input label="Contact last name" value={form.last_name} onChange={e => setForm(f => ({ ...f, last_name: e.target.value }))} />
@@ -214,15 +215,16 @@ export default function Customers() {
             <Input label="Phone" icon={<Phone size={15} />} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(555) 000-0000" />
             <Input label="Email" icon={<Mail size={15} />} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="name@email.com" />
           </div>
-          <AddressAutocomplete label="Address" icon={<MapPin size={15} />} value={form.address}
+          <AddressAutocomplete label="Address" className="lg:col-span-2" icon={<MapPin size={15} />} value={form.address}
             onChange={v => setForm(f => ({ ...f, address: v }))}
             onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))} />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 lg:col-span-2">
             <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
             <Input label="State" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />
             <Input label="ZIP" value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} />
           </div>
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          <Textarea label="Notes" className="lg:col-span-2" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
             <Btn onClick={handleSave} loading={saving}>{saving ? 'Saving…' : 'Add Customer'}</Btn>

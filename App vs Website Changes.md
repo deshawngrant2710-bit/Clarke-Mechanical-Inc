@@ -141,3 +141,16 @@ The website is currently running an **older version** than your phone. When you 
 - Mobile app can't use the referrer-restricted browser key (runs from capacitor://localhost), so added `functions/routes/places.js` (`/api/places/autocomplete`, `/api/places/details`) — a server-side Google Places proxy (auth-required, session tokens).
 - `AddressAutocomplete.jsx` now has 3 modes: `gjs` (website, Google JS + VITE key), `proxy` (native app, backend), `plain` (fallback). Web behavior unchanged; the app now gets the same autocomplete via the proxy.
 - **Env var (Render):** `GOOGLE_PLACES_API_KEY` — a **server key** (API restriction "Places API", no website restriction). Requires the classic "Places API" enabled on the project.
+
+## Dashboard: mobile layout on the website
+- Admin/office + technician `Dashboard.jsx` had `sm:`/`md:`/`lg:` grid expansions that spread it out on desktop. Removed them so the website renders the exact phone layout (stat cards 2-up, panels/charts stacked), stretched to full width.
+- Effectively web-only: those breakpoints never fire at iPhone width, so the mobile app is unchanged. Customer portal and technician home already used the mobile layout (no responsive classes) — no changes needed there.
+
+## Create Job / Create Customer: bigger, less scrolling (website)
+- Both modals widened to `size="xl"` (lg:max-w-4xl) — desktop-only via the `lg:` prefix.
+- Form fields wrapped in `grid grid-cols-1 lg:grid-cols-2` so on the website they lay out in two columns (roughly halving the height / scrolling); full-width items (title, address, city/state/zip, notes, description) span both columns.
+- Mobile app unchanged: base `grid-cols-1` stacks fields exactly as before, and the modal stays a full-screen sheet.
+
+## Team: live status + call/text
+- `GET /api/employees` now enriches each member with live status: `clocked_in`, `clocked_in_at`, `on_break`, `current_job {id,title}`, `today_jobs`, `active_jobs` (computed from open time_entries + assigned jobs).
+- Team cards show a status pill (On the clock · since 8:14 AM / On break / Off the clock), availability (current job title, "On a job", or "Available"), a "N today" count, and **Call / Text** buttons (tel:/sms:). Status is a snapshot on page load/refresh.

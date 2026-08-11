@@ -307,15 +307,15 @@ export default function Jobs() {
       <AssignSheet job={assignJob} techs={techs} onClose={() => setAssignJob(null)}
         onAssign={(j, id) => { assignTech(j, id); setAssignJob(null); }} />
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Create Job" subtitle="Log a new service work order"
+      <Modal open={modal} onClose={() => setModal(false)} title="Create Job" subtitle="Log a new service work order" size="xl"
         footer={
           <div className="flex justify-end gap-2">
             <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
             <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Job'}</Btn>
           </div>
         }>
-        <div className="space-y-3">
-          <Input label="Job Title *" value={form.title} valid={form.title.trim().length > 2} onChange={e => f({ title: e.target.value })} placeholder="e.g. AC Repair - Unit 3B" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Input label="Job Title *" className="lg:col-span-2" value={form.title} valid={form.title.trim().length > 2} onChange={e => f({ title: e.target.value })} placeholder="e.g. AC Repair - Unit 3B" />
           <div className="grid grid-cols-2 gap-3">
             <SheetSelect label="Customer" title="Select customer" searchable placeholder="Select customer"
               value={form.customer_id}
@@ -347,7 +347,7 @@ export default function Jobs() {
           <AddressAutocomplete label="Job Address" value={form.address} placeholder="Service address"
             onChange={v => f({ address: v })}
             onSelect={a => f({ address: a.formatted || a.address })} />
-          <Textarea label="Description" value={form.description} onChange={e => f({ description: e.target.value })} />
+          <Textarea label="Description" className="lg:col-span-2" value={form.description} onChange={e => f({ description: e.target.value })} />
         </div>
       </Modal>
     </div>

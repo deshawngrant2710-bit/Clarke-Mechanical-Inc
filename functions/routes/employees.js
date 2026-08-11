@@ -16,6 +16,29 @@ const strip = (u) => u && {
 
 router.get('/', async (req, res) => {
   const users = (await list('users', { orderBy: 'name' })).map(strip);
+  // Enrich with live status: who's clocked in / on break / on a job right now.
+  try {
+    const [entries, jobs] = await Promise.all([list('time_entries'), list('jobs')]);
+    const open = entries.filter(e => !e.clock_out);
+    const today = new Date().toISOString().slice(0, 10);
+    for (const u of users) {
+      const entry = open.find(e => e.technician_id === u.id);
+      const mine = jobs.filter(j => j.technician_id === u.id
+        || (Array.isArray(j.additional_technician_ids) && j.additional_technician_ids.includes(u.id)));
+      const active = mine.filter(j => j.status === 'in-progress');
+      const todayJobs = mine.filter(j => j.scheduled_date === today && !['completed', 'cancelled'].includes(j.status));
+      const breaks = entry?.breaks || [];
+      let currentJob = null;
+      const jobId = entry?.job_id || active[0]?.id;
+      if (jobId) { const j = jobs.find(x => x.id === jobId); if (j) currentJob = { id: j.id, title: j.title }; }
+      u.clocked_in = !!entry;
+      u.clocked_in_at = entry?.clock_in || null;
+      u.on_break = breaks.length > 0 && !breaks[breaks.length - 1].end;
+      u.current_job = currentJob;
+      u.today_jobs = todayJobs.length;
+      u.active_jobs = active.length;
+    }
+  } catch (e) { console.error('[employees] status enrich failed:', e.message); }
   res.json(users);
 });
 

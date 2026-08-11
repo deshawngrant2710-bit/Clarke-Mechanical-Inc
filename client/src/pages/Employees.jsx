@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Select, Empty, SkeletonPage, StatCard, SearchInput, Avatar } from '../components/UI';
-import { Plus, UserCog, Users, Wrench, ShieldCheck, Mail, Phone, Trash2, Search, UserRound } from 'lucide-react';
+import { Plus, UserCog, Users, Wrench, ShieldCheck, Mail, Phone, Trash2, Search, UserRound, Clock, Coffee, Briefcase, MessageSquare, CheckCircle } from 'lucide-react';
+
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
-const empty = { name: '', email: '', password: '', role: 'customer', phone: '' };
+const empty = { name: '', email: '', password: '', role: 'technician', phone: '' };
 const ROLES = ['customer', 'technician', 'office', 'admin'];
 const ROLE_STYLE = {
   customer: 'bg-slate-100 text-slate-600',
@@ -30,14 +32,16 @@ export default function Employees() {
   function load() { api.get('/employees').then(r => { setUsers(r.data); setLoading(false); }); }
   useEffect(load, []);
 
+  // The Team section is staff only — customers live in the Customers section.
+  const teamUsers = users.filter(u => u.role !== 'customer');
+
   const stats = {
-    total: users.length,
-    customers: users.filter(u => u.role === 'customer').length,
-    technicians: users.filter(u => u.role === 'technician').length,
-    staff: users.filter(u => ['admin', 'office'].includes(u.role)).length,
+    total: teamUsers.length,
+    technicians: teamUsers.filter(u => u.role === 'technician').length,
+    staff: teamUsers.filter(u => ['admin', 'office'].includes(u.role)).length,
   };
 
-  const filtered = users.filter(u => {
+  const filtered = teamUsers.filter(u => {
     const q = search.toLowerCase();
     const matchSearch = !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
     const matchRole = roleFilter === 'all' || u.role === roleFilter;
@@ -86,7 +90,6 @@ export default function Employees() {
 
   const filters = [
     { id: 'all', label: 'All' },
-    { id: 'customer', label: 'Customers' },
     { id: 'technician', label: 'Technicians' },
     { id: 'office', label: 'Office' },
     { id: 'admin', label: 'Admins' },
@@ -94,13 +97,12 @@ export default function Employees() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Team & Roles" subtitle={`${users.length} users · ${stats.customers} customers`} icon={<UserCog size={20} />}>
+      <PageHeader title="Team & Roles" subtitle={`${stats.total} team member${stats.total === 1 ? '' : 's'}`} icon={<UserCog size={20} />}>
         {isAdmin && <Btn onClick={() => setModal(true)}><Plus size={16} /> Add User</Btn>}
       </PageHeader>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Users" value={stats.total} icon={<Users size={18} />} color="blue" />
-        <StatCard label="Customers" value={stats.customers} icon={<UserRound size={18} />} color="slate" />
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <StatCard label="Total Team" value={stats.total} icon={<Users size={18} />} color="blue" />
         <StatCard label="Technicians" value={stats.technicians} icon={<Wrench size={18} />} color="green" />
         <StatCard label="Staff & Admins" value={stats.staff} icon={<ShieldCheck size={18} />} color="purple" />
       </div>
@@ -144,10 +146,38 @@ export default function Employees() {
                     <button onClick={() => handleDelete(u.id)} className="text-slate-300 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors shrink-0"><Trash2 size={15} /></button>
                   )}
                 </div>
+                {/* Live status — clocked in, on break, on a job */}
+                {u.role !== 'customer' && (
+                  <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                    {u.on_break ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full"><Coffee size={11} /> On break</span>
+                    ) : u.clocked_in ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full"><Clock size={11} /> On the clock{u.clocked_in_at ? ` · since ${fmtTime(u.clocked_in_at)}` : ''}</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full"><Clock size={11} /> Off the clock</span>
+                    )}
+                    {u.clocked_in && (u.current_job ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full max-w-[180px] truncate" title={u.current_job.title}><Briefcase size={11} className="shrink-0" /> {u.current_job.title}</span>
+                    ) : u.active_jobs > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full"><Briefcase size={11} /> On a job</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><CheckCircle size={11} /> Available</span>
+                    ))}
+                    {u.today_jobs > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{u.today_jobs} today</span>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-1.5 pt-3 border-t border-slate-100">
                   <p className="flex items-center gap-2 text-sm text-slate-600 truncate"><Mail size={13} className="text-slate-400 shrink-0" />{u.email}</p>
                   {u.phone && <p className="flex items-center gap-2 text-sm text-slate-600"><Phone size={13} className="text-slate-400 shrink-0" />{u.phone}</p>}
                 </div>
+                {u.phone && (
+                  <div className="flex gap-2 mt-3">
+                    <a href={`tel:${u.phone}`} className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50"><Phone size={14} /> Call</a>
+                    <a href={`sms:${u.phone}`} className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50"><MessageSquare size={14} /> Text</a>
+                  </div>
+                )}
                 {/* Admin-only role management */}
                 {isAdmin && (
                   <div className="mt-4 pt-3 border-t border-slate-100">
@@ -186,7 +216,7 @@ export default function Employees() {
           </div>
           <Input label="Password *" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           <Select label="Role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-            {ROLES.map(r => <option key={r} value={r}>{cap(r)}</option>)}
+            {ROLES.filter(r => r !== 'customer').map(r => <option key={r} value={r}>{cap(r)}</option>)}
           </Select>
           <div className="flex justify-end gap-2 pt-2">
             <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>

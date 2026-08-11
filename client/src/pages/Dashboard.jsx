@@ -149,7 +149,7 @@ export default function Dashboard() {
       </div>
 
       {/* Priority — the most urgent things first */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <StatCard label="Today's Jobs" value={data.todayJobs} icon={<CalendarDays size={18} />} color="blue" sub={`${data.completedToday} completed`} onClick={() => navigate('/schedule')} />
         <StatCard label="Emergency" value={data.emergencyJobs} icon={<AlertTriangle size={18} />} color="red" onClick={() => navigate('/jobs')} />
         <StatCard label="Unassigned" value={na.unassignedJobs || 0} icon={<Briefcase size={18} />} color="orange" onClick={() => navigate('/dispatch')} />
@@ -162,7 +162,7 @@ export default function Dashboard() {
       {naItems.length > 0 && (
         <Card className="p-5 mb-6">
           <div className="flex items-center gap-2 mb-3"><AlertTriangle size={16} className="text-amber-500" /><h2 className="text-card-title text-slate-800">Needs attention</h2></div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {naItems.map(i => (
               <button key={i.label} onClick={() => navigate(i.to)} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-left transition-colors">
                 <span className="flex items-center gap-2 text-sm text-slate-700"><i.Icon size={15} className="text-slate-400" /> {i.label}</span>
@@ -181,7 +181,7 @@ export default function Dashboard() {
         </button>
         {showOverview && (
           <div className="px-5 pb-5 space-y-6 border-t border-slate-100 pt-5">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <StatCard label="Total Customers" value={data.totalCustomers} icon={<Users size={18} />} color="blue" onClick={() => navigate('/customers')} />
               <StatCard label="Open Jobs" value={data.openJobs} icon={<Briefcase size={18} />} color="orange" sub={`${data.totalJobs} all-time`} onClick={() => navigate('/jobs')} />
               <StatCard label="Monthly Revenue" value={data.monthlyRevenue} prefix="$" decimals={0} icon={<TrendingUp size={18} />} color="green" />
@@ -189,8 +189,8 @@ export default function Dashboard() {
               <StatCard label="Pending Revenue" value={data.pendingRevenue} prefix="$" decimals={2} icon={<Clock size={18} />} color="blue" />
               <StatCard label="Avg. Ticket" value={data.avgTicket} prefix="$" decimals={2} icon={<Receipt size={18} />} color="purple" />
             </div>
-            <div className="grid lg:grid-cols-3 gap-6">
-              <Card className="lg:col-span-2 p-5">
+            <div className="grid grid-cols-1 gap-6">
+              <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h2 className="text-card-title text-slate-800">Revenue Trend</h2>
@@ -219,19 +219,19 @@ export default function Dashboard() {
           <Zap size={16} className="text-blue-500" />
           <h2 className="text-card-title text-slate-800">Quick Actions</h2>
         </div>
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <QuickAction icon={<UserPlus size={18} />} label="New Customer" color="bg-blue-50 text-blue-600" onClick={() => navigate('/customers')} />
           <QuickAction icon={<Wrench size={18} />} label="New Job" color="bg-orange-50 text-orange-600" onClick={() => navigate('/jobs?new=1')} />
           <QuickAction icon={<FilePlus size={18} />} label="New Invoice" color="bg-emerald-50 text-emerald-600" onClick={() => navigate('/invoices')} />
           <QuickAction icon={<Receipt size={18} />} label="New Quote" color="bg-violet-50 text-violet-600" onClick={() => navigate('/quotes')} />
           <QuickAction icon={<CalendarDays size={18} />} label="Schedule" color="bg-cyan-50 text-cyan-600" onClick={() => navigate('/schedule')} />
-          <QuickAction icon={<Users size={18} />} label="Team" color="bg-rose-50 text-rose-600" onClick={() => navigate('/employees')} />
+          {user?.role === 'admin' && <QuickAction icon={<Users size={18} />} label="Team" color="bg-rose-50 text-rose-600" onClick={() => navigate('/employees')} />}
         </div>
       </Card>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Today's schedule */}
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader title="Today's Schedule" icon={<CalendarDays size={16} />}
             action={<button onClick={() => navigate('/schedule')} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">View calendar <ArrowRight size={12} /></button>} />
           <div className="divide-y divide-slate-100">
@@ -367,7 +367,7 @@ function TechnicianDashboard({ data, navigate, name }) {
         </span>
       </PageHeader>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <StatCard label="Today's Jobs" value={data.todayJobs} icon={<CalendarDays size={18} />} color="blue" />
         <StatCard label="Open Jobs" value={data.openJobs} icon={<Briefcase size={18} />} color="orange" sub={data.emergencyJobs ? `${data.emergencyJobs} urgent` : ''} />
         <StatCard label="Completed Today" value={data.completedToday} icon={<CheckCircle size={18} />} color="green" sub={`${data.completedJobs} all-time`} />
@@ -383,7 +383,7 @@ function TechnicianDashboard({ data, navigate, name }) {
         </div>
       </Card>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <Card>
           <CardHeader title="Today's Schedule" icon={<CalendarDays size={16} />}
             action={data.todaysSchedule.some(j => j.address) && (
