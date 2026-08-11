@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Modal, Input, Textarea, Badge, Spinner, Avatar, Empty } from '../components/UI';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText, CheckSquare } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import { TaskModal } from './Tasks';
@@ -235,7 +236,9 @@ export default function CustomerDetail() {
             <Input label="Phone" icon={<Phone size={15} />} value={form.phone || ''} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
             <Input label="Email" icon={<Mail size={15} />} type="email" value={form.email || ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
           </div>
-          <Input label="Address" icon={<MapPin size={15} />} value={form.address || ''} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+          <AddressAutocomplete label="Address" icon={<MapPin size={15} />} value={form.address || ''}
+            onChange={v => setForm(f => ({ ...f, address: v }))}
+            onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))} />
           <div className="grid grid-cols-3 gap-3">
             <Input label="City" value={form.city || ''} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
             <Input label="State" value={form.state || ''} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />

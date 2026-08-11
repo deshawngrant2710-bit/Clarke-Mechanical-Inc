@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck, CheckSquare } from 'lucide-react';
 import { TaskModal } from './Tasks';
 import toast from 'react-hot-toast';
@@ -746,7 +747,9 @@ export default function JobDetail() {
             <option value="">Select type</option>
             {JOB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </Select>
-          <Input label="Address" value={form.address || ''} onChange={e => f({ address: e.target.value })} />
+          <AddressAutocomplete label="Address" value={form.address || ''}
+            onChange={v => f({ address: v })}
+            onSelect={a => f({ address: a.formatted || a.address })} />
           {form.status === 'completed' && (
             <Input label="Completed Date" type="date" value={form.completed_date || ''} onChange={e => f({ completed_date: e.target.value })} />
           )}

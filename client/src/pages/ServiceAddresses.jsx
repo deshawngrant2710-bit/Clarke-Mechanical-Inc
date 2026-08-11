@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { ArrowLeft, MapPin, Save } from 'lucide-react';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import toast from 'react-hot-toast';
 
 export default function ServiceAddresses() {
@@ -47,10 +48,11 @@ export default function ServiceAddresses() {
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Street address</label>
-            <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className={field} placeholder="123 Main St" />
-          </div>
+          <AddressAutocomplete
+            label="Street address" placeholder="123 Main St" value={form.address}
+            onChange={v => setForm(f => ({ ...f, address: v }))}
+            onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))}
+          />
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-1">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">City</label>

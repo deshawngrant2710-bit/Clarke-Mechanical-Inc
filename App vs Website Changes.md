@@ -130,3 +130,14 @@ The website is currently running an **older version** than your phone. When you 
 
 ### AI-lead badge
 - Jobs captured by Sona (`source: "sona"`) show a violet "AI call" badge in the Jobs list (desktop table + mobile cards) so the office knows the lead came from the AI phone agent and should be confirmed. Frontend-only.
+
+## Address autocomplete (website only)
+- New `client/src/components/AddressAutocomplete.jsx` — Google Places Autocomplete dropdown. Pick a suggestion → fills street + city/state/zip (or full formatted address for single-field forms).
+- **Website only:** on the native app (or when no key is set) it renders a plain input, so the mobile app is unchanged (no App Store rebuild needed).
+- Wired into every address field: ServiceAddresses, Portal profile modal, Customers (office add), CustomerDetail (office edit), JobDetail, and the new-Job form.
+- **Env var (website build only):** `VITE_GOOGLE_MAPS_API_KEY`. Requires a Google Cloud key with **Maps JavaScript API + Places API** enabled, restricted to the clarkemechanicalinc.org domain. Uses session tokens to minimize billing.
+
+## Address autocomplete on mobile (backend proxy)
+- Mobile app can't use the referrer-restricted browser key (runs from capacitor://localhost), so added `functions/routes/places.js` (`/api/places/autocomplete`, `/api/places/details`) — a server-side Google Places proxy (auth-required, session tokens).
+- `AddressAutocomplete.jsx` now has 3 modes: `gjs` (website, Google JS + VITE key), `proxy` (native app, backend), `plain` (fallback). Web behavior unchanged; the app now gets the same autocomplete via the proxy.
+- **Env var (Render):** `GOOGLE_PLACES_API_KEY` — a **server key** (API restriction "Places API", no website restriction). Requires the classic "Places API" enabled on the project.

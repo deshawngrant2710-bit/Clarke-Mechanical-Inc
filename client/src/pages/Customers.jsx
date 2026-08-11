@@ -8,6 +8,7 @@ import {
 } from '../components/UI';
 import { Plus, Search, Phone, Mail, MapPin, Users, UserPlus, CalendarPlus, DollarSign, ChevronRight } from 'lucide-react';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import toast from 'react-hot-toast';
 
 const empty = { business_name: '', first_name: '', last_name: '', email: '', phone: '', address: '', city: '', state: '', zip: '', notes: '' };
@@ -213,7 +214,9 @@ export default function Customers() {
             <Input label="Phone" icon={<Phone size={15} />} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(555) 000-0000" />
             <Input label="Email" icon={<Mail size={15} />} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="name@email.com" />
           </div>
-          <Input label="Address" icon={<MapPin size={15} />} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+          <AddressAutocomplete label="Address" icon={<MapPin size={15} />} value={form.address}
+            onChange={v => setForm(f => ({ ...f, address: v }))}
+            onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))} />
           <div className="grid grid-cols-3 gap-3">
             <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
             <Input label="State" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />

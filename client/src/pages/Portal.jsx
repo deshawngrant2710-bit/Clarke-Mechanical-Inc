@@ -6,6 +6,7 @@ import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, T
 import { printDocument, buildDocumentHtml } from '../lib/printDoc';
 import PayInvoiceModal from '../components/PayInvoiceModal';
 import ServiceRequestModal from '../components/ServiceRequestModal';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import Logo from '../components/Logo';
 import {
   Briefcase, FileText, DollarSign, ClipboardList, Clock, CheckCircle, Calendar,
@@ -631,7 +632,9 @@ function ProfileModal({ open, onClose, profile, onDone }) {
     <Modal open={open} onClose={onClose} title="My Contact Info" subtitle="Keep your details up to date">
       <div className="space-y-3">
         <Input label="Phone" icon={<Phone size={15} />} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-        <Input label="Address" icon={<MapPin size={15} />} value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+        <AddressAutocomplete label="Address" icon={<MapPin size={15} />} value={form.address}
+          onChange={v => setForm(f => ({ ...f, address: v }))}
+          onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))} />
         <div className="grid grid-cols-3 gap-3">
           <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
           <Input label="State" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />

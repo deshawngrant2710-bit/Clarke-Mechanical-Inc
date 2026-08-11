@@ -8,6 +8,8 @@ import {
 } from '../components/UI';
 import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock, User, DollarSign, X, Bot } from 'lucide-react';
 
+import AddressAutocomplete from '../components/AddressAutocomplete';
+
 // Small badge marking a job that came in through the Sona AI phone agent.
 const AiLead = () => (
   <span title="Captured by the Sona AI phone assistant — review and confirm with the customer"
@@ -342,7 +344,9 @@ export default function Jobs() {
             <Input label="Scheduled Date" type="date" value={form.scheduled_date} onChange={e => f({ scheduled_date: e.target.value })} />
             <Input label="Scheduled Time" type="time" value={form.scheduled_time} onChange={e => f({ scheduled_time: e.target.value })} />
           </div>
-          <Input label="Job Address" value={form.address} onChange={e => f({ address: e.target.value })} placeholder="Service address" />
+          <AddressAutocomplete label="Job Address" value={form.address} placeholder="Service address"
+            onChange={v => f({ address: v })}
+            onSelect={a => f({ address: a.formatted || a.address })} />
           <Textarea label="Description" value={form.description} onChange={e => f({ description: e.target.value })} />
         </div>
       </Modal>
