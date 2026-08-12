@@ -1,90 +1,93 @@
 import { useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import api from '../api/client';
 import { Modal, Btn } from './UI';
-import { CreditCard, Banknote, Trash2 } from 'lucide-react';
+import { CreditCard, Banknote, Trash2, ExternalLink } from 'lucide-react';
+import { loadHelcimPayJs } from '../lib/helcimPay';
 import toast from 'react-hot-toast';
 
-const STRIPE_JS = 'https://js.stripe.com/v3/';
-
-// Inject Stripe.js once; resolve when window.Stripe is ready.
-function loadStripeJs() {
-  return new Promise((resolve, reject) => {
-    if (window.Stripe) return resolve(window.Stripe);
-    const existing = document.querySelector(`script[src="${STRIPE_JS}"]`);
-    if (existing) {
-      existing.addEventListener('load', () => resolve(window.Stripe));
-      existing.addEventListener('error', () => reject(new Error('Could not load the payment form.')));
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = STRIPE_JS;
-    script.async = true;
-    script.onload = () => resolve(window.Stripe);
-    script.onerror = () => reject(new Error('Could not load the payment form.'));
-    document.head.appendChild(script);
-  });
-}
-
-const ELEMENT_ID = 'stripe-payment-element';
+const isNative = !!Capacitor?.isNativePlatform?.();
 
 export default function PayInvoiceModal({ invoice, onClose, onPaid }) {
-  const [status, setStatus] = useState('loading'); // loading | ready | processing | disabled
+  const [status, setStatus] = useState('ready'); // ready | disabled | processing | browser
   const [error, setError] = useState('');
   const [cashSending, setCashSending] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
   const [payingSaved, setPayingSaved] = useState(null);
-  const stripeRef = useRef(null);
-  const elementsRef = useRef(null);
+  const [checking, setChecking] = useState(false);
+  const listenerRef = useRef(null);
+  const browsingRef = useRef(false);
   const amount = Number(invoice?.total || 0);
 
   useEffect(() => {
+    api.get('/portal/payment-config').then(r => { if (!r.data.enabled) setStatus('disabled'); }).catch(() => setStatus('disabled'));
     api.get('/portal/payment-methods').then(r => setSavedCards(r.data || [])).catch(() => {});
+    // When the user returns from the browser payment, re-check whether it's paid.
+    const onVis = () => { if (document.visibilityState === 'visible' && browsingRef.current) checkPaid(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      if (listenerRef.current) window.removeEventListener('message', listenerRef.current);
+    };
+    // eslint-disable-next-line
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data: cfg } = await api.get('/portal/payment-config');
-        if (cancelled) return;
-        if (!cfg.enabled) { setStatus('disabled'); return; }
-        const { data: intent } = await api.post(`/portal/invoices/${invoice.id}/create-intent`);
-        if (cancelled) return;
-        const Stripe = await loadStripeJs();
-        if (cancelled) return;
-        const stripe = Stripe(cfg.publishableKey);
-        const elements = stripe.elements({ clientSecret: intent.clientSecret });
-        const paymentElement = elements.create('payment');
-        paymentElement.mount(`#${ELEMENT_ID}`);
-        stripeRef.current = stripe;
-        elementsRef.current = elements;
-        if (!cancelled) setStatus('ready');
-      } catch (e) {
-        if (!cancelled) { setStatus('disabled'); setError(e.response?.data?.error || e.message || 'Could not start the payment form.'); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  async function payCard() {
-    if (!stripeRef.current || !elementsRef.current) return;
-    setStatus('processing'); setError('');
+  // ---- Website: HelcimPay.js renders directly in the page ----
+  async function payInPage() {
+    setError(''); setStatus('processing');
     try {
-      const { error: stripeError, paymentIntent } = await stripeRef.current.confirmPayment({
-        elements: elementsRef.current,
-        confirmParams: { return_url: window.location.href },
-        redirect: 'if_required',
-      });
-      if (stripeError) throw new Error(stripeError.message || 'Please check your card details and try again.');
-      if (!paymentIntent || paymentIntent.status !== 'succeeded') throw new Error('Payment did not complete. Please try again.');
-      await api.post(`/portal/invoices/${invoice.id}/confirm-payment`, { paymentIntentId: paymentIntent.id });
-      toast.success('Payment successful — thank you!');
-      onPaid?.();
-    } catch (e) {
-      setError(e.response?.data?.error || e.message || 'Payment failed. Please try again.');
+      const { data: init } = await api.post(`/portal/invoices/${invoice.id}/helcim-initialize`);
+      const checkoutToken = init.checkoutToken;
+      await loadHelcimPayJs();
+      const handler = async (event) => {
+        if (!event.data || event.data.eventName !== `helcim-pay-js-${checkoutToken}`) return;
+        if (event.data.eventStatus === 'ABORTED') { setError('Payment was cancelled or failed. Please try again.'); setStatus('ready'); }
+        if (event.data.eventStatus === 'SUCCESS') {
+          window.removeEventListener('message', handler); listenerRef.current = null;
+          try {
+            let msg = event.data.eventMessage;
+            if (typeof msg === 'string') msg = JSON.parse(msg);
+            await api.post(`/portal/invoices/${invoice.id}/helcim-confirm`, { checkoutToken, data: msg.data, hash: msg.hash });
+            window.removeHelcimPayIframe?.();
+            toast.success('Payment successful — thank you!');
+            onPaid?.();
+          } catch (e) { setError(e.response?.data?.error || 'We could not confirm the payment. If you were charged, contact the office.'); setStatus('ready'); }
+        }
+      };
+      listenerRef.current = handler;
+      window.addEventListener('message', handler);
+      window.appendHelcimPayIframe(checkoutToken);
       setStatus('ready');
+    } catch (e) {
+      setError(e.response?.data?.error || e.message || 'Could not start the payment. Please try again.');
+      setStatus(e.response?.status === 503 ? 'disabled' : 'ready');
     }
   }
+
+  // ---- Mobile app: open a secure payment page in the browser (Helcim can't render in-app) ----
+  async function payInBrowser() {
+    setError(''); setStatus('processing');
+    try {
+      const { data } = await api.post(`/portal/invoices/${invoice.id}/pay-link`);
+      window.open(data.url, '_blank');
+      browsingRef.current = true;
+      setStatus('browser');
+    } catch (e) {
+      setError(e.response?.data?.error || 'Could not open the payment page.');
+      setStatus(e.response?.status === 503 ? 'disabled' : 'ready');
+    }
+  }
+
+  async function checkPaid() {
+    setChecking(true);
+    try {
+      const { data } = await api.get(`/portal/invoices/${invoice.id}/payment-status`);
+      if (data.paid) { browsingRef.current = false; toast.success('Payment received — thank you!'); onPaid?.(); }
+      else setError('We haven’t seen the payment yet. If you just finished, give it a moment and tap again.');
+    } catch { /* ignore */ } finally { setChecking(false); }
+  }
+
+  const payNewCard = () => (isNative ? payInBrowser() : payInPage());
 
   async function paySaved(pmId) {
     setPayingSaved(pmId); setError('');
@@ -93,7 +96,7 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid }) {
       toast.success('Payment successful — thank you!');
       onPaid?.();
     } catch (e) {
-      setError(e.response?.data?.error || 'Could not charge that card. Please enter your card below.');
+      setError(e.response?.data?.error || 'Could not charge that card. Please pay with a new card below.');
     } finally { setPayingSaved(null); }
   }
 
@@ -119,14 +122,14 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid }) {
     <Modal open={!!invoice} onClose={onClose} title={`Pay Invoice ${invoice?.invoice_number || ''}`}
       subtitle={`Amount due: $${amount.toFixed(2)}`} size="md">
       <div className="space-y-4">
-        {savedCards.length > 0 && status !== 'disabled' && (
+        {savedCards.length > 0 && status !== 'disabled' && status !== 'browser' && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-slate-700">Saved cards</p>
             {savedCards.map(c => (
               <div key={c.id} className="flex items-center gap-2">
                 <button onClick={() => paySaved(c.id)} disabled={!!payingSaved}
                   className="flex-1 flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-sm disabled:opacity-50">
-                  <span className="flex items-center gap-2 text-slate-700"><CreditCard size={15} className="text-slate-400" /> <span className="capitalize">{c.brand}</span> •••• {c.last4}</span>
+                  <span className="flex items-center gap-2 text-slate-700"><CreditCard size={15} className="text-slate-400" /> <span className="uppercase">{c.brand}</span> •••• {c.last4}</span>
                   <span className="font-semibold text-blue-600">{payingSaved === c.id ? 'Paying…' : `Pay $${amount.toFixed(2)}`}</span>
                 </button>
                 <button onClick={() => removeCard(c.id)} title="Remove card" className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={15} /></button>
@@ -135,16 +138,20 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid }) {
             <div className="flex items-center gap-3 text-xs text-slate-400 pt-1"><div className="flex-1 h-px bg-slate-200" /> or use a new card <div className="flex-1 h-px bg-slate-200" /></div>
           </div>
         )}
-        {status !== 'disabled' ? (
-          <>
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-700"><CreditCard size={16} className="text-slate-400" /> Pay by card</div>
-            <div id={ELEMENT_ID} className="min-h-[40px]" />
-            {status === 'loading' && <p className="text-sm text-slate-400">Loading secure card form…</p>}
+
+        {status === 'browser' ? (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 text-center space-y-3">
+            <p className="text-sm text-slate-700">We opened a secure payment page in your browser. Complete the payment there, then come back.</p>
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Btn onClick={payCard} loading={status === 'processing'} disabled={status === 'loading' || status === 'processing'} className="w-full justify-center">
-              Pay ${amount.toFixed(2)} by card
+            <Btn onClick={checkPaid} loading={checking} className="w-full justify-center">I’ve completed the payment</Btn>
+          </div>
+        ) : status !== 'disabled' ? (
+          <>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            <Btn onClick={payNewCard} loading={status === 'processing'} disabled={status === 'processing'} className="w-full justify-center">
+              {isNative ? <ExternalLink size={16} /> : <CreditCard size={16} />} Pay ${amount.toFixed(2)} by card
             </Btn>
-            <p className="text-[11px] text-slate-400 text-center">Processed securely by Stripe. Your card is saved for faster future payments — remove it anytime.</p>
+            <p className="text-[11px] text-slate-400 text-center">Processed securely by Helcim.{isNative ? ' Opens a secure browser page.' : ' You can save your card for faster future payments.'}</p>
           </>
         ) : (
           <p className="text-sm text-slate-500">{error || 'Online card payments aren’t available right now — you can pay by cash below, or contact the office.'}</p>

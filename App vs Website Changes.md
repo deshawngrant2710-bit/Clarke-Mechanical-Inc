@@ -154,3 +154,16 @@ The website is currently running an **older version** than your phone. When you 
 ## Team: live status + call/text
 - `GET /api/employees` now enriches each member with live status: `clocked_in`, `clocked_in_at`, `on_break`, `current_job {id,title}`, `today_jobs`, `active_jobs` (computed from open time_entries + assigned jobs).
 - Team cards show a status pill (On the clock · since 8:14 AM / On break / Off the clock), availability (current job title, "On a job", or "Available"), a "N today" count, and **Call / Text** buttons (tel:/sms:). Status is a snapshot on page load/refresh.
+
+## Payments: switched Stripe → Helcim
+- New `functions/lib/helcim.js` (initialize HelcimPay.js session, charge saved card token via Payment API, validate response hash).
+- `portal.js` payment endpoints replaced: `/payment-config` (enabled flag), `/invoices/:id/helcim-initialize`, `/invoices/:id/helcim-confirm` (hash-validated server-side), `/payment-methods` (Helcim vault tokens stored in `payment_methods`), `/pay-saved` (charge token), delete card. Cash flow unchanged. All Stripe code removed.
+- `PayInvoiceModal.jsx` rewritten for HelcimPay.js (loads start.js, initializes, renders the Helcim modal, validates the result). Saved cards + cash retained.
+- Privacy page updated (processor: Helcim).
+- **Env vars (Render):** `HELCIM_API_TOKEN` (from an API Access Configuration with your domain registered), optional `HELCIM_CURRENCY` (default USD). Stripe env vars no longer used.
+- **Mobile caveat:** HelcimPay.js validates the render domain; the iOS app runs from capacitor://localhost, which usually can't be registered — so in-app card entry may not render. Website card payments work; app users can still pay by cash or on the website.
+
+## In-app payments: browser pay-link (Helcim on mobile)
+- Backend: `POST /portal/invoices/:id/pay-link` issues a one-time token link (`/pay/<token>`, 1h expiry); `GET /portal/invoices/:id/payment-status` for polling. New public `functions/routes/pay.js` (`/api/pay/:token` get/initialize/confirm) — token is the auth, no login needed — runs on the registered website domain so HelcimPay.js renders.
+- Frontend: public `/pay/:token` page (`PayLink.jsx`) renders HelcimPay.js. `PayInvoiceModal` now branches: website pays in-page; the **mobile app** opens the pay-link in the browser (`window.open`) and re-checks payment status when the app regains focus (plus an "I've completed the payment" button).
+- Shared `lib/helcimPay.js` loader.

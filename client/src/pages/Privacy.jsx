@@ -20,7 +20,7 @@ export default function Privacy() {
           <p className="mb-4">We use your information to schedule and perform service, send appointment confirmations and reminders, prepare estimates and invoices, process payments, respond to your requests, and operate and improve the Service. We do not sell your personal information.</p>
 
           <h2 className="text-lg font-semibold text-slate-900 mt-6 mb-2">How we share information</h2>
-          <p className="mb-4">We share information only with service providers who help us operate — for example, our payment processor (Stripe) to process payments, and our email provider to deliver confirmations and receipts. We may disclose information if required by law.</p>
+          <p className="mb-4">We share information only with service providers who help us operate — for example, our payment processor (Helcim) to process payments, and our email provider to deliver confirmations and receipts. We may disclose information if required by law.</p>
 
           <h2 className="text-lg font-semibold text-slate-900 mt-6 mb-2">Your choices &amp; account deletion</h2>
           <p className="mb-4">You can update your contact details and notification preferences at any time in the app. You may delete your account from <strong>My Portal → My Info → Delete my account</strong>, which removes your login and portal access. We may retain certain service and billing records where required for accounting, tax, or legal purposes. You can also contact us to request access to or deletion of your information.</p>

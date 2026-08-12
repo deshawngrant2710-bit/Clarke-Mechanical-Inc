@@ -124,13 +124,14 @@ Confirm you can take a message. Collect name, phone number, and the reason for t
 ### Job E — Transfer to a live person
 **Trigger:** The caller asks to speak with a person, a human, a real representative, "someone from the office," or says they don't want to talk to an assistant/bot.
 
-**Instructions for Sona:**
+**IMPORTANT — this must use the real Transfer call ACTION, not just words.** In the job instructions, at the transfer point, type **/** and choose **Transfer call**, then set its destination to a **workspace member** (e.g., Andre) or an **external cell** — NOT the (516) 206-6256 Quo line (that's the number being called, so it dead-ends in silence). If you only type the instruction as text without inserting the action, Sona says "let me connect you" and the line goes silent.
+
+**Instructions for Sona (insert the action where marked):**
 ```
-Politely say: "Of course — let me connect you with our team." Then transfer the call to (516) 206-6256.
-If the transfer can't connect or no one answers, take a message instead: collect the caller's name, phone number, and reason for calling, repeat the phone number back to confirm, and reassure them that someone from Clarke Mechanical will follow up shortly.
+Politely say: "Of course — let me connect you with our team." Then /Transfer call.
 ```
 
-**Note:** With "Ring users" removed, Sona answers every call first. This job gives callers a human option on demand. If your Sona plan handles transfers as a call-flow step rather than inside a job, add a **Ring users** or **Forward** step as Sona's fallback pointing to (516) 206-6256.
+**Note:** When Sona transfers, she leaves the call. If the person doesn't answer, the caller goes to that person's voicemail (Sona can't return). So pick a destination that's reliably answered, or that has a good voicemail greeting.
 
 ---
 

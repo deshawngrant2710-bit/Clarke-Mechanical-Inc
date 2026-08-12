@@ -6,6 +6,7 @@ const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
 const { referralCode } = require('../lib/referral');
 const { smsConfigured, sendSms } = require('../lib/sms');
+const helcim = require('../lib/helcim');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -437,212 +438,180 @@ router.post('/verify/phone/confirm', async (req, res) => {
   res.json({ ok: true });
 });
 
-// GET /portal/payment-config — the publishable Stripe key for the browser.
-// (The secret key stays server-side and is never sent to the client.)
+// GET /portal/payment-config — whether online card payments are available.
 router.get('/payment-config', async (req, res) => {
-  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY || null;
-  const enabled = !!(process.env.STRIPE_SECRET_KEY && publishableKey);
-  res.json({ enabled, publishableKey });
+  res.json({ enabled: helcim.configured(), provider: 'helcim' });
 });
 
-// Remaining balance on an invoice, in cents.
-async function invoiceBalanceCents(invoice) {
+// Remaining balance on an invoice, in dollars (Helcim charges in dollars).
+async function invoiceBalanceDollars(invoice) {
   const existing = await findWhere('payments', 'invoice_id', invoice.id);
   const alreadyPaid = existing.reduce((s, p) => s + (p.amount || 0), 0);
-  const balance = Math.max(0, (invoice.total || 0) - alreadyPaid);
-  return Math.round(balance * 100);
+  return Math.max(0, Math.round(((invoice.total || 0) - alreadyPaid) * 100) / 100);
 }
 
-// Returns (creating if needed) the Stripe Customer id for a customer record.
-async function ensureStripeCustomer(secretKey, customer) {
-  if (!customer) return null;
-  if (customer.stripe_customer_id) {
-    // Verify it exists for the current key (a test-mode id is invalid once you go live).
-    const chk = await fetch(`https://api.stripe.com/v1/customers/${customer.stripe_customer_id}`, { headers: { Authorization: `Bearer ${secretKey}` } });
-    if (chk.ok) { const c = await chk.json(); if (c.id && !c.deleted) return c.id; }
+// Record a successful card payment + mark the invoice paid if fully covered.
+async function recordCardPayment(invoice, { amount, reference, note }) {
+  const existing = await findWhere('payments', 'invoice_id', invoice.id);
+  if (!existing.some(p => p.reference === reference)) {
+    await create('payments', uuid(), {
+      invoice_id: invoice.id, amount: Number(amount) || 0, method: 'card',
+      reference, notes: note || 'Paid online via Helcim', paid_at: new Date().toISOString(),
+    });
   }
-  const body = new URLSearchParams();
-  if (customer.email) body.set('email', customer.email);
-  if (customer.name) body.set('name', customer.name);
-  body.set('metadata[customer_id]', customer.id);
-  const r = await fetch('https://api.stripe.com/v1/customers', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-  const cust = await r.json();
-  if (!r.ok || !cust.id) throw new Error('stripe customer create failed');
-  await update('customers', customer.id, { stripe_customer_id: cust.id });
-  return cust.id;
+  const total = (await findWhere('payments', 'invoice_id', invoice.id)).reduce((s, p) => s + (p.amount || 0), 0);
+  const paid = total >= (invoice.total || 0);
+  if (paid && invoice.status !== 'paid') await update('invoices', invoice.id, { status: 'paid' });
+  return paid ? 'paid' : 'partial';
 }
 
-// POST /portal/invoices/:id/create-intent — start a Stripe PaymentIntent for the balance.
-router.post('/invoices/:id/create-intent', async (req, res) => {
+// POST /portal/invoices/:id/helcim-initialize — start a HelcimPay.js checkout session.
+router.post('/invoices/:id/helcim-initialize', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
   if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  if (!helcim.configured()) return res.status(503).json({ error: 'Online payments are not set up yet.' });
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
-
-  const amountCents = await invoiceBalanceCents(invoice);
-  if (amountCents <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
+  const amount = await invoiceBalanceDollars(invoice);
+  if (amount <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
 
   const customer = records.find(c => c.id === invoice.customer_id) || records[0];
-  let custId = null;
-  try { custId = await ensureStripeCustomer(secretKey, customer); } catch (e) { console.error('[stripe] customer:', e.message); }
-
   try {
-    const body = new URLSearchParams();
-    body.set('amount', String(amountCents));
-    body.set('currency', 'usd');
-    body.set('payment_method_types[]', 'card');
-    body.set('metadata[invoice_id]', invoice.id);
-    body.set('description', `Invoice ${invoice.invoice_number || invoice.id} — customer portal`);
-    if (custId) { body.set('customer', custId); body.set('setup_future_usage', 'off_session'); }
-
-    const r = await fetch('https://api.stripe.com/v1/payment_intents', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
+    const session = await helcim.initialize({
+      amount,
+      invoiceNumber: invoice.invoice_number || invoice.id,
+      customerCode: customer?.helcim_customer_code || undefined,
     });
-    const pi = await r.json();
-    if (!r.ok || !pi.client_secret) {
-      console.error('[stripe] create intent failed:', r.status, JSON.stringify(pi.error || pi));
-      return res.status(502).json({ error: 'Could not start the payment. Please try again.' });
-    }
-    res.json({ clientSecret: pi.client_secret, paymentIntentId: pi.id, amount: amountCents });
+    // Stash the secretToken + expected amount server-side (keyed by checkoutToken),
+    // so the browser never sees it and can't forge the confirmation hash.
+    await create('helcim_sessions', session.checkoutToken, {
+      invoice_id: invoice.id, customer_id: customer?.id || null,
+      amount, secret_token: session.secretToken, created_at: new Date().toISOString(),
+    });
+    res.json({ checkoutToken: session.checkoutToken, amount });
   } catch (e) {
-    console.error('[stripe] create intent error:', e.message);
-    res.status(502).json({ error: 'The payment service is unavailable right now. Please try again shortly.' });
+    console.error('[helcim] initialize:', e.message);
+    res.status(502).json({ error: 'Could not start the payment. Please try again.' });
   }
 });
 
-// POST /portal/invoices/:id/confirm-payment — verify a PaymentIntent with Stripe, then record it.
-// The server confirms status directly with Stripe rather than trusting the browser.
-router.post('/invoices/:id/confirm-payment', async (req, res) => {
-  const { ids } = await myCustomerIds(req);
+// POST /portal/invoices/:id/helcim-confirm — validate a HelcimPay.js result server-side
+// (via the response hash + the server-held secret token), then record the payment.
+router.post('/invoices/:id/helcim-confirm', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
+  const { checkoutToken, data, hash } = req.body || {};
+  if (!checkoutToken || !data) return res.status(400).json({ error: 'Missing payment result.' });
 
-  const { paymentIntentId } = req.body || {};
-  if (!paymentIntentId) return res.status(400).json({ error: 'Missing payment reference.' });
+  const session = await getById('helcim_sessions', checkoutToken);
+  if (!session || session.invoice_id !== invoice.id) return res.status(400).json({ error: 'Payment session not found or expired.' });
 
-  try {
-    const r = await fetch(`https://api.stripe.com/v1/payment_intents/${paymentIntentId}`, {
-      headers: { Authorization: `Bearer ${secretKey}` },
-    });
-    const pi = await r.json();
-    if (!r.ok || !pi.id) return res.status(502).json({ error: 'Could not verify the payment.' });
-    if (pi.status !== 'succeeded') return res.status(402).json({ error: 'That payment has not completed.' });
-    if (pi.metadata?.invoice_id && pi.metadata.invoice_id !== invoice.id) return res.status(400).json({ error: 'Payment does not match this invoice.' });
-
-    // Record it once (guard against double-submits recording the same PaymentIntent twice).
-    const existing = await findWhere('payments', 'invoice_id', invoice.id);
-    if (!existing.some(p => p.reference === pi.id)) {
-      await create('payments', uuid(), {
-        invoice_id: invoice.id, amount: (pi.amount_received || pi.amount || 0) / 100, method: 'card',
-        reference: pi.id, notes: 'Paid online via Stripe', paid_at: new Date().toISOString(),
-      });
-    }
-    const total = (await findWhere('payments', 'invoice_id', invoice.id)).reduce((s, p) => s + (p.amount || 0), 0);
-    const paid = total >= (invoice.total || 0);
-    if (paid && invoice.status !== 'paid') await update('invoices', invoice.id, { status: 'paid' });
-    res.json({ ok: true, status: paid ? 'paid' : 'partial' });
-  } catch (e) {
-    console.error('[stripe] confirm error:', e.message);
-    res.status(502).json({ error: 'Could not verify the payment. If you were charged, please contact the office.' });
+  if (!helcim.validateHash(data, hash, session.secret_token)) {
+    return res.status(400).json({ error: 'Could not verify the payment. If you were charged, contact the office.' });
   }
+  if (String(data.status || '').toUpperCase() !== 'APPROVED') return res.status(402).json({ error: 'That payment did not go through.' });
+
+  // Save the Helcim customer code + card token so the customer can reuse the card.
+  const customer = records.find(c => c.id === invoice.customer_id) || records[0];
+  try {
+    if (customer && data.customerCode && !customer.helcim_customer_code) {
+      await update('customers', customer.id, { helcim_customer_code: data.customerCode });
+    }
+    if (customer && data.cardToken) {
+      const cards = await findWhere('payment_methods', 'customer_id', customer.id);
+      if (!cards.some(c => c.card_token === data.cardToken)) {
+        await create('payment_methods', uuid(), {
+          customer_id: customer.id, card_token: data.cardToken,
+          brand: data.cardType || 'card', last4: String(data.cardNumber || '').slice(-4),
+          customer_code: data.customerCode || customer.helcim_customer_code || null,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+  } catch (e) { console.error('[helcim] save card:', e.message); }
+
+  await remove('helcim_sessions', checkoutToken).catch(() => {});
+  const status = await recordCardPayment(invoice, {
+    amount: Number(data.amount) || session.amount, reference: String(data.transactionId || checkoutToken), note: 'Paid online via Helcim',
+  });
+  res.json({ ok: true, status });
 });
 
-// GET /portal/payment-methods — the customer's saved cards (for one-tap repeat payment).
+// POST /portal/invoices/:id/pay-link — a one-time link to pay this invoice in a browser
+// (used by the mobile app, where HelcimPay.js can't render inside capacitor://localhost).
+router.post('/invoices/:id/pay-link', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  const token = uuid() + uuid().replace(/-/g, '');
+  await create('pay_tokens', token, {
+    invoice_id: invoice.id, customer_id: invoice.customer_id, used: false,
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), created_at: new Date().toISOString(),
+  });
+  const site = (await settings.get('business_website')) || 'https://clarkemechanicalinc.org';
+  res.json({ url: `${site.replace(/\/+$/, '')}/pay/${token}` });
+});
+
+// GET /portal/invoices/:id/payment-status — poll after a browser payment.
+router.get('/invoices/:id/payment-status', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  res.json({ paid: invoice.status === 'paid' });
+});
+
+// GET /portal/payment-methods — the customer's saved cards (Helcim vault tokens).
 router.get('/payment-methods', async (req, res) => {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) return res.json([]);
+  if (!helcim.configured()) return res.json([]);
   const { records } = await myCustomerIds(req);
   const customer = records[0];
-  if (!customer?.stripe_customer_id) return res.json([]);
-  try {
-    const r = await fetch(`https://api.stripe.com/v1/payment_methods?customer=${customer.stripe_customer_id}&type=card`, {
-      headers: { Authorization: `Bearer ${secretKey}` },
-    });
-    const data = await r.json();
-    res.json((data.data || []).map(pm => ({
-      id: pm.id, brand: pm.card?.brand || 'card', last4: pm.card?.last4 || '',
-      exp_month: pm.card?.exp_month || null, exp_year: pm.card?.exp_year || null,
-    })));
-  } catch (e) { console.error('[stripe] list pm:', e.message); res.json([]); }
+  if (!customer) return res.json([]);
+  const cards = await findWhere('payment_methods', 'customer_id', customer.id);
+  res.json(cards.map(c => ({ id: c.id, brand: c.brand || 'card', last4: c.last4 || '' })));
 });
 
-// POST /portal/invoices/:id/pay-saved — charge a saved card (off-session).
+// POST /portal/invoices/:id/pay-saved — charge a saved Helcim card token.
 router.post('/invoices/:id/pay-saved', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
   if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
+  if (!helcim.configured()) return res.status(503).json({ error: 'Online payments are not set up yet.' });
   const { paymentMethodId } = req.body || {};
   if (!paymentMethodId) return res.status(400).json({ error: 'Choose a saved card.' });
   const customer = records.find(c => c.id === invoice.customer_id) || records[0];
-  if (!customer?.stripe_customer_id) return res.status(400).json({ error: 'No saved card on file.' });
-  const amountCents = await invoiceBalanceCents(invoice);
-  if (amountCents <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
+  const card = (await findWhere('payment_methods', 'customer_id', customer?.id)).find(c => c.id === paymentMethodId);
+  if (!card) return res.status(400).json({ error: 'No saved card on file.' });
+  const amount = await invoiceBalanceDollars(invoice);
+  if (amount <= 0) return res.status(400).json({ error: 'Nothing left to pay on this invoice.' });
   try {
-    const body = new URLSearchParams();
-    body.set('amount', String(amountCents));
-    body.set('currency', 'usd');
-    body.set('customer', customer.stripe_customer_id);
-    body.set('payment_method', paymentMethodId);
-    body.set('off_session', 'true');
-    body.set('confirm', 'true');
-    body.set('metadata[invoice_id]', invoice.id);
-    body.set('description', `Invoice ${invoice.invoice_number || invoice.id} — saved card`);
-    const r = await fetch('https://api.stripe.com/v1/payment_intents', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
+    const txn = await helcim.purchaseWithToken({
+      amount, cardToken: card.card_token,
+      customerCode: card.customer_code || customer?.helcim_customer_code || undefined,
+      invoiceNumber: invoice.invoice_number || invoice.id,
     });
-    const pi = await r.json();
-    if (!r.ok || pi.status !== 'succeeded') {
-      console.error('[stripe] saved pay:', r.status, JSON.stringify(pi.error || pi.status));
-      return res.status(402).json({ error: 'That card needs verification — please enter your card details below to pay.' });
-    }
-    const existing = await findWhere('payments', 'invoice_id', invoice.id);
-    if (!existing.some(p => p.reference === pi.id)) {
-      await create('payments', uuid(), {
-        invoice_id: invoice.id, amount: (pi.amount_received || pi.amount || 0) / 100, method: 'card',
-        reference: pi.id, notes: 'Paid online via Stripe (saved card)', paid_at: new Date().toISOString(),
-      });
-    }
-    const total = (await findWhere('payments', 'invoice_id', invoice.id)).reduce((s, p) => s + (p.amount || 0), 0);
-    const paid = total >= (invoice.total || 0);
-    if (paid && invoice.status !== 'paid') await update('invoices', invoice.id, { status: 'paid' });
-    res.json({ ok: true, status: paid ? 'paid' : 'partial' });
+    const status = await recordCardPayment(invoice, {
+      amount: Number(txn.amount) || amount, reference: String(txn.transactionId), note: 'Paid online via Helcim (saved card)',
+    });
+    res.json({ ok: true, status });
   } catch (e) {
-    console.error('[stripe] saved pay error:', e.message);
-    res.status(502).json({ error: 'Could not process the payment. Please try again.' });
+    console.error('[helcim] saved pay:', e.message);
+    res.status(402).json({ error: 'That card could not be charged — please enter your card details below to pay.' });
   }
 });
 
-// DELETE /portal/payment-methods/:pmId — remove a saved card.
+// DELETE /portal/payment-methods/:pmId — remove a saved card from the vault list.
 router.delete('/payment-methods/:pmId', async (req, res) => {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) return res.status(503).json({ error: 'Online payments are not set up yet.' });
   const { records } = await myCustomerIds(req);
   const customer = records[0];
-  if (!customer?.stripe_customer_id) return res.status(404).json({ error: 'Not found' });
-  try {
-    const pmR = await fetch(`https://api.stripe.com/v1/payment_methods/${req.params.pmId}`, { headers: { Authorization: `Bearer ${secretKey}` } });
-    const pm = await pmR.json();
-    if (!pmR.ok || pm.customer !== customer.stripe_customer_id) return res.status(404).json({ error: 'Card not found' });
-    await fetch(`https://api.stripe.com/v1/payment_methods/${req.params.pmId}/detach`, { method: 'POST', headers: { Authorization: `Bearer ${secretKey}` } });
-    res.json({ ok: true });
-  } catch (e) { console.error('[stripe] detach:', e.message); res.status(502).json({ error: 'Could not remove the card.' }); }
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  const card = (await findWhere('payment_methods', 'customer_id', customer.id)).find(c => c.id === req.params.pmId);
+  if (!card) return res.status(404).json({ error: 'Card not found' });
+  await remove('payment_methods', card.id).catch(() => {});
+  res.json({ ok: true });
 });
 
 // POST /portal/invoices/:id/pay-cash — customer signals they'll pay in cash; email the office.

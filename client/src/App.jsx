@@ -27,6 +27,7 @@ import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
 import Appointments from './pages/Appointments';
+import PayLink from './pages/PayLink';
 import Account from './pages/Account';
 import MoreCustomer from './pages/MoreCustomer';
 import AboutClarke from './pages/AboutClarke';
@@ -125,6 +126,7 @@ export default function App() {
           </Route>
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/pay/:token" element={<PayLink />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/customers" element={<Customers />} />
