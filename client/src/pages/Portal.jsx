@@ -74,6 +74,13 @@ export default function Portal() {
 
   const toggle = (id) => setExpanded(e => (e === id ? null : id));
 
+  // "Pay Balance" opens the oldest unpaid invoice; if none, just show the invoices tab.
+  function payBalance() {
+    const unpaid = invoices.find(i => i.status !== 'paid' && i.status !== 'cancelled');
+    if (unpaid) setPayInvoice(unpaid);
+    else setTab('invoices');
+  }
+
   async function respondQuote(quote, decision) {
     const id = typeof quote === 'string' ? quote : quote.id;
     try {
@@ -238,48 +245,72 @@ export default function Portal() {
                     <p className="text-sm font-medium text-slate-500">No upcoming appointments</p>
                   )}
                 </div>
-                {nextAppt && <span className="ml-auto shrink-0"><Badge status={nextAppt.status} /></span>}
+                {nextAppt && (
+                  <div className="ml-auto shrink-0 flex items-center gap-2">
+                    <Badge status={nextAppt.status} />
+                    <Btn size="sm" variant="outline" onClick={() => navigate('/appointments')}>View Details</Btn>
+                  </div>
+                )}
               </div>
             </Card>
           </div>
 
-          {/* Contact card */}
-          <Card className="p-5 mb-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
-                <span className="flex items-center gap-2">
-                  <Mail size={14} className="text-slate-400" />{me.email}
-                  {me.profile?.email_verified
-                    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
-                    : <button onClick={() => setVerifyKind('email')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
-                </span>
-                {me.profile?.phone && (
-                  <span className="flex items-center gap-2">
-                    <Phone size={14} className="text-slate-400" />{me.profile.phone}
-                    {me.profile?.phone_verified
-                      ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
-                      : <button onClick={() => setVerifyKind('phone')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
-                  </span>
-                )}
-                {(me.profile?.address || me.profile?.city) && <span className="flex items-center gap-2"><MapPin size={14} className="text-slate-400" />{[me.profile.address, me.profile.city, me.profile.state].filter(Boolean).join(', ')}</span>}
-              </div>
-            </div>
-          </Card>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {[
+              { label: 'Active Services', value: me.stats.openJobs, icon: <Wrench size={16} />, color: 'text-blue-600 bg-blue-50', onClick: () => navigate('/appointments') },
+              { label: 'Open Requests', value: jobs.filter(j => j.status === 'pending').length, icon: <ClipboardList size={16} />, color: 'text-amber-600 bg-amber-50', onClick: () => navigate('/appointments') },
+              { label: 'Balance Due', value: `$${Number(me.stats.balanceDue || 0).toFixed(2)}`, icon: <DollarSign size={16} />, color: me.stats.balanceDue > 0 ? 'text-orange-600 bg-orange-50' : 'text-emerald-600 bg-emerald-50', valueClass: me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600', onClick: () => setTab('invoices') },
+              { label: 'Invoices', value: me.stats.invoiceCount, icon: <FileText size={16} />, color: 'text-violet-600 bg-violet-50', onClick: () => setTab('invoices') },
+            ].map(s => (
+              <button key={s.label} type="button" onClick={s.onClick}
+                className="rounded-xl border border-slate-200 bg-white p-3 flex flex-col items-center gap-1 hover:border-blue-300 active:scale-[0.98] transition-all">
+                <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.color}`}>{s.icon}</span>
+                <span className={`text-lg font-bold tabular-nums leading-tight ${s.valueClass || 'text-slate-900'}`}>{s.value}</span>
+                <span className="text-[11px] font-medium text-slate-500 text-center leading-tight">{s.label}</span>
+              </button>
+            ))}
+          </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-medium text-slate-500">Active Services</p>
-              <p className="text-2xl font-bold text-slate-900 tabular-nums leading-tight">{me.stats.openJobs}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-              <p className="text-xs font-medium text-slate-500">Invoices</p>
-              <p className="text-2xl font-bold text-slate-900 tabular-nums leading-tight">{me.stats.invoiceCount}</p>
-            </div>
-            <button type="button" onClick={() => setTab('invoices')} title="View invoices"
-              className="col-span-2 text-left rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-blue-300 transition-colors">
-              <p className="text-xs font-medium text-slate-500">Balance Due{me.stats.balanceDue > 0 ? ' · tap to view' : ''}</p>
-              <p className={`text-2xl font-bold tabular-nums leading-tight ${me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>${Number(me.stats.balanceDue || 0).toFixed(2)}</p>
-            </button>
+          {/* Active service requests + billing */}
+          <div className="grid lg:grid-cols-3 gap-6 mb-6">
+            <Card className="lg:col-span-2">
+              <CardHeader title="Active Service Requests" icon={<ClipboardList size={15} />} />
+              {(() => {
+                const active = jobs.filter(j => !['completed', 'cancelled'].includes(j.status));
+                if (active.length === 0) return <Empty icon={<ClipboardList size={22} />} title="No active requests" message="Your open service requests will appear here." />;
+                return (
+                  <div className="divide-y divide-slate-100">
+                    {active.slice(0, 5).map(j => (
+                      <div key={j.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{j.job_type || j.title || 'Service request'}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge status={j.status} />
+                            {j.scheduled_date && <span className="text-xs text-slate-500">{new Date(j.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                          </div>
+                        </div>
+                        <Btn size="sm" variant="outline" onClick={() => navigate('/appointments')}>View Request</Btn>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </Card>
+
+            <Card className="p-5 flex flex-col justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5"><DollarSign size={14} className="text-slate-400" /> Billing</p>
+                <p className="text-xs text-slate-500 mt-4">Balance Due</p>
+                <p className={`text-3xl font-bold tabular-nums leading-tight ${me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>{money(me.stats.balanceDue)}</p>
+              </div>
+              <div className="mt-4">
+                {me.stats.balanceDue > 0 ? (
+                  <Btn onClick={payBalance} className="w-full justify-center"><CreditCard size={15} /> Pay Balance</Btn>
+                ) : (
+                  <p className="text-sm text-emerald-600 font-medium flex items-center gap-1.5"><CheckCircle size={15} /> You're all paid up</p>
+                )}
+              </div>
+            </Card>
           </div>
           </>)}
 
@@ -535,6 +566,29 @@ export default function Portal() {
                   </div>
                   <p className="text-[10px] text-slate-400 text-center mt-2">{supportChatId ? 'A team member will reply here.' : 'AI can make mistakes and can’t access your account. Ask for an agent anytime.'}</p>
                 </div>
+              </div>
+            </Card>
+          )}
+
+          {!inSupport && (
+            <Card className="mt-6">
+              <CardHeader title="Account Information" icon={<UserCircle size={15} />} />
+              <div className="p-5 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-600">
+                <span className="flex items-center gap-2">
+                  <Mail size={14} className="text-slate-400" />{me.email}
+                  {me.profile?.email_verified
+                    ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
+                    : <button onClick={() => setVerifyKind('email')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
+                </span>
+                {me.profile?.phone && (
+                  <span className="flex items-center gap-2">
+                    <Phone size={14} className="text-slate-400" />{me.profile.phone}
+                    {me.profile?.phone_verified
+                      ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
+                      : <button onClick={() => setVerifyKind('phone')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
+                  </span>
+                )}
+                {(me.profile?.address || me.profile?.city) && <span className="flex items-center gap-2"><MapPin size={14} className="text-slate-400" />{[me.profile.address, me.profile.city, me.profile.state].filter(Boolean).join(', ')}</span>}
               </div>
             </Card>
           )}
