@@ -203,24 +203,45 @@ export default function Portal() {
       ) : (
         <>
           {!inSupport && (<>
-          <button type="button" onClick={() => navigate('/appointments')} className="block w-full text-left">
-            <Card className="p-4 mb-6 border-l-4 border-blue-500 bg-blue-50/40 hover:bg-blue-50 transition-colors">
+          {/* Quick actions */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {[
+              { label: 'Request service', icon: <Wrench size={20} />, color: 'bg-blue-50 text-blue-600', onClick: () => setReqModal(true) },
+              { label: 'Appointments', icon: <Calendar size={20} />, color: 'bg-violet-50 text-violet-600', onClick: () => navigate('/appointments') },
+              { label: 'Pay Bill', icon: <CreditCard size={20} />, color: 'bg-emerald-50 text-emerald-600', onClick: () => setTab('invoices') },
+              { label: 'Contact us', icon: <MessageSquare size={20} />, color: 'bg-slate-100 text-slate-600', onClick: () => setTab('help') },
+            ].map(a => (
+              <button key={a.label} type="button" onClick={a.onClick}
+                className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl border border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40 active:scale-[0.98] transition-all">
+                <span className={`w-10 h-10 rounded-xl flex items-center justify-center ${a.color}`}>{a.icon}</span>
+                <span className="text-xs font-medium text-slate-700 text-center leading-tight">{a.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="w-full">
+            <Card className="p-4 mb-6 border-l-4 border-blue-500 bg-blue-50/40">
               <div className="flex items-center gap-3">
                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 shrink-0"><Calendar size={18} /></div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{nextAppt ? 'Next appointment' : 'Appointments'}</p>
-                  <p className="text-sm font-medium text-slate-800 truncate">
-                    {nextAppt
-                      ? `${nextAppt.title} · ${new Date(nextAppt.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${nextAppt.scheduled_time ? ` at ${nextAppt.scheduled_time}` : ''}`
-                      : 'View your upcoming visits and service history'}
-                  </p>
+                  {nextAppt ? (
+                    <>
+                      <p className="text-sm font-semibold text-slate-800 truncate">
+                        {new Date(nextAppt.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}{nextAppt.scheduled_time ? ` · ${nextAppt.scheduled_time}` : ''}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {nextAppt.job_type || nextAppt.title}{nextAppt.technician_name ? ` · ${nextAppt.technician_name}` : ' · Technician TBD'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-medium text-slate-500">No upcoming appointments</p>
+                  )}
                 </div>
-                {nextAppt
-                  ? <span className="ml-auto shrink-0"><Badge status={nextAppt.status} /></span>
-                  : <ChevronDown size={16} className="ml-auto shrink-0 text-slate-400 -rotate-90" />}
+                {nextAppt && <span className="ml-auto shrink-0"><Badge status={nextAppt.status} /></span>}
               </div>
             </Card>
-          </button>
+          </div>
 
           {/* Contact card */}
           <Card className="p-5 mb-6">

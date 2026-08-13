@@ -76,6 +76,23 @@ router.get('/availability', async (req, res) => {
 
 router.get('/me', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
+
+  // Single source of truth: the customer edits their phone in My Account (the users
+  // record). Mirror it onto their customer record(s) so the whole portal, the office,
+  // and SMS verification all use the same current number. Self-heals any old drift.
+  try {
+    const authUser = await getById('users', req.user.id);
+    const authPhone = authUser?.phone ? String(authUser.phone).trim() : '';
+    if (authPhone) {
+      for (const c of records) {
+        if ((c.phone || '') !== authPhone) {
+          await update('customers', c.id, { phone: authPhone, phone_verified: false, phone_verify_code: null, phone_verify_expires: null });
+          c.phone = authPhone; c.phone_verified = false; c.phone_verify_code = null;
+        }
+      }
+    }
+  } catch (e) { console.error('[portal] phone reconcile:', e.message); }
+
   let openJobs = 0, balanceDue = 0, invoiceCount = 0;
   if (ids.length) {
     const [jobs, invoices] = await Promise.all([

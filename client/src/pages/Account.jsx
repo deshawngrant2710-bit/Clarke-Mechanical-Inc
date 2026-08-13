@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import toast from 'react-hot-toast';
-import { User, Mail, Phone, Lock, LogOut, Trash2, ShieldCheck, Save, ChevronDown } from 'lucide-react';
+import { User, Mail, Phone, Lock, LogOut, Trash2, ShieldCheck, Save, ChevronDown, CheckCircle, AlertCircle } from 'lucide-react';
 
 const roleLabel = { admin: 'Administrator', office: 'Office', technician: 'Technician', customer: 'Customer' };
 
@@ -19,6 +19,12 @@ export default function Account() {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [savingPw, setSavingPw] = useState(false);
 
+  const isCustomer = user?.role === 'customer';
+  const [phoneVerified, setPhoneVerified] = useState(true);
+  const [verifyStage, setVerifyStage] = useState(null); // null | 'sent'
+  const [code, setCode] = useState('');
+  const [verifyBusy, setVerifyBusy] = useState(false);
+
   // Pull the freshest account info on open (in case it changed elsewhere).
   useEffect(() => {
     api.get('/auth/me').then(r => {
@@ -26,6 +32,7 @@ export default function Account() {
       setPhone(r.data.phone || '');
       updateUser({ name: r.data.name, phone: r.data.phone });
     }).catch(() => {});
+    if (isCustomer) api.get('/portal/me').then(r => setPhoneVerified(!!r.data?.profile?.phone_verified)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -34,14 +41,39 @@ export default function Account() {
   async function saveProfile(e) {
     e.preventDefault();
     if (!name.trim()) return toast.error('Name is required');
+    const phoneChanged = phone.trim() !== (user?.phone || '');
     setSavingProfile(true);
     try {
       const { data } = await api.put('/auth/me', { name: name.trim(), phone: phone.trim() });
       updateUser({ name: data.name, phone: data.phone });
-      toast.success('Account updated');
+      // Changing the number resets its verification — the new number must be re-verified.
+      if (isCustomer && phoneChanged) { setPhoneVerified(false); setVerifyStage(null); setCode(''); }
+      toast.success(isCustomer && phoneChanged && phone.trim() ? 'Saved — please verify your new number below.' : 'Account updated');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Could not save your changes');
     } finally { setSavingProfile(false); }
+  }
+
+  async function sendPhoneCode() {
+    setVerifyBusy(true);
+    try {
+      await api.post('/portal/verify/phone/send');
+      setVerifyStage('sent');
+      toast.success('Code texted to your phone');
+    } catch (e) {
+      if (e.response?.status === 503) toast.error(e.response?.data?.message || 'Text verification isn’t enabled yet.');
+      else toast.error(e.response?.data?.error || 'Could not send the code');
+    } finally { setVerifyBusy(false); }
+  }
+  async function confirmPhoneCode() {
+    if (code.trim().length < 4) return toast.error('Enter the code we texted you');
+    setVerifyBusy(true);
+    try {
+      await api.post('/portal/verify/phone/confirm', { code: code.trim() });
+      setPhoneVerified(true); setVerifyStage(null); setCode('');
+      toast.success('Phone verified');
+    } catch (e) { toast.error(e.response?.data?.error || 'That code did not work'); }
+    finally { setVerifyBusy(false); }
   }
 
   async function changePassword(e) {
@@ -106,10 +138,32 @@ export default function Account() {
         </div>
 
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone number</label>
-        <div className="relative mb-4">
+        <div className="relative mb-1.5">
           <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={phone} onChange={e => setPhone(e.target.value)} className={inputCls} placeholder="(555) 000-0000" type="tel" />
         </div>
+        {/* Phone verification (customers) — the number must be verified by SMS. */}
+        {isCustomer && phone.trim() && (
+          <div className="mb-4">
+            {dirty ? (
+              <p className="text-[11px] text-slate-400">Save your changes to verify this number.</p>
+            ) : phoneVerified ? (
+              <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle size={12} /> Phone verified</p>
+            ) : verifyStage === 'sent' ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} inputMode="numeric" maxLength={6}
+                  placeholder="6-digit code" className="w-28 px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                <button type="button" onClick={confirmPhoneCode} disabled={verifyBusy} className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-3 py-1.5 rounded-lg">{verifyBusy ? 'Verifying…' : 'Verify'}</button>
+                <button type="button" onClick={sendPhoneCode} disabled={verifyBusy} className="text-xs font-medium text-slate-500 hover:text-slate-700">Resend</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-amber-600 flex items-center gap-1"><AlertCircle size={12} /> Not verified.</span>
+                <button type="button" onClick={sendPhoneCode} disabled={verifyBusy} className="text-xs font-semibold text-blue-600 hover:text-blue-700">{verifyBusy ? 'Sending…' : 'Verify by text'}</button>
+              </div>
+            )}
+          </div>
+        )}
 
         <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
         <div className="relative mb-1">

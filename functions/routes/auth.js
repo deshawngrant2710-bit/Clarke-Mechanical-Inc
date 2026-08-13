@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
-const { db, list, findOne, create, getById, update, remove } = require('../lib/db');
+const { db, list, findOne, findWhere, create, getById, update, remove } = require('../lib/db');
 const { JWT_SECRET, authMiddleware } = require('../middleware/auth');
 const { referralCode } = require('../lib/referral');
 const { sendMail, render } = require('../lib/email');
@@ -181,6 +181,30 @@ router.put('/me', authMiddleware, async (req, res) => {
     if ('phone' in req.body) patch.phone = req.body.phone ? String(req.body.phone).trim() : null;
     if (!Object.keys(patch).length) return res.status(400).json({ error: 'Nothing to update' });
     const saved = await update('users', req.user.id, patch);
+
+    // Keep the linked customer record(s) in sync. A customer can have more than one
+    // matching record (office-created + self-registered), and the portal reads
+    // records[0] — so we must update EVERY record with this email, not just one.
+    // If the phone changed, the new number is unverified and must be re-verified by
+    // SMS; the old pending verification is cleared so it targets the new number.
+    try {
+      const email = String(saved.email || '').toLowerCase();
+      if (email) {
+        const customers = await findWhere('customers', 'email', email);
+        for (const customer of customers) {
+          const cPatch = {};
+          if ('name' in patch) cPatch.name = patch.name;
+          if ('phone' in patch && (customer.phone || null) !== (patch.phone || null)) {
+            cPatch.phone = patch.phone || null;
+            cPatch.phone_verified = false;
+            cPatch.phone_verify_code = null;
+            cPatch.phone_verify_expires = null;
+          }
+          if (Object.keys(cPatch).length) await update('customers', customer.id, cPatch);
+        }
+      }
+    } catch (e) { console.error('[auth] customer sync failed:', e.message); }
+
     res.json({ id: saved.id, name: saved.name, email: saved.email, role: saved.role, phone: saved.phone || null });
   } catch (e) {
     console.error(e);
