@@ -167,3 +167,8 @@ The website is currently running an **older version** than your phone. When you 
 - Backend: `POST /portal/invoices/:id/pay-link` issues a one-time token link (`/pay/<token>`, 1h expiry); `GET /portal/invoices/:id/payment-status` for polling. New public `functions/routes/pay.js` (`/api/pay/:token` get/initialize/confirm) — token is the auth, no login needed — runs on the registered website domain so HelcimPay.js renders.
 - Frontend: public `/pay/:token` page (`PayLink.jsx`) renders HelcimPay.js. `PayInvoiceModal` now branches: website pays in-page; the **mobile app** opens the pay-link in the browser (`window.open`) and re-checks payment status when the app regains focus (plus an "I've completed the payment" button).
 - Shared `lib/helcimPay.js` loader.
+
+## Professional customer statement
+- `printDoc.js`: new `buildStatementHtml` — branded statement (blue top bar, logo, business name/address/phone/email/website, "STATEMENT" + date, "Statement For" customer block, branded invoice table, highlighted "Total balance due", footer) matching the invoice/receipt design.
+- CustomerDetail "Statement" button now fetches `/auth/public-info` for business branding and renders the branded statement (replaces the plain HTML version).
+- Added a stored **Business address** setting: `settings.js` (GET + textKeys), `/auth/public-info` now returns business_email/website/address, and a "Business address" field on the Settings page. Used on the statement (and available for future invoice branding).

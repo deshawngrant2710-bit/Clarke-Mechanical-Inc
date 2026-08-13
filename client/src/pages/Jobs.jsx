@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
@@ -46,19 +47,27 @@ function PaymentChip({ invoice, jobStatus }) {
 }
 
 function AssignSheet({ job, techs, onClose, onAssign }) {
+  // Lock background scroll + hide the bottom nav while the sheet is open.
+  useEffect(() => {
+    if (!job) return undefined;
+    document.documentElement.classList.add('modal-open');
+    return () => document.documentElement.classList.remove('modal-open');
+  }, [job]);
   if (!job) return null;
-  return (
-    <div className="lg:hidden fixed inset-0 z-50">
+  // Render to <body> so the fixed overlay is positioned against the viewport and
+  // isn't affected by any transformed/scrolling ancestor on the Jobs page.
+  return createPortal(
+    <div className="lg:hidden fixed inset-0 z-[80]">
       <div className="absolute inset-0 bg-slate-900/50 animate-fade-in" onClick={onClose} />
-      <div className="absolute inset-x-0 bottom-0 bg-white rounded-t-2xl shadow-2xl animate-slide-up max-h-[70vh] flex flex-col">
+      <div className="absolute inset-x-0 bottom-0 w-full max-w-full bg-white rounded-t-2xl shadow-2xl animate-slide-up max-h-[80vh] flex flex-col safe-bottom">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <div>
+          <div className="min-w-0">
             <h3 className="font-semibold text-slate-800">Assign technician</h3>
             <p className="text-xs text-slate-400 truncate">{job.title}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100"><X size={18} /></button>
+          <button onClick={onClose} className="p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100 shrink-0"><X size={18} /></button>
         </div>
-        <div className="overflow-y-auto overscroll-contain p-3 safe-bottom space-y-1.5">
+        <div className="overflow-y-auto overscroll-contain p-3 space-y-1.5">
           <button onClick={() => onAssign(job, '')} className="w-full text-left px-3 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-500 hover:bg-slate-50">Unassign</button>
           {techs.map(t => {
             const current = job.technician_id === t.id;
@@ -66,14 +75,15 @@ function AssignSheet({ job, techs, onClose, onAssign }) {
               <button key={t.id} onClick={() => onAssign(job, t.id)}
                 className={`w-full flex items-center justify-between gap-2 px-3 py-3 rounded-xl border text-sm ${current ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}>
                 <span className="font-medium text-slate-800 truncate">{t.name}</span>
-                {current && <span className="text-xs text-blue-500">Current</span>}
+                {current && <span className="text-xs text-blue-500 shrink-0">Current</span>}
               </button>
             );
           })}
           {techs.length === 0 && <p className="text-sm text-slate-400 text-center py-4">No technicians yet</p>}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -149,6 +149,106 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
   return html;
 }
 
+// Builds a branded customer account statement (a summary of a customer's invoices
+// and outstanding balance), styled to match the invoice/receipt documents.
+export function buildStatementHtml({ business = {}, customer = {}, invoices = [] }, { autoPrint = true } = {}) {
+  const bizName = business.name || 'Clarke Mechanical Inc.';
+  const owe = (i) => (['paid', 'cancelled'].includes(String(i.status || '').toLowerCase()) ? 0 : (i.total || 0));
+  const outstanding = invoices.reduce((s, i) => s + owe(i), 0);
+  const custLoc = [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
+  const bizAddr = (business.address || '').split('\n').map(esc).join('<br>');
+
+  const rows = invoices.length
+    ? invoices.map(i => {
+        const bal = owe(i);
+        return `<tr>
+          <td class="desc">${esc(i.invoice_number || '')}</td>
+          <td>${esc(i.issue_date || '')}</td>
+          <td>${esc(i.due_date || '')}</td>
+          <td class="r">${money(i.total)}</td>
+          <td style="text-transform:capitalize">${esc(i.status || '')}</td>
+          <td class="r" style="${bal > 0 ? 'color:#b45309;font-weight:700' : 'color:#94a3b8'}">${money(bal)}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td class="desc" colspan="6" style="color:#94a3b8">No invoices on file</td></tr>';
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Statement — ${esc(customer.name || bizName)}</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color: #1e293b; font-size: 13px; line-height: 1.5; }
+    .topbar { height: 7px; background: linear-gradient(90deg, #1e3a8a, #3b82f6); }
+    .page { max-width: 780px; margin: 0 auto; padding: 46px 44px; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 36px; }
+    .brand img { height: 44px; margin-bottom: 10px; display: block; }
+    .brand .biz { font-weight: 800; font-size: 15px; color: #0f172a; }
+    .brand .biz-meta { color: #64748b; font-size: 12px; margin-top: 2px; }
+    .doc-title { text-align: right; }
+    .doc-title h1 { margin: 0; font-size: 30px; letter-spacing: 3px; color: #1d4ed8; font-weight: 800; }
+    .doc-title .num { margin-top: 4px; font-size: 13px; color: #64748b; }
+    .parties { display: flex; justify-content: space-between; gap: 32px; margin-bottom: 26px; }
+    .label { text-transform: uppercase; font-size: 10px; letter-spacing: .08em; color: #94a3b8; margin-bottom: 6px; font-weight: 700; }
+    .parties .name { font-weight: 700; color: #0f172a; }
+    .parties .line { color: #475569; }
+    .dates { text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; overflow: hidden; border-radius: 8px; }
+    thead th { text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: .06em; color: #fff; background: #1e3a8a; padding: 11px 12px; font-weight: 700; }
+    thead th.r { text-align: right; }
+    tbody td { padding: 10px 12px; border-bottom: 1px solid #eef2f7; }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    td.r { text-align: right; white-space: nowrap; }
+    td.desc { color: #0f172a; font-weight: 600; }
+    .grand { width: 300px; margin-left: auto; margin-top: 14px; background: #1e3a8a; color: #fff; border-radius: 8px; padding: 13px 16px; display: flex; justify-content: space-between; font-weight: 800; font-size: 16px; }
+    .thanks { margin-top: 34px; font-size: 14px; color: #0f172a; font-weight: 700; }
+    .foot { margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 16px; font-size: 11px; color: #94a3b8; text-align: center; }
+    @media print { .page { padding: 26px 30px; } tbody tr { page-break-inside: avoid; } }
+  </style></head><body>
+    <div class="topbar"></div>
+    <div class="page">
+      <div class="head">
+        <div class="brand">
+          <img src="${LOGO_URL}" alt="${esc(bizName)}" />
+          <div class="biz">${esc(bizName)}</div>
+          <div class="biz-meta">
+            ${bizAddr ? bizAddr + '<br>' : ''}
+            ${esc(business.phone || '')}${business.phone && business.email ? ' · ' : ''}${esc(business.email || '')}
+            ${business.website ? `<br>${esc(business.website)}` : ''}
+          </div>
+        </div>
+        <div class="doc-title">
+          <h1>STATEMENT</h1>
+          <div class="num">${esc(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</div>
+        </div>
+      </div>
+
+      <div class="parties">
+        <div class="col">
+          <div class="label">Statement For</div>
+          <div class="name">${esc(customer.name || '')}</div>
+          ${customer.email ? `<div class="line">${esc(customer.email)}</div>` : ''}
+          ${customer.phone ? `<div class="line">${esc(customer.phone)}</div>` : ''}
+          ${custLoc ? `<div class="line">${esc(custLoc)}</div>` : ''}
+        </div>
+        <div class="col dates">
+          <div class="label">Account Summary</div>
+          <div class="line">${invoices.length} invoice${invoices.length === 1 ? '' : 's'} on file</div>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th class="r">Total</th><th>Status</th><th class="r">Balance</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="grand"><span>Total balance due</span><span>${money(outstanding)}</span></div>
+
+      <div class="thanks">Thank you for your business!</div>
+      <div class="foot">${esc(bizName)}${business.phone ? ' · ' + esc(business.phone) : ''}${business.email ? ' · ' + esc(business.email) : ''}${business.website ? ' · ' + esc(business.website) : ''}</div>
+    </div>
+    ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
+  </body></html>`;
+}
+
 // Opens a new tab and triggers the print dialog (→ "Save as PDF").
 export function printDocument(opts) {
   const html = buildDocumentHtml(opts, { autoPrint: true });

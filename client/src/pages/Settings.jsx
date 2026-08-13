@@ -96,6 +96,7 @@ export default function Settings() {
             <Input label="Business name" value={data.business_name} onChange={set('business_name')} />
             <Input label="Public email" icon={<Mail size={15} />} value={data.business_email} onChange={set('business_email')} hint="Shown in email footers & reply-to" />
             <Input label="Phone" value={data.business_phone} onChange={set('business_phone')} />
+            <Input label="Business address" className="sm:col-span-2" value={data.business_address || ''} onChange={set('business_address')} hint="Shown on statements, invoices & receipts" placeholder="123 Main St, New York, NY 10001" />
             <Input label="Business hours" value={data.business_hours || ''} onChange={set('business_hours')} hint="Shown to customers in the portal" />
             <Input label="Website" value={data.business_website || ''} onChange={set('business_website')} hint="Shown in email footer (leave blank to hide)" placeholder="www.clarkemechanicalinc.org" />
             <Input label="Tagline" value={data.business_tagline || ''} onChange={set('business_tagline')} hint="Short slogan shown in email header & footer" />

@@ -171,7 +171,13 @@ export function TaskModal({ open, onClose, staff, customers, jobs, invoices, onD
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New Task" subtitle="Assign a to-do to a teammate" size="md">
+    <Modal open={open} onClose={onClose} title="New Task" subtitle="Assign a to-do to a teammate" size="md"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} loading={saving}>Add Task</Btn>
+        </div>
+      }>
       <div className="space-y-3">
         <Input label="Task *" value={form.title} onChange={set('title')} placeholder="e.g. Follow up with Shore View Coop about quote #1042" />
         <Textarea label="Details" value={form.notes} onChange={set('notes')} placeholder="e.g. installed a 1½&quot; valve today — quote a replacement of the second one" />
@@ -211,10 +217,6 @@ export function TaskModal({ open, onClose, staff, customers, jobs, invoices, onD
         <div className="grid grid-cols-2 gap-3">
           <Input label="Due date" type="date" value={form.due_date} onChange={set('due_date')} />
           <Input label="Reminder" type="datetime-local" value={form.remind_at} onChange={set('remind_at')} />
-        </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={save} loading={saving}>Add Task</Btn>
         </div>
       </div>
     </Modal>

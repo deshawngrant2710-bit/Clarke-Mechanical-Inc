@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Loader2, Check } from 'lucide-react';
 
 /* ================================================================== */
@@ -204,7 +205,9 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   }, [open]);
   if (!open) return null;
   const sizes = { sm: 'lg:max-w-md', md: 'lg:max-w-lg', lg: 'lg:max-w-2xl', xl: 'lg:max-w-4xl' };
-  return (
+  // Render to <body> so the fixed overlay is positioned against the viewport and is
+  // never trapped/collapsed by a transformed ancestor (e.g. a page's fade-in wrapper).
+  return createPortal(
     <div className="fixed inset-0 z-50 flex lg:items-start lg:justify-center lg:p-6">
       <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       {/* Full-screen sheet on phones; centered card on desktop. */}
@@ -228,7 +231,8 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

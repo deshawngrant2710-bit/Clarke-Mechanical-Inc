@@ -14,7 +14,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // GET /api/auth/public-info — unauthenticated business info for the login screen.
 router.get('/public-info', async (req, res) => {
   try {
-    res.json({ business_name: await settings.get('business_name'), business_phone: await settings.get('business_phone') });
+    res.json({
+      business_name: await settings.get('business_name'),
+      business_phone: await settings.get('business_phone'),
+      business_email: await settings.get('business_email'),
+      business_website: await settings.get('business_website'),
+      business_address: await settings.get('business_address'),
+    });
   } catch { res.json({ business_name: 'Clarke Mechanical Inc.', business_phone: '' }); }
 });
 

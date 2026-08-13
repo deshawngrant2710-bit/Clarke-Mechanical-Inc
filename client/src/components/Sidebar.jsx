@@ -109,16 +109,16 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
 
       {/* User (hidden in the native app — replaced by the bottom bar + My Account panel) */}
       <div className="px-4 py-4 border-t border-slate-800/80 safe-bottom sidebar-user">
-        <NavLink to="/account" onClick={onClose}
-          className="flex items-center gap-3 mb-3 -mx-1 px-1 py-1 rounded-lg hover:bg-slate-800/60 transition-colors">
-          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-xs font-bold uppercase shadow-md">
+        {/* Display only — not a link. Account is reached via the "My Account" nav item. */}
+        <div className="flex items-center gap-3 mb-3 px-1 py-1">
+          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-xs font-bold uppercase shadow-md shrink-0">
             {user?.name?.[0] || 'U'}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{user?.name}</p>
             <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
           </div>
-        </NavLink>
+        </div>
         <button
           onClick={handleLogout}
           className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"

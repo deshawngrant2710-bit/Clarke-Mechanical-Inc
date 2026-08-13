@@ -83,6 +83,8 @@ html.native-app * { scrollbar-width: none; }
 html.native-app .app-hamburger { display: none; }
 /* Hide the bottom nav while a modal (Create Job / Invoice / etc.) is open. */
 html.native-app.modal-open .bottom-nav-bar { display: none; }
+/* Lock the page behind while a modal/sheet is open (prevents background scroll). */
+html.modal-open .app-content { overflow: hidden; }
 /* Public full-screen pages (login/reset/privacy) get their own safe scroll area. */
 html.native-app .native-safe-y {
   height: 100dvh;
