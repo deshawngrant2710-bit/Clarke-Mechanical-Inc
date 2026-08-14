@@ -51,6 +51,7 @@ export default function Portal() {
   const [profileModal, setProfileModal] = useState(false);
   const [verifyKind, setVerifyKind] = useState(null);
   const [pwModal, setPwModal] = useState(false);
+  const [payBillOpen, setPayBillOpen] = useState(false);
 
   function load() {
     return Promise.all([
@@ -215,7 +216,7 @@ export default function Portal() {
             {[
               { label: 'Request service', icon: <Wrench size={20} />, color: 'bg-blue-50 text-blue-600', onClick: () => setReqModal(true) },
               { label: 'Appointments', icon: <Calendar size={20} />, color: 'bg-violet-50 text-violet-600', onClick: () => navigate('/appointments') },
-              { label: 'Pay Bill', icon: <CreditCard size={20} />, color: 'bg-emerald-50 text-emerald-600', onClick: () => setTab('invoices') },
+              { label: 'Pay Bill', icon: <CreditCard size={20} />, color: 'bg-emerald-50 text-emerald-600', onClick: () => setPayBillOpen(true) },
               { label: 'Contact us', icon: <MessageSquare size={20} />, color: 'bg-slate-100 text-slate-600', onClick: () => setTab('help') },
             ].map(a => (
               <button key={a.label} type="button" onClick={a.onClick}
@@ -599,6 +600,14 @@ export default function Portal() {
       <ProfileModal open={profileModal} onClose={() => setProfileModal(false)} profile={me?.profile} onDone={load} />
       <VerifyModal kind={verifyKind} target={verifyKind === 'phone' ? me?.profile?.phone : me?.email} onClose={() => setVerifyKind(null)} onDone={load} />
       <ChangePasswordModal open={pwModal} onClose={() => setPwModal(false)} />
+      <PayBillModal
+        open={payBillOpen}
+        onClose={() => setPayBillOpen(false)}
+        invoices={invoices}
+        business={me?.business}
+        balanceDue={me?.stats?.balanceDue || 0}
+        onPay={(inv) => { setPayBillOpen(false); setPayInvoice(inv); }}
+      />
       {payInvoice && <PayInvoiceModal invoice={payInvoice} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
       {viewDoc && (
         <Modal open={!!viewDoc} onClose={() => setViewDoc(null)} size="xl"
@@ -734,6 +743,57 @@ function ProfileModal({ open, onClose, profile, onDone }) {
           <button onClick={deleteAccount} className="text-xs font-medium text-red-600 hover:text-red-700">Delete my account</button>
           <p className="text-[11px] text-slate-400 mt-1">Permanently removes your login and portal access.</p>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PayBillModal({ open, onClose, invoices, business, balanceDue, onPay }) {
+  const unpaid = (invoices || []).filter(i => i.status !== 'paid' && i.status !== 'cancelled');
+  const total = balanceDue || unpaid.reduce((s, i) => s + Number(i.balance ?? i.total ?? 0), 0);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Pay Your Bill" size="md">
+      <div className="space-y-5">
+        {/* Balance summary banner */}
+        <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-500 text-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-blue-100 text-xs font-semibold uppercase tracking-wide">
+            <CreditCard size={14} /> Total balance due
+          </div>
+          <p className="text-4xl font-bold tabular-nums mt-1.5">{money(total)}</p>
+          {business?.name && <p className="text-xs text-blue-100 mt-2">Payable to {business.name}</p>}
+        </div>
+
+        {unpaid.length === 0 ? (
+          <div className="text-center py-6">
+            <div className="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle size={28} /></div>
+            <p className="text-sm font-semibold text-slate-800">You're all caught up</p>
+            <p className="text-xs text-slate-500 mt-1">You have no open invoices to pay right now.</p>
+          </div>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Open invoices</p>
+              <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                {unpaid.map(inv => (
+                  <div key={inv.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800">{inv.invoice_number}</p>
+                      <p className="text-xs text-slate-500">{inv.due_date ? `Due ${inv.due_date}` : 'Due on receipt'}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-sm font-semibold text-slate-800 tabular-nums">{money(inv.balance ?? inv.total)}</span>
+                      <Btn size="sm" onClick={() => onPay(inv)}><CreditCard size={14} /> Pay</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <Lock size={12} /> Pay by Zelle, bank transfer, check, or cash — tap Pay on an invoice for details.
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );

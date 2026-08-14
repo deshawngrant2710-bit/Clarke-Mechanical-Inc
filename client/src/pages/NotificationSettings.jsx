@@ -69,7 +69,7 @@ export default function NotificationSettings() {
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <Row icon={Mail} title="Email updates" desc="Appointment confirmations, reminders, receipts, and estimates." on={email} set={setEmail} />
-          <Row icon={MessageSquare} title="Text updates" desc="Text-message reminders and on-the-way alerts." on={sms} set={setSms} note="Text messaging is coming soon." />
+          <Row icon={MessageSquare} title="Text updates" desc="Text-message reminders and on-the-way alerts." on={sms} set={setSms} />
         </div>
       )}
       {saving && <p className="text-xs text-slate-400 mt-3">Saving…</p>}

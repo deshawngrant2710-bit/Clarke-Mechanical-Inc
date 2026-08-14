@@ -9,7 +9,7 @@ import { bottomNavForRole } from '../lib/roles';
 const CUSTOMER_TABS = [
   { label: 'Home', icon: Home, to: '/portal', tab: null },
   { label: 'Appointments', icon: CalendarDays, to: '/appointments', tab: 'appointments' },
-  { label: 'Invoices', icon: FileText, to: '/portal?tab=invoices', tab: 'invoices' },
+  { label: 'Invoices', icon: FileText, to: '/billing', tab: 'billing' },
   { label: 'More', icon: MoreHorizontal, to: '/more', tab: 'more' },
 ];
 
@@ -27,6 +27,7 @@ export default function BottomNav({ onOpenMenu = () => {} }) {
     const activeOf = (t) => {
       if (t.tab === 'more') return location.pathname.startsWith('/more') || location.pathname.startsWith('/about') || location.pathname.startsWith('/refer') || location.pathname.startsWith('/account');
       if (t.tab === 'appointments') return location.pathname.startsWith('/appointments');
+      if (t.tab === 'billing') return location.pathname.startsWith('/billing');
       return location.pathname === '/portal' && (t.tab ? curTab === t.tab : !curTab);
     };
     return (

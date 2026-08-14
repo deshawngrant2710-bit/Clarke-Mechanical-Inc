@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, NavLink, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Menu } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './context/OfflineContext';
 import Sidebar from './components/Sidebar';
@@ -26,6 +26,7 @@ import InspectionDetail from './pages/InspectionDetail';
 import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
+import CustomerInvoices from './pages/CustomerInvoices';
 import Appointments from './pages/Appointments';
 import PayLink from './pages/PayLink';
 import Account from './pages/Account';
@@ -82,21 +83,27 @@ function Layout() {
   if (!canAccess(user.role, location.pathname)) {
     return <Navigate to={homeForRole(user.role)} replace />;
   }
+  const isCustomer = user.role === 'customer';
   return (
     <div className="app-root flex min-h-dvh bg-slate-50">
-      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
+      {/* Customers get a clean top bar (no sidebar); staff keep the sidebar. */}
+      {!isCustomer && <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />}
       <div className="app-shell flex flex-col flex-1 min-w-0">
         <OfflineBanner />
-        {/* Mobile top bar — fixed in the shell (never scrolls under the Dynamic Island) */}
-        <header className="app-header lg:hidden shrink-0 bg-white border-b border-slate-200">
-          <div className="flex items-center gap-3 h-14 px-4">
-            <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="app-hamburger p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
-              <Menu size={22} />
-            </button>
-            <Logo variant="icon" height={26} />
-            <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
-          </div>
-        </header>
+        {isCustomer ? (
+          <CustomerTopBar name={user.name} />
+        ) : (
+          /* Mobile top bar — fixed in the shell (never scrolls under the Dynamic Island) */
+          <header className="app-header lg:hidden shrink-0 bg-white border-b border-slate-200">
+            <div className="flex items-center gap-3 h-14 px-4">
+              <button onClick={() => setNavOpen(true)} aria-label="Open menu" className="app-hamburger p-2 -ml-2 rounded-lg text-slate-600 hover:bg-slate-100 active:scale-95 transition">
+                <Menu size={22} />
+              </button>
+              <Logo variant="icon" height={26} />
+              <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
+            </div>
+          </header>
+        )}
         <main ref={mainRef} className="app-content flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
             <Outlet />
@@ -105,6 +112,48 @@ function Layout() {
         <BottomNav onOpenMenu={() => setNavOpen(true)} />
       </div>
     </div>
+  );
+}
+
+// Top navigation bar shown to customers in place of the staff sidebar.
+function CustomerTopBar({ name }) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  const linkCls = ({ isActive }) =>
+    `px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive ? 'text-blue-600 bg-blue-50' : 'text-slate-600 hover:bg-slate-100'}`;
+  function signOut() { logout(); navigate('/login'); }
+  return (
+    <header className="customer-topbar shrink-0 bg-white border-b border-slate-200 z-30">
+      <div className="mx-auto max-w-[1400px] flex items-center gap-2 h-16 px-4 sm:px-6">
+        <NavLink to="/portal" className="flex items-center gap-2.5 shrink-0">
+          <Logo variant="icon" height={30} />
+          <span className="leading-tight">
+            <span className="block font-bold text-sm text-slate-900">Clarke</span>
+            <span className="block text-[10px] text-slate-500 tracking-wide">MECHANICAL INC.</span>
+          </span>
+        </NavLink>
+        <nav className="hidden sm:flex items-center gap-1 ml-4">
+          <NavLink to="/portal" end className={linkCls}>Home</NavLink>
+          <NavLink to="/appointments" className={linkCls}>Appointments</NavLink>
+          <NavLink to="/billing" className={linkCls}>Billing</NavLink>
+          <NavLink to="/refer" className={linkCls}>Refer &amp; Earn</NavLink>
+          <button onClick={signOut}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors">
+            <LogOut size={15} /> Sign out
+          </button>
+        </nav>
+        <NavLink to="/account" title="My Profile"
+          className="ml-auto flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-full hover:bg-slate-100 transition-colors">
+          <span className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white text-xs font-bold uppercase shrink-0">{name?.[0] || 'U'}</span>
+          <span className="hidden sm:block text-sm font-medium text-slate-700 max-w-[120px] truncate">{name?.split(' ')[0]}</span>
+        </NavLink>
+        {/* Always-visible sign out for phones (nav links are hidden there) */}
+        <button onClick={signOut} title="Sign out"
+          className="sm:hidden flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors">
+          <LogOut size={18} />
+        </button>
+      </div>
+    </header>
   );
 }
 
@@ -154,6 +203,7 @@ export default function App() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
+            <Route path="/billing" element={<CustomerInvoices />} />
             <Route path="/appointments" element={<Appointments />} />
             <Route path="/account" element={<Account />} />
             <Route path="/more" element={<MoreCustomer />} />

@@ -631,33 +631,36 @@ router.delete('/payment-methods/:pmId', async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /portal/invoices/:id/pay-cash — customer signals they'll pay in cash; email the office.
+// POST /portal/invoices/:id/pay-cash — customer signals they've paid (or will pay)
+// by a manual method: Zelle, bank transfer, check, or cash. Emails/alerts the office.
 router.post('/invoices/:id/pay-cash', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
   const customer = records[0];
+  const method = (req.body?.method ? String(req.body.method) : 'cash').slice(0, 40);
 
   // In-app alert for the office (shows in the dashboard "Needs attention").
   try {
     await create('payment_requests', uuid(), {
       invoice_id: invoice.id, invoice_number: invoice.invoice_number || null,
       customer_id: invoice.customer_id, customer_name: customer?.name || null,
-      amount: invoice.total || 0, method: 'cash', status: 'pending', created_at: new Date().toISOString(),
+      amount: invoice.total || 0, method, status: 'pending', created_at: new Date().toISOString(),
     });
-  } catch (e) { console.error('[portal] cash request record failed:', e.message); }
+  } catch (e) { console.error('[portal] payment request record failed:', e.message); }
 
   try {
     const to = await settings.get('business_email');
     if (to) {
       const html = `<div style="font-family:sans-serif;font-size:15px;color:#334155;line-height:1.6">
-        <p><strong>${customer?.name || 'A customer'} would like to pay invoice ${invoice.invoice_number || ''} in cash.</strong></p>
+        <p><strong>${customer?.name || 'A customer'} says they've paid invoice ${invoice.invoice_number || ''} by ${method}.</strong></p>
         <p><strong>Amount:</strong> $${Number(invoice.total || 0).toFixed(2)}<br/>
+        <strong>Method:</strong> ${method}<br/>
         <strong>Contact:</strong> ${customer?.email || ''} ${customer?.phone || ''}</p>
-        <p>Please arrange collection and record the payment in Clarke Mechanical.</p></div>`;
-      await sendMail({ type: 'cash_payment_request', to, toName: 'Clarke Mechanical', subject: `Cash payment request — ${customer?.name || ''}`, html, customerId: invoice.customer_id, sentBy: 'Customer Portal' });
+        <p>Please confirm the payment was received and record it in Clarke Mechanical.</p></div>`;
+      await sendMail({ type: 'cash_payment_request', to, toName: 'Clarke Mechanical', subject: `Payment notice (${method}) — ${customer?.name || ''}`, html, customerId: invoice.customer_id, sentBy: 'Customer Portal' });
     }
-  } catch (e) { console.error('[portal] cash notify failed:', e.message); }
+  } catch (e) { console.error('[portal] payment notify failed:', e.message); }
   res.json({ ok: true });
 });
 
