@@ -7,8 +7,8 @@ export const PAYMENT_INFO = {
   zelle: {
     enabled: true,
     name: 'Clarke Mechanical Inc.',
-    email: '',   // e.g. billing@clarkemechanicalinc.org
-    phone: '',   // e.g. (347) 000-0000
+    email: 'clarkemechanical@gmail.com',
+    phone: '',   // optional — add a Zelle phone if you use one
   },
   bank: {
     enabled: true,

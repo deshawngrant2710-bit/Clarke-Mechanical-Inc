@@ -89,15 +89,11 @@ This is the section reviewers use to log in and test the app. **Critical — if 
 
 **Sign-in required:** Yes
 
-**Demo account** — give the reviewer a working login. Best to make a dedicated test **customer** account and, if you want them to see the staff side, a test **admin** account too.
+**Demo account** — reviewers log in with this customer account.
 ```
 Customer login
-  Email:    [YOU FILL — e.g. appreview@clarkemechanicalinc.org]
-  Password: [YOU FILL]
-
-Admin login (optional, shows the staff/dispatch side)
-  Email:    [YOU FILL]
-  Password: [YOU FILL]
+  Email:    deshawng@clarkemechanicalinc.org
+  Password: Earthstrong
 ```
 
 **Contact info:**
@@ -111,12 +107,15 @@ Email:      service@clarkemechanicalinc.org
 **Notes for the reviewer** (paste into the Notes box):
 ```
 Clarke Mechanical Inc. is a licensed HVAC/heating/ventilation service company.
-This app serves two roles from one login:
-- Customers can request service, book appointments, review estimates, and pay invoices.
-- Staff (admins/technicians) manage jobs, scheduling, invoices, and inspections.
-The role is determined by the account you log in with; use the demo logins above.
-Payments are for physical HVAC services performed off-app and are processed via Stripe.
-Account deletion is available in-app: My Portal > My Info > Delete my account.
+Sign in with the customer demo account above to review the app.
+
+Customers can request service, book appointments, review and approve estimates,
+view invoices, and pay their balance. Payments are for physical HVAC services
+performed off-app (in the customer's home/building). There are NO in-app
+purchases and no digital goods — invoices are settled by Zelle, bank transfer,
+check, or cash, so Apple In-App Purchase does not apply.
+
+Account deletion is available in-app: More > My Profile > Delete my account.
 ```
 
 ---

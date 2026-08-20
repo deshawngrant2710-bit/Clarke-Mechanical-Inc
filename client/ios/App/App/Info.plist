@@ -4,6 +4,14 @@
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Clarke Mechanical uses your location to show your position on the route map and provide accurate driving directions to your next stop.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Clarke Mechanical uses the camera so you can take and attach photos to a service request or job — for example, a photo of the equipment that needs repair.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Clarke Mechanical needs access to your photos so you can attach existing pictures to a service request or job.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Clarke Mechanical saves invoice and receipt PDFs to your photo library when you choose to download them.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>

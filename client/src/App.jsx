@@ -168,7 +168,11 @@ export default function App() {
     <AuthProvider>
       <OfflineProvider>
       <BrowserRouter>
-        <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+        <Toaster
+          position="top-right"
+          containerStyle={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+          toastOptions={{ duration: 3000 }}
+        />
         <Routes>
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<Login />} />

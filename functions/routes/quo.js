@@ -60,10 +60,12 @@ router.post('/call-summary', async (req, res) => {
     // Only act on completed summaries (ignore in-progress/failed pings).
     if (summary.status && summary.status !== 'completed') return res.json({ ok: true, ignored: 'not completed' });
 
-    // Idempotency: never create two requests for the same call.
+    // Idempotency: never create two requests (or two message notes) for the same call.
     if (callId) {
       const existing = (await list('jobs')).find(j => j.sona_call_id === callId);
       if (existing) return res.json({ ok: true, duplicate: true, jobId: existing.id });
+      const existingTask = (await list('tasks')).find(t => t.sona_call_id === callId);
+      if (existingTask) return res.json({ ok: true, duplicate: true, taskId: existingTask.id });
     }
 
     const fields = jobFields(summary);
@@ -86,6 +88,36 @@ router.post('/call-summary', async (req, res) => {
     if (preferred) descParts.push(`Preferred time: ${preferred}`);
     if (nextSteps) descParts.push(`Next steps: ${nextSteps}`);
     const description = descParts.join('\n').slice(0, 4000) || 'Captured from an AI phone call.';
+
+    // ── Decide: real service request, or just a message/callback? ──────────────
+    // Only genuine service calls should become a customer + pending request.
+    // Message-only calls (voicemail, callback, general question) become an office
+    // To-Do note instead — so we never create a customer for someone who just
+    // wanted to leave a message.
+    const intentHint = (pick(fields, [
+      'intent', 'call type', 'calltype', 'call_type', 'purpose', 'request type',
+      'requesttype', 'type of call', 'category', 'reason for call',
+    ]) || '').toLowerCase();
+    const scanText = [intentHint, problem || '', bullets || ''].join(' ').toLowerCase();
+    const SERVICE_SIGNAL = /(service|repair|fix|install|replace|maintenance|tune ?up|estimate|quote|appointment|book|schedul|no heat|no cool|no ac|not working|broke|leak|boiler|furnace|heat ?pump|thermostat|clog|drain|inspection|emergenc)/;
+    const MESSAGE_ONLY = /(leave (a |an )?message|left (a |an )?message|just (a |an )?message|voicemail|call ?back|callback|return (my|the|their|his|her) call|wants? a call|general (question|inquiry|info)|had a question|wrong number|just checking|follow ?up on)/;
+    const hasService = SERVICE_SIGNAL.test(scanText);
+    const messageOnly = !hasService && (MESSAGE_ONLY.test(scanText) || !problem);
+
+    if (messageOnly) {
+      const task = await create('tasks', uuid(), {
+        title: `Phone message from ${name}${phone ? ` (${phone})` : ''}`.slice(0, 140),
+        notes: description,
+        assigned_to: null, assigned_name: null,
+        customer_id: null, job_id: null, job_title: null,
+        due_date: null, remind_at: null,
+        priority: isUrgent ? 'high' : 'normal', recurrence: 'none', comments: [],
+        status: 'open', created_by: 'Sona (phone message)',
+        created_at: new Date().toISOString(), completed_at: null,
+        sona_call_id: callId, source: 'sona',
+      });
+      return res.json({ ok: true, message: true, taskId: task.id });
+    }
 
     // Match an existing customer by email or phone; otherwise create one.
     let customer = null;
