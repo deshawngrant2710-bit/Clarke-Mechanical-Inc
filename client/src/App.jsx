@@ -39,6 +39,7 @@ import Security from './pages/Security';
 import Support from './pages/Support';
 import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
+import Pipeline from './pages/Pipeline';
 import RouteMap from './pages/RouteMap';
 import Payments from './pages/Payments';
 import PriceBook from './pages/PriceBook';
@@ -198,6 +199,7 @@ export default function App() {
             <Route path="/support" element={<Support />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/dispatch" element={<Dispatch />} />
+            <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/route" element={<RouteMap />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/price-book" element={<PriceBook />} />

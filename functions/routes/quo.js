@@ -64,8 +64,8 @@ router.post('/call-summary', async (req, res) => {
     if (callId) {
       const existing = (await list('jobs')).find(j => j.sona_call_id === callId);
       if (existing) return res.json({ ok: true, duplicate: true, jobId: existing.id });
-      const existingTask = (await list('tasks')).find(t => t.sona_call_id === callId);
-      if (existingTask) return res.json({ ok: true, duplicate: true, taskId: existingTask.id });
+      const existingLead = (await list('leads')).find(l => l.sona_call_id === callId);
+      if (existingLead) return res.json({ ok: true, duplicate: true, leadId: existingLead.id });
     }
 
     const fields = jobFields(summary);
@@ -105,18 +105,15 @@ router.post('/call-summary', async (req, res) => {
     const messageOnly = !hasService && (MESSAGE_ONLY.test(scanText) || !problem);
 
     if (messageOnly) {
-      const task = await create('tasks', uuid(), {
-        title: `Phone message from ${name}${phone ? ` (${phone})` : ''}`.slice(0, 140),
-        notes: description,
-        assigned_to: null, assigned_name: null,
-        customer_id: null, job_id: null, job_title: null,
-        due_date: null, remind_at: null,
-        priority: isUrgent ? 'high' : 'normal', recurrence: 'none', comments: [],
-        status: 'open', created_by: 'Sona (phone message)',
-        created_at: new Date().toISOString(), completed_at: null,
-        sona_call_id: callId, source: 'sona',
+      // Not a service request — drop it into the sales pipeline as a lead to call back.
+      const lead = await create('leads', uuid(), {
+        name, phone: phone || null, email: email || null, address: address || null,
+        source: 'Phone (Sona)', notes: description, value: null,
+        stage: 'new', next_follow_up: null, last_contacted: null, call_log: [],
+        customer_id: null, created_by: 'Sona', created_at: new Date().toISOString(),
+        sona_call_id: callId,
       });
-      return res.json({ ok: true, message: true, taskId: task.id });
+      return res.json({ ok: true, lead: true, leadId: lead.id });
     }
 
     // Match an existing customer by email or phone; otherwise create one.
