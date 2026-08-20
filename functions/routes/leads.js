@@ -114,6 +114,33 @@ router.post('/:id/convert', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not convert the lead' }); }
 });
 
+// POST /api/leads/import — bulk-add leads parsed from an uploaded spreadsheet.
+// Body: { leads: [{ name, phone, email, address, source, notes, value }, ...] }
+router.post('/import', async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.leads) ? req.body.leads : [];
+    if (!rows.length) return res.status(400).json({ error: 'No rows found to import' });
+    let added = 0, skipped = 0;
+    for (const r of rows.slice(0, 5000)) {
+      const name = (r?.name || '').toString().trim();
+      if (!name) { skipped++; continue; }
+      await create('leads', uuid(), {
+        name,
+        phone: r.phone ? String(r.phone).trim() : null,
+        email: r.email ? String(r.email).trim() : null,
+        address: r.address ? String(r.address).trim() : null,
+        source: r.source ? String(r.source).trim() : 'Import',
+        notes: r.notes ? String(r.notes).trim() : null,
+        value: r.value != null && r.value !== '' ? (Number(r.value) || null) : null,
+        stage: 'new', next_follow_up: null, last_contacted: null, call_log: [],
+        customer_id: null, created_by: req.user.name, created_at: new Date().toISOString(),
+      });
+      added++;
+    }
+    res.json({ ok: true, added, skipped });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Could not import leads' }); }
+});
+
 // DELETE /api/leads/:id
 router.delete('/:id', async (req, res) => {
   try {

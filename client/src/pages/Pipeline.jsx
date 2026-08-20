@@ -3,8 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Textarea, Select, Empty, Spinner } from '../components/UI';
-import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight } from 'lucide-react';
+import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
+
+// Map a spreadsheet row (any header names) to lead fields, case-insensitively.
+function mapRow(row) {
+  const out = {};
+  for (const [k, v] of Object.entries(row)) {
+    const key = String(k).toLowerCase().trim();
+    if (v == null || String(v).trim() === '') continue;
+    if (/name/.test(key) && !out.name) out.name = String(v).trim();
+    else if (/(phone|mobile|cell|number|tel)/.test(key) && !out.phone) out.phone = String(v).trim();
+    else if (/(email|e-mail)/.test(key) && !out.email) out.email = String(v).trim();
+    else if (/(address|street|location|city)/.test(key) && !out.address) out.address = String(v).trim();
+    else if (/(source|referr|where|channel)/.test(key) && !out.source) out.source = String(v).trim();
+    else if (/(value|amount|estimate|budget|price)/.test(key) && !out.value) out.value = v;
+    else if (/(note|detail|comment|reason|need|message|description)/.test(key) && !out.notes) out.notes = String(v).trim();
+  }
+  return out;
+}
 
 const STAGES = [
   { id: 'new', label: 'New', dot: 'bg-slate-400', head: 'text-slate-600' },
@@ -22,6 +40,7 @@ export default function Pipeline() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [active, setActive] = useState(null); // lead being viewed
   const navigate = useNavigate();
 
@@ -43,6 +62,7 @@ export default function Pipeline() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Pipeline" subtitle={`${open} open lead${open === 1 ? '' : 's'}${wonValue ? ` · ${money(wonValue)} won` : ''}`} icon={<Filter size={20} />}>
+        <Btn variant="outline" onClick={() => setImportOpen(true)}><Upload size={16} /> Import</Btn>
         <Btn onClick={() => setAddOpen(true)}><Plus size={16} /> Add Lead</Btn>
       </PageHeader>
 
@@ -94,6 +114,7 @@ export default function Pipeline() {
       )}
 
       <AddLeadModal open={addOpen} onClose={() => setAddOpen(false)} onDone={load} />
+      <ImportLeadsModal open={importOpen} onClose={() => setImportOpen(false)} onDone={load} />
       {active && <LeadModal lead={active} onClose={() => setActive(null)} onDone={load} navigate={navigate} />}
     </div>
   );
@@ -131,6 +152,88 @@ function AddLeadModal({ open, onClose, onDone }) {
         <div className="flex justify-end gap-2 pt-1">
           <Btn variant="outline" onClick={onClose}>Cancel</Btn>
           <Btn onClick={save} loading={saving}>Add Lead</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ImportLeadsModal({ open, onClose, onDone }) {
+  const [rows, setRows] = useState([]);
+  const [fileName, setFileName] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => { if (open) { setRows([]); setFileName(''); } }, [open]);
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name); setParsing(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        const mapped = raw.map(mapRow).filter(r => r.name);
+        setRows(mapped);
+        if (!mapped.length) toast.error('No rows with a name column were found. Make sure the sheet has a "Name" header.');
+      } catch {
+        toast.error('Could not read that file. Use an .xlsx or .csv exported from Excel/Sheets.');
+      } finally { setParsing(false); }
+    };
+    reader.onerror = () => { setParsing(false); toast.error('Could not read that file.'); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function doImport() {
+    if (!rows.length) return;
+    setImporting(true);
+    try {
+      const { data } = await api.post('/leads/import', { leads: rows });
+      toast.success(`Imported ${data.added} lead${data.added === 1 ? '' : 's'}${data.skipped ? ` (${data.skipped} skipped)` : ''}`);
+      onClose(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Import failed'); }
+    finally { setImporting(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Import Leads from a Spreadsheet">
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          Upload an <strong>Excel (.xlsx)</strong> or <strong>CSV</strong> file. The first row should be column headers.
+          We'll match columns automatically — include at least a <strong>Name</strong> column, plus any of:
+          Phone, Email, Address, Source, Value, Notes.
+        </p>
+
+        <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-xl py-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 transition-colors">
+          <FileSpreadsheet size={28} className="text-slate-400" />
+          <span className="text-sm font-medium text-slate-600">{fileName || 'Choose a file…'}</span>
+          <span className="text-xs text-slate-400">.xlsx, .xls, or .csv</span>
+          <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+        </label>
+
+        {parsing && <p className="text-sm text-slate-500 text-center">Reading file…</p>}
+
+        {rows.length > 0 && (
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-2 bg-slate-50 text-sm font-semibold text-slate-700">{rows.length} lead{rows.length === 1 ? '' : 's'} ready to import</div>
+            <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+              {rows.slice(0, 50).map((r, i) => (
+                <div key={i} className="px-4 py-2 flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium text-slate-800 truncate">{r.name}</span>
+                  <span className="text-xs text-slate-400 truncate">{[r.phone, r.email, r.source].filter(Boolean).join(' · ')}</span>
+                </div>
+              ))}
+              {rows.length > 50 && <div className="px-4 py-2 text-xs text-slate-400">…and {rows.length - 50} more</div>}
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={doImport} loading={importing} disabled={!rows.length}><Upload size={15} /> Import {rows.length || ''} lead{rows.length === 1 ? '' : 's'}</Btn>
         </div>
       </div>
     </Modal>
