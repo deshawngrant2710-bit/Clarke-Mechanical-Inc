@@ -7,6 +7,7 @@ const settings = require('../lib/settings');
 const { referralCode } = require('../lib/referral');
 const { smsConfigured, sendSms } = require('../lib/sms');
 const helcim = require('../lib/helcim');
+const { notify } = require('../lib/notify');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -223,6 +224,8 @@ router.post('/service-request', async (req, res) => {
     } catch (e) { console.error('[portal] request photo failed:', e.message); }
   }
 
+  notify({ type: 'request', title: 'New service request', body: `${customer.name} requested "${job.title}" for ${preferred_date} (${window.label})`, link: `/jobs/${id}` });
+
   // Best-effort: notify the business a new request came in.
   try {
     const to = await settings.get('business_email');
@@ -266,6 +269,7 @@ router.post('/jobs/:id/signoff', async (req, res) => {
     status: 'completed', completed_date: job.completed_date || new Date().toISOString().slice(0, 10),
   });
   const saved = await getById('jobs', req.params.id);
+  notify({ type: 'signoff', title: 'Job signed off', body: `${saved.signed_by} signed off "${job.title}"`, link: `/jobs/${job.id}` });
   res.json({ id: saved.id, signed_by: saved.signed_by, signed_at: saved.signed_at });
 });
 
@@ -293,18 +297,25 @@ router.post('/reviews', async (req, res) => {
     job_id, customer_id: job.customer_id, customer_name: records[0]?.name || req.user.name,
     job_title: job.title, rating: r, comment: (comment || '').trim() || null,
   });
+  notify({ type: 'review', title: `New ${r}-star review`, body: `${records[0]?.name || 'A customer'} reviewed "${job.title}"`, link: `/customers/${job.customer_id}` });
   res.status(201).json(saved);
 });
 
 // POST /portal/quotes/:id/respond — accept or decline an estimate.
 router.post('/quotes/:id/respond', async (req, res) => {
-  const { ids } = await myCustomerIds(req);
+  const { ids, records } = await myCustomerIds(req);
   const quote = await getById('quotes', req.params.id);
   if (!quote || !ids.includes(quote.customer_id)) return res.status(404).json({ error: 'Quote not found' });
   const decision = req.body.decision;
   if (!['accepted', 'declined'].includes(decision)) return res.status(400).json({ error: 'Invalid decision' });
   if (!['sent', 'draft'].includes(quote.status)) return res.status(400).json({ error: 'This estimate can no longer be changed' });
   const saved = await update('quotes', req.params.id, { status: decision });
+  notify({
+    type: decision === 'accepted' ? 'quote_accepted' : 'quote_declined',
+    title: `Estimate ${decision}`,
+    body: `${records[0]?.name || 'A customer'} ${decision} estimate ${quote.quote_number || ''}`.trim(),
+    link: '/quotes',
+  });
   res.json(saved);
 });
 
@@ -315,6 +326,7 @@ router.post('/jobs/:id/cancel', async (req, res) => {
   if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
   if (!['pending', 'scheduled'].includes(job.status)) return res.status(400).json({ error: 'This service can no longer be cancelled' });
   const saved = await update('jobs', req.params.id, { status: 'cancelled' });
+  notify({ type: 'cancel', title: 'Appointment cancelled', body: `A customer cancelled "${job.title}"`, link: '/dispatch' });
   res.json(saved);
 });
 
@@ -648,6 +660,8 @@ router.post('/invoices/:id/pay-cash', async (req, res) => {
       amount: invoice.total || 0, method, status: 'pending', created_at: new Date().toISOString(),
     });
   } catch (e) { console.error('[portal] payment request record failed:', e.message); }
+
+  notify({ type: 'payment', title: `Payment sent (${method})`, body: `${customer?.name || 'A customer'} paid invoice ${invoice.invoice_number || ''} by ${method}`, link: '/payments' });
 
   try {
     const to = await settings.get('business_email');

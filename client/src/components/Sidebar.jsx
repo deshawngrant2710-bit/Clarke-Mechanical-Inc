@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, X, Search } from 'lucide-react';
 import Logo from './Logo';
+import NotificationBell from './NotificationBell';
 import api from '../api/client';
 import { navGroupsForRole } from '../lib/roles';
 
@@ -55,7 +56,10 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
             <p className="font-bold text-sm leading-tight text-white">Clarke</p>
             <p className="text-[11px] text-slate-400 leading-tight tracking-wide">MECHANICAL INC.</p>
           </div>
-          <button onClick={onClose} aria-label="Close menu" className="lg:hidden ml-auto p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white">
+          {(user?.role === 'admin' || user?.role === 'office') && (
+            <div className="ml-auto"><NotificationBell variant="dark" /></div>
+          )}
+          <button onClick={onClose} aria-label="Close menu" className="lg:hidden p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white">
             <X size={20} />
           </button>
         </div>

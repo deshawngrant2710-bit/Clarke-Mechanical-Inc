@@ -10,6 +10,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, create, findOne } = require('../lib/db');
 const { toE164 } = require('../lib/sms');
+const { notify } = require('../lib/notify');
 
 const router = express.Router();
 
@@ -113,6 +114,7 @@ router.post('/call-summary', async (req, res) => {
         customer_id: null, created_by: 'Sona', created_at: new Date().toISOString(),
         sona_call_id: callId,
       });
+      notify({ type: 'lead', title: 'New phone lead', body: `${name} left a message${phone ? ` (${phone})` : ''}`, link: '/pipeline' });
       return res.json({ ok: true, lead: true, leadId: lead.id });
     }
 
@@ -149,6 +151,7 @@ router.post('/call-summary', async (req, res) => {
       notes: `Captured from an AI phone call via Sona${isUrgent ? ' — caller indicated URGENT/emergency' : ''}. Review and confirm with the customer.`,
     });
 
+    notify({ type: isUrgent ? 'urgent' : 'request', title: isUrgent ? 'Urgent AI phone request' : 'New AI phone request', body: `${name}: ${(problem || 'Phone request').slice(0, 120)}`, link: `/jobs/${job.id}` });
     res.json({ ok: true, jobId: job.id, customerId: customer.id, urgent: isUrgent });
   } catch (e) {
     console.error('[quo] call-summary webhook failed:', e.message);

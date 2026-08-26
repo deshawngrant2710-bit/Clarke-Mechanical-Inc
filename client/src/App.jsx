@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { OfflineProvider } from './context/OfflineContext';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
+import NotificationBell from './components/NotificationBell';
 import OfflineBanner from './components/OfflineBanner';
 import Logo from './components/Logo';
 import Login from './pages/Login';
@@ -52,6 +53,7 @@ import TimeClock from './pages/TimeClock';
 import FieldMode from './pages/FieldMode';
 import SyncQueue from './pages/SyncQueue';
 import { canAccess, homeForRole } from './lib/roles';
+import { initPush } from './lib/push';
 
 function Layout() {
   const { user } = useAuth();
@@ -79,6 +81,15 @@ function Layout() {
     el.scrollTop = scrollPositions.current[location.pathname] ?? 0;
     requestAnimationFrame(() => { isRestoring.current = false; });
   }, [location.pathname]);
+  const navigate = useNavigate();
+  // Register for push notifications (native app, staff only).
+  useEffect(() => {
+    if (!user || (user.role !== 'admin' && user.role !== 'office')) return;
+    let cleanup;
+    initPush((link) => navigate(link)).then(c => { cleanup = c; });
+    return () => { cleanup && cleanup(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
   if (!user) return <Navigate to="/login" replace />;
   // Role guard: send users to their home if they hit a page they can't access.
   if (!canAccess(user.role, location.pathname)) {
@@ -102,6 +113,9 @@ function Layout() {
               </button>
               <Logo variant="icon" height={26} />
               <span className="font-bold text-sm text-slate-800">Clarke Mechanical</span>
+              {(user.role === 'admin' || user.role === 'office') && (
+                <div className="ml-auto"><NotificationBell /></div>
+              )}
             </div>
           </header>
         )}

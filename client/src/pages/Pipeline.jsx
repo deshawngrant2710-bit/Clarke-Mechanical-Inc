@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Textarea, Select, Empty, Spinner } from '../components/UI';
-import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet } from 'lucide-react';
+import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 
@@ -42,6 +42,7 @@ export default function Pipeline() {
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [active, setActive] = useState(null); // lead being viewed
+  const [q, setQ] = useState('');
   const navigate = useNavigate();
 
   function load() {
@@ -54,10 +55,25 @@ export default function Pipeline() {
     try { await api.put(`/leads/${lead.id}`, { stage }); } catch { toast.error('Could not move lead'); load(); }
   }
 
+  // Quick "left a voicemail" — logs it and sets a follow-up for tomorrow.
+  async function markVoicemail(lead) {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    try {
+      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow });
+      setLeads(ls => ls.map(l => (l.id === lead.id ? data : l)));
+      toast.success('Voicemail logged — reminder set for tomorrow');
+    } catch { toast.error('Could not log voicemail'); }
+  }
+
   if (loading) return <Spinner />;
 
   const open = leads.filter(l => l.stage !== 'won' && l.stage !== 'lost').length;
   const wonValue = leads.filter(l => l.stage === 'won').reduce((s, l) => s + Number(l.value || 0), 0);
+
+  const term = q.trim().toLowerCase();
+  const filtered = term
+    ? leads.filter(l => [l.name, l.phone, l.email, l.address, l.source, l.notes].some(v => String(v || '').toLowerCase().includes(term)))
+    : leads;
 
   return (
     <div className="animate-fade-in">
@@ -69,9 +85,25 @@ export default function Pipeline() {
       {leads.length === 0 ? (
         <Card className="p-2"><Empty icon={<Filter size={26} />} title="No leads yet" message='Click "Add Lead" to start building your pipeline. Phone messages captured by Sona also show up here automatically.' /></Card>
       ) : (
+        <>
+        <div className="relative mb-4 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Search name, phone, city, source…"
+            className="w-full pl-9 pr-9 py-2.5 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500"
+          />
+          {q && (
+            <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" aria-label="Clear search">
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        {term && <p className="text-xs text-slate-500 mb-3">{filtered.length} match{filtered.length === 1 ? '' : 'es'} for "{q}"</p>}
         <div className="flex gap-4 overflow-x-auto pb-4">
           {STAGES.map(stage => {
-            const items = leads.filter(l => (l.stage || 'new') === stage.id);
+            const items = filtered.filter(l => (l.stage || 'new') === stage.id);
             return (
               <div key={stage.id} className="shrink-0 w-[290px]">
                 <div className="flex items-center gap-2 px-1 mb-2">
@@ -92,7 +124,7 @@ export default function Pipeline() {
                         <div className="flex items-center gap-2 mt-2" onClick={e => e.stopPropagation()}>
                           <a href={`tel:${tel(lead.phone)}`} className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg"><Phone size={12} /> Call</a>
                           <a href={`sms:${tel(lead.phone)}`} className="flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg"><MessageSquare size={12} /> Text</a>
-                          <span className="text-[11px] text-slate-400 truncate">{lead.phone}</span>
+                          <button onClick={() => markVoicemail(lead)} title="Left a voicemail — remind me tomorrow" className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-lg"><Voicemail size={12} /> VM</button>
                         </div>
                       )}
                       <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
@@ -111,6 +143,7 @@ export default function Pipeline() {
             );
           })}
         </div>
+        </>
       )}
 
       <AddLeadModal open={addOpen} onClose={() => setAddOpen(false)} onDone={load} />
@@ -264,6 +297,14 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
     finally { setSaving(false); }
   }
 
+  async function quickVoicemail() {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    try {
+      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow });
+      setForm(data); toast.success('Voicemail logged — reminder set for tomorrow'); onDone();
+    } catch { toast.error('Could not log voicemail'); }
+  }
+
   async function logCall() {
     setLogging(true);
     try {
@@ -307,6 +348,7 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
           <div className="flex items-center gap-2">
             <a href={`tel:${tel(form.phone)}`} className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold"><Phone size={15} /> Call {form.phone}</a>
             <a href={`sms:${tel(form.phone)}`} className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-sm font-semibold"><MessageSquare size={15} /> Text</a>
+            <button onClick={quickVoicemail} title="Left a voicemail — remind me tomorrow" className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 text-sm font-semibold"><Voicemail size={15} /> Voicemail</button>
           </div>
         )}
 

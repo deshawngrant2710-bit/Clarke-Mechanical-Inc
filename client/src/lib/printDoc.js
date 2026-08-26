@@ -249,11 +249,43 @@ export function buildStatementHtml({ business = {}, customer = {}, invoices = []
   </body></html>`;
 }
 
-// Opens a new tab and triggers the print dialog (→ "Save as PDF").
+// Shows the document in a full-screen in-app preview with Print / Save-PDF and
+// Close buttons. Works inside the native app (where pop-up windows are blocked)
+// and in the browser. Tapping "Print / Save PDF" opens the system print/share
+// sheet (iOS: AirPrint / "Save to Files"; desktop: the print → Save as PDF dialog).
 export function printDocument(opts) {
-  const html = buildDocumentHtml(opts, { autoPrint: true });
-  const w = window.open('', '_blank');
-  if (!w) return alert('Please allow pop-ups to download the PDF.');
-  w.document.write(html);
-  w.document.close();
+  const html = buildDocumentHtml(opts, { autoPrint: false });
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;display:flex;flex-direction:column;';
+
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));background:#1e293b;';
+
+  const btn = (label, bg) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = `background:${bg};color:#fff;border:none;border-radius:8px;padding:9px 16px;font:600 14px -apple-system,system-ui,sans-serif;cursor:pointer;`;
+    return b;
+  };
+  const printBtn = btn('Print / Save PDF', '#2563eb');
+  const closeBtn = btn('Close', '#334155');
+
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'flex:1;border:0;background:#fff;width:100%;';
+  frame.setAttribute('srcdoc', html);
+
+  bar.appendChild(printBtn);
+  bar.appendChild(closeBtn);
+  overlay.appendChild(bar);
+  overlay.appendChild(frame);
+  document.body.appendChild(overlay);
+  document.documentElement.classList.add('modal-open');
+
+  const cleanup = () => { overlay.remove(); document.documentElement.classList.remove('modal-open'); };
+  closeBtn.onclick = cleanup;
+  printBtn.onclick = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch { try { window.print(); } catch { /* ignore */ } }
+  };
 }
