@@ -254,7 +254,15 @@ export function buildStatementHtml({ business = {}, customer = {}, invoices = []
 // and in the browser. Tapping "Print / Save PDF" opens the system print/share
 // sheet (iOS: AirPrint / "Save to Files"; desktop: the print → Save as PDF dialog).
 export function printDocument(opts) {
-  const html = buildDocumentHtml(opts, { autoPrint: false });
+  printHtml(buildDocumentHtml(opts, { autoPrint: false }));
+}
+
+// Shows arbitrary print-ready HTML in a full-screen in-app preview with
+// Print / Save-PDF and Close buttons. Works in the native app (where pop-up
+// windows are blocked) and in the browser. Any embedded auto-print script is
+// stripped so it never fires on its own.
+export function printHtml(rawHtml) {
+  const html = String(rawHtml || '').replace(/<script>[\s\S]*?window\.print\(\)[\s\S]*?<\/script>/gi, '');
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;display:flex;flex-direction:column;';

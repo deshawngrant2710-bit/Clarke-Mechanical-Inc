@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Select, Empty, SkeletonPage, StatCard, SearchInput, Avatar } from '../components/UI';
-import { Plus, UserCog, Users, Wrench, ShieldCheck, Mail, Phone, Trash2, Search, UserRound, Clock, Coffee, Briefcase, MessageSquare, CheckCircle } from 'lucide-react';
+import { Plus, UserCog, Users, Wrench, ShieldCheck, Mail, Phone, Trash2, Search, UserRound, Clock, Coffee, Briefcase, MessageSquare, CheckCircle, KeyRound } from 'lucide-react';
+import TempPasswordModal from '../components/TempPasswordModal';
 
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
-const empty = { name: '', email: '', password: '', role: 'technician', phone: '' };
+const empty = { name: '', email: '', role: 'technician', phone: '' };
 const ROLES = ['customer', 'technician', 'office', 'admin'];
 const ROLE_STYLE = {
   customer: 'bg-slate-100 text-slate-600',
@@ -26,6 +27,8 @@ export default function Employees() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [tempData, setTempData] = useState(null);
+  const [resetting, setResetting] = useState(null);
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
@@ -49,15 +52,26 @@ export default function Employees() {
   });
 
   async function handleSave() {
-    if (!form.name || !form.email || !form.password) return toast.error('Name, email, and password required');
+    if (!form.name || !form.email) return toast.error('Name and email are required');
     setSaving(true);
     try {
-      await api.post('/employees', form);
-      toast.success('User added');
+      const { data } = await api.post('/employees', form);
       setModal(false); setForm(empty); load();
+      setTempData({ tempPassword: data.tempPassword, name: data.name, email: data.email });
     } catch (e) {
       toast.error(e.response?.data?.error || 'Error adding user');
     } finally { setSaving(false); }
+  }
+
+  async function resetPassword(u) {
+    if (!window.confirm(`Generate a new one-time password for ${u.name}? Their current password will stop working.`)) return;
+    setResetting(u.id);
+    try {
+      const { data } = await api.post(`/employees/${u.id}/reset-password`);
+      setTempData({ tempPassword: data.tempPassword, name: data.name || u.name, email: data.email || u.email });
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Could not reset password');
+    } finally { setResetting(null); }
   }
 
   async function toggleTechFlag(id, val) {
@@ -199,6 +213,10 @@ export default function Employees() {
                         Also works as a technician
                       </label>
                     )}
+                    <button onClick={() => resetPassword(u)} disabled={resetting === u.id}
+                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50">
+                      <KeyRound size={13} /> {resetting === u.id ? 'Generating…' : 'Generate one-time password'}
+                    </button>
                   </div>
                 )}
               </Card>
@@ -214,16 +232,21 @@ export default function Employees() {
             <Input label="Email *" icon={<Mail size={15} />} type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
             <Input label="Phone" icon={<Phone size={15} />} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
           </div>
-          <Input label="Password *" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
           <Select label="Role" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
             {ROLES.filter(r => r !== 'customer').map(r => <option key={r} value={r}>{cap(r)}</option>)}
           </Select>
+          <div className="flex items-start gap-2 text-xs text-slate-500 bg-blue-50/60 border border-blue-100 rounded-lg px-3 py-2">
+            <KeyRound size={14} className="text-blue-500 mt-0.5 shrink-0" />
+            <span>You don't set a password. We'll generate a <strong>one-time password</strong> to share with them — they change it after their first sign-in.</span>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
             <Btn onClick={handleSave} loading={saving}>{saving ? 'Adding…' : 'Add User'}</Btn>
           </div>
         </div>
       </Modal>
+
+      <TempPasswordModal open={!!tempData} data={tempData} onClose={() => setTempData(null)} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
 } from '../components/UI';
 import { ShoppingCart, Plus, PlusCircle, Trash2, Mail, Printer, PackageCheck, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { printHtml } from '../lib/printDoc';
 
 const money = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const emptyItem = () => ({ description: '', quantity: 1, unit_cost: 0, inventory_id: null });
@@ -83,9 +84,7 @@ export default function Purchasing() {
       <div class="tot">Total: ${money(po.total)}</div>
       ${po.notes ? `<p class="muted">Notes: ${po.notes}</p>` : ''}
       <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) return toast.error('Allow pop-ups to print');
-    w.document.write(html); w.document.close();
+    printHtml(html);
   }
 
   if (!orders) return <SkeletonPage stats={0} />;

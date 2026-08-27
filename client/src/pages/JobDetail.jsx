@@ -12,6 +12,7 @@ import { propertyLabel, equipmentLabel } from '../lib/inspectionForms';
 import { fileToProof } from '../lib/imageProof';
 import { useAuth } from '../context/AuthContext';
 import SignaturePad from '../components/SignaturePad';
+import { printHtml } from '../lib/printDoc';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
 const TIMELINE = ['pending', 'scheduled', 'in-progress', 'awaiting-signoff', 'completed'];
@@ -292,9 +293,7 @@ export default function JobDetail() {
     <div class="box"><div class="h">Notes / findings</div><div style="min-height:60px"></div></div>
     <div class="sign"><div class="line">Technician signature</div><div class="line">Customer signature</div></div>
     <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) return alert('Please allow pop-ups to print.');
-    w.document.write(html); w.document.close();
+    printHtml(html);
   }
   async function notify(type, label) {
     setEmailing(type);

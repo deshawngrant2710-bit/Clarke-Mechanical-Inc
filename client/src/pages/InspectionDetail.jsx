@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { fileToProof } from '../lib/imageProof';
 import SignaturePad from '../components/SignaturePad';
+import { printHtml } from '../lib/printDoc';
 import {
   PROPERTY_TYPES, EQUIPMENT_TYPES, INFO_FIELDS, WORKORDER_FIELDS, ANSWERS, sectionsFor, readingsFor, propertyLabel, equipmentLabel,
 } from '../lib/inspectionForms';
@@ -180,9 +181,7 @@ export default function InspectionDetail() {
     <p style="color:#64748b;margin:0 0 8px;">${propertyLabel(property)} · ${equipmentLabel(equipment)} · ${new Date().toLocaleDateString('en-US')}</p>
     ${buildWorkOrderBody()}
     <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
-    const w = window.open('', '_blank');
-    if (!w) return toast.error('Allow pop-ups to print');
-    w.document.write(html); w.document.close();
+    printHtml(html);
   }
 
   async function emailWorkOrder() {

@@ -3,7 +3,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
 const { db, list, findOne, findWhere, create, getById, update, remove } = require('../lib/db');
-const { JWT_SECRET, authMiddleware } = require('../middleware/auth');
+const { JWT_SECRET, authMiddleware, adminOnly } = require('../middleware/auth');
+const { genTempPassword } = require('../lib/passwords');
 const { referralCode } = require('../lib/referral');
 const { sendMail, render } = require('../lib/email');
 const settings = require('../lib/settings');
@@ -137,7 +138,7 @@ router.post('/login', async (req, res) => {
       { id: user.id, name: user.name, email: user.email, role: user.role },
       JWT_SECRET, { expiresIn: '7d' }
     );
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone, also_technician: !!user.also_technician } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone, also_technician: !!user.also_technician, must_change_password: !!user.must_change_password } });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Login failed' });
@@ -153,7 +154,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     const user = await getById('users', req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (!bcrypt.compareSync(currentPassword, user.password)) return res.status(401).json({ error: 'Current password is incorrect' });
-    await update('users', req.user.id, { password: bcrypt.hashSync(newPassword, 10) });
+    await update('users', req.user.id, { password: bcrypt.hashSync(newPassword, 10), must_change_password: false });
     res.json({ success: true });
   } catch (e) {
     console.error(e);
@@ -166,11 +167,38 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     const u = await getById('users', req.user.id);
     if (!u) return res.status(404).json({ error: 'User not found' });
-    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone || null });
+    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone || null, must_change_password: !!u.must_change_password });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Could not load your account' });
   }
+});
+
+// POST /api/auth/set-initial-password — a signed-in user with a one-time password
+// sets their own new password (no need to re-type the temp one).
+router.post('/set-initial-password', authMiddleware, async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const user = await getById('users', req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    await update('users', req.user.id, { password: bcrypt.hashSync(newPassword, 10), must_change_password: false });
+    res.json({ success: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Could not set your password' }); }
+});
+
+// POST /api/auth/admin/reset-password — ADMIN issues a one-time password for any
+// user (staff or customer) who is locked out. Returns the temp password once.
+router.post('/admin/reset-password', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase();
+    const userId = req.body.userId;
+    const user = userId ? await getById('users', userId) : (email ? await findOne('users', 'email', email) : null);
+    if (!user) return res.status(404).json({ error: 'No login account exists for that person yet.' });
+    const tempPassword = genTempPassword();
+    await update('users', user.id, { password: bcrypt.hashSync(tempPassword, 10), must_change_password: true });
+    res.json({ tempPassword, name: user.name, email: user.email });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Could not reset the password' }); }
 });
 
 // PUT /api/auth/me — update your own name / phone (works for every role).

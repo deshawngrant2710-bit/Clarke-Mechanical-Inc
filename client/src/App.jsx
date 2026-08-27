@@ -54,6 +54,7 @@ import FieldMode from './pages/FieldMode';
 import SyncQueue from './pages/SyncQueue';
 import { canAccess, homeForRole } from './lib/roles';
 import { initPush } from './lib/push';
+import SetInitialPassword from './pages/SetInitialPassword';
 
 function Layout() {
   const { user } = useAuth();
@@ -91,6 +92,8 @@ function Layout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
   if (!user) return <Navigate to="/login" replace />;
+  // One-time password: force the user to set their own before using the app.
+  if (user.must_change_password) return <SetInitialPassword />;
   // Role guard: send users to their home if they hit a page they can't access.
   if (!canAccess(user.role, location.pathname)) {
     return <Navigate to={homeForRole(user.role)} replace />;

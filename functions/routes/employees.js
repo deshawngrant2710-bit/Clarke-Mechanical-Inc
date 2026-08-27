@@ -3,11 +3,13 @@ const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 const { db, list, getById, findOne, create, update, remove, findWhere } = require('../lib/db');
 const { authMiddleware, adminOnly, requireStaff } = require('../middleware/auth');
+const { genTempPassword } = require('../lib/passwords');
 
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
 
 const ROLES = ['customer', 'technician', 'office', 'admin'];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const strip = (u) => u && {
   id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at,
   pay_per_job: u.pay_per_job || 0, salary_amount: u.salary_amount || 0, salary_frequency: u.salary_frequency || 'none',
@@ -50,13 +52,34 @@ router.get('/:id', async (req, res) => {
   res.json({ ...strip(user), jobs });
 });
 
+// Create a team member. The admin does NOT set a password — the server issues a
+// one-time password (returned once) that the member uses to sign in, then changes.
 router.post('/', adminOnly, async (req, res) => {
-  const { name, email, password, role, phone } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
+  const { name, role, phone } = req.body;
+  const email = (req.body.email || '').trim().toLowerCase();
+  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
   if (await findOne('users', 'email', email)) return res.status(409).json({ error: 'Email already in use' });
+  const tempPassword = genTempPassword();
   const id = uuid();
-  await create('users', id, { name, email, password: bcrypt.hashSync(password, 10), role: role || 'customer', phone: phone || null });
-  res.status(201).json(strip(await getById('users', id)));
+  await create('users', id, {
+    name: name.trim(), email,
+    password: bcrypt.hashSync(tempPassword, 10),
+    role: ROLES.includes(role) ? role : 'technician',
+    phone: phone || null,
+    must_change_password: true,
+  });
+  res.status(201).json({ ...strip(await getById('users', id)), tempPassword });
+});
+
+// Generate a NEW one-time password for an existing user (forgot password / lost
+// access). Returns the temp password once; the user must change it on next login.
+router.post('/:id/reset-password', adminOnly, async (req, res) => {
+  const user = await getById('users', req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const tempPassword = genTempPassword();
+  await update('users', req.params.id, { password: bcrypt.hashSync(tempPassword, 10), must_change_password: true });
+  res.json({ tempPassword, name: user.name, email: user.email });
 });
 
 // Update profile (name/phone). Role is NOT editable here.

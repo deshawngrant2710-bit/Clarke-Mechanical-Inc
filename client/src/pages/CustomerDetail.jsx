@@ -3,10 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Modal, Input, Textarea, Badge, Spinner, Avatar, Empty } from '../components/UI';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText, CheckSquare } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText, CheckSquare, KeyRound } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
-import { buildStatementHtml } from '../lib/printDoc';
+import { buildStatementHtml, printHtml } from '../lib/printDoc';
 import { TaskModal } from './Tasks';
+import TempPasswordModal from '../components/TempPasswordModal';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const EMAIL_LABEL = {
@@ -45,6 +47,10 @@ export default function CustomerDetail() {
   const [staff, setStaff] = useState([]);
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
+  const [tempData, setTempData] = useState(null);
+  const [resettingPw, setResettingPw] = useState(false);
+  const { user: authUser } = useAuth();
+  const isAdmin = authUser?.role === 'admin';
 
   function load() {
     api.get(`/customers/${id}`).then(r => { setCustomer(r.data); setForm(r.data); });
@@ -64,6 +70,18 @@ export default function CustomerDetail() {
     } catch { toast.error('Error updating'); }
     finally { setSaving(false); }
   }
+  async function resetCustomerPassword() {
+    if (!customer?.email) return toast.error('This customer has no email on file.');
+    if (!window.confirm(`Generate a one-time password for ${customer.name}? Their current login password will stop working.`)) return;
+    setResettingPw(true);
+    try {
+      const { data } = await api.post('/auth/admin/reset-password', { email: customer.email });
+      setTempData({ tempPassword: data.tempPassword, name: data.name || customer.name, email: data.email || customer.email });
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'This customer hasn’t set up a login yet.');
+    } finally { setResettingPw(false); }
+  }
+
   async function printStatement() {
     let invoices = [];
     try { const r = await api.get('/billing/invoices'); invoices = r.data.filter(i => i.customer_id === id); }
@@ -74,9 +92,7 @@ export default function CustomerDetail() {
       business = { name: data.business_name, phone: data.business_phone, email: data.business_email, website: data.business_website, address: data.business_address };
     } catch { /* fall back to defaults in the builder */ }
     const html = buildStatementHtml({ business, customer, invoices });
-    const w = window.open('', '_blank');
-    if (!w) return alert('Please allow pop-ups to print.');
-    w.document.write(html); w.document.close();
+    printHtml(html);
   }
 
   async function handleDelete() {
@@ -118,6 +134,7 @@ export default function CustomerDetail() {
             <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={printStatement}><FileText size={15} /> Statement</Btn>
             <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>
             <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
+            {isAdmin && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" loading={resettingPw} onClick={resetCustomerPassword}><KeyRound size={15} /> One-time password</Btn>}
             <Btn variant="danger" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
           </div>
         </div>
@@ -240,6 +257,8 @@ export default function CustomerDetail() {
           </div>
         </div>
       </Modal>
+
+      <TempPasswordModal open={!!tempData} data={tempData} onClose={() => setTempData(null)} />
     </div>
   );
 }
