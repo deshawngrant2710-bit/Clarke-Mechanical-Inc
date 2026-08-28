@@ -249,13 +249,20 @@ export default function JobDetail() {
     try { await api.delete(`/jobs/${id}/photos/${pid}`); load(); }
     catch { toast.error('Could not remove'); }
   }
-  async function createInvoice() {
-    try {
-      const items = (job.parts || []).map(p => ({ description: p.name, quantity: p.quantity || 1, unit_price: p.unit_price || 0 }));
-      const { data } = await api.post('/billing/invoices', { customer_id: job.customer_id, job_id: id, items, status: 'draft' });
-      toast.success('Invoice created from this job');
-      navigate(`/invoices/${data.id}`);
-    } catch (e) { toast.error(e.response?.data?.error || 'Could not create invoice'); }
+  function createInvoice() {
+    // Open the editable New Invoice form pre-filled from this job — the admin
+    // reviews/edits line items and prices, then clicks Create.
+    const items = (job.parts || []).map(p => ({ description: p.name, quantity: p.quantity || 1, unit_price: p.unit_price || 0 }));
+    navigate('/invoices', {
+      state: {
+        newInvoice: {
+          customer_id: job.customer_id,
+          job_id: id,
+          items: items.length ? items : undefined,
+          notes: job.title ? `Service: ${job.title}` : '',
+        },
+      },
+    });
   }
   async function scheduleFollowUp() {
     const months = parseInt(window.prompt('Schedule a follow-up visit in how many months?', '6'), 10);

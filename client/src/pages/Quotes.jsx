@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
 const emptyItem = () => ({ description: '', quantity: 1, unit_price: 0 });
-const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, discount: 0, deposit: 0, notes: '' });
+const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Quotes() {
@@ -114,7 +114,8 @@ export default function Quotes() {
     });
   }
   const subtotal = form.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-  const discount = Math.min(Math.max(Number(form.discount) || 0, 0), subtotal);
+  const discountPct = Math.min(Math.max(Number(form.discount_pct) || 0, 0), 100);
+  const discount = +(subtotal * discountPct / 100).toFixed(2);
   const tax = (subtotal - discount) * form.tax_rate;
   const total = subtotal - discount + tax;
 
@@ -132,7 +133,7 @@ export default function Quotes() {
   async function handleSave() {
     setSaving(true);
     try {
-      await api.post('/billing/quotes', form);
+      await api.post('/billing/quotes', { ...form, discount });
       toast.success('Quote created');
       setModal(false); setForm(emptyForm()); load();
     } catch { toast.error('Error creating quote'); }
@@ -261,10 +262,11 @@ export default function Quotes() {
           <div className="rounded-xl border border-slate-200 p-4 text-sm space-y-2.5 max-w-xs ml-auto">
             <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-medium tabular-nums">{money(subtotal)}</span></div>
             <div className="flex justify-between items-center text-slate-600">
-              <span className="flex items-center gap-2">Discount $
-                <input type="number" min="0" step="0.01" value={form.discount || ''}
-                  onChange={e => setForm(f => ({ ...f, discount: e.target.value }))}
-                  className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+              <span className="flex items-center gap-1">Discount
+                <input type="number" min="0" max="100" step="0.1" value={form.discount_pct || ''}
+                  onChange={e => setForm(f => ({ ...f, discount_pct: e.target.value }))}
+                  className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                <span>%</span>
               </span>
               <span className="font-medium tabular-nums text-emerald-600">{discount ? `−${money(discount)}` : money(0)}</span>
             </div>

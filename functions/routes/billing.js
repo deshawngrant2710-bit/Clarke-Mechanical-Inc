@@ -19,7 +19,8 @@ function calcTotals(items, taxRate, discount = 0) {
   return { subtotal, discount_amount, tax_amount, total: taxable + tax_amount };
 }
 const withItemTotals = (items = []) => items.map(i => ({
-  id: i.id || uuid(), description: i.description, quantity: Number(i.quantity) || 0,
+  id: i.id || uuid(), description: i.description, note: i.note ? String(i.note).trim() || null : null,
+  quantity: Number(i.quantity) || 0,
   unit_price: Number(i.unit_price) || 0, total: (Number(i.quantity) || 0) * (Number(i.unit_price) || 0),
 }));
 

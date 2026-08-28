@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import PriceItemInput from '../components/PriceItemInput';
@@ -13,8 +13,8 @@ import { sendEmail } from '../lib/email';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
 
-const emptyItem = () => ({ description: '', quantity: 1, unit_price: 0 });
-const emptyForm = () => ({ customer_id: '', job_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', items: [emptyItem()], tax_rate: 0.0875, discount: 0, deposit: 0, notes: '' });
+const emptyItem = () => ({ description: '', note: '', quantity: 1, unit_price: 0 });
+const emptyForm = () => ({ customer_id: '', job_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Invoices() {
@@ -24,6 +24,7 @@ export default function Invoices() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [modal, setModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [reminding, setReminding] = useState(false);
@@ -31,6 +32,7 @@ export default function Invoices() {
   const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
   const [priceBook, setPriceBook] = useState([]);
   const navigate = useNavigate();
+  const location = useLocation();
 
   function load() {
     Promise.all([api.get('/billing/invoices'), api.get('/customers'), api.get('/billing/config')])
@@ -44,12 +46,51 @@ export default function Invoices() {
   }
   useEffect(load, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') openNew(); }, []);
+  // Opened from a job ("Create Invoice") to pre-fill, or from an invoice ("Edit Invoice").
+  useEffect(() => {
+    if (location.state?.newInvoice) {
+      openNew(location.state.newInvoice);
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state?.editInvoice) {
+      openEdit(location.state.editInvoice);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function openNew() {
+  function openNew(prefill) {
+    setEditingId(null);
     const f = emptyForm();
     f.tax_rate = (parseFloat(defaultTaxPct) || 0) / 100;
+    if (prefill) {
+      if (prefill.customer_id) f.customer_id = prefill.customer_id;
+      if (prefill.job_id) f.job_id = prefill.job_id;
+      if (Array.isArray(prefill.items) && prefill.items.length) {
+        f.items = prefill.items.map(it => ({ description: it.description || '', note: it.note || '', quantity: Number(it.quantity) || 1, unit_price: Number(it.unit_price) || 0 }));
+      }
+      if (prefill.notes) f.notes = prefill.notes;
+    }
     setForm(f); setTaxInput(defaultTaxPct); setModal(true);
   }
+
+  // Reopen an existing invoice in the editable form to fix mistakes.
+  function openEdit(inv) {
+    const items = (inv.items && inv.items.length)
+      ? inv.items.map(it => ({ description: it.description || '', note: it.note || '', quantity: Number(it.quantity) || 1, unit_price: Number(it.unit_price) || 0 }))
+      : [emptyItem()];
+    const sub = items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
+    const rate = Number(inv.tax_rate) || 0;
+    setForm({
+      customer_id: inv.customer_id || '', job_id: inv.job_id || '', status: inv.status || 'draft',
+      issue_date: inv.issue_date || new Date().toISOString().slice(0, 10), due_date: inv.due_date || '',
+      items, tax_rate: rate, deposit: Number(inv.deposit) || 0, notes: inv.notes || '',
+      discount_pct: sub > 0 ? +((Number(inv.discount) || 0) / sub * 100).toFixed(3) : 0,
+    });
+    setTaxInput(String(+(rate * 100).toFixed(3)));
+    setEditingId(inv.id);
+    setModal(true);
+  }
+  function closeModal() { setModal(false); setEditingId(null); }
 
   async function duplicateInvoice(e, inv) {
     e.stopPropagation();
@@ -88,7 +129,7 @@ export default function Invoices() {
   function setItem(idx, key, val) {
     setForm(f => {
       const items = [...f.items];
-      items[idx] = { ...items[idx], [key]: key === 'description' ? val : Number(val) };
+      items[idx] = { ...items[idx], [key]: (key === 'description' || key === 'note') ? val : Number(val) };
       return { ...f, items };
     });
   }
@@ -101,17 +142,24 @@ export default function Invoices() {
     });
   }
   const subtotal = form.items.reduce((s, i) => s + i.quantity * i.unit_price, 0);
-  const discount = Math.min(Math.max(Number(form.discount) || 0, 0), subtotal);
+  const discountPct = Math.min(Math.max(Number(form.discount_pct) || 0, 0), 100);
+  const discount = +(subtotal * discountPct / 100).toFixed(2);
   const tax = (subtotal - discount) * form.tax_rate;
   const total = subtotal - discount + tax;
 
   async function handleSave() {
     setSaving(true);
     try {
-      await api.post('/billing/invoices', form);
-      toast.success('Invoice created');
-      setModal(false); setForm(emptyForm()); load();
-    } catch { toast.error('Error creating invoice'); }
+      // Backend stores the discount as a dollar amount — send the computed value.
+      if (editingId) {
+        await api.put(`/billing/invoices/${editingId}`, { ...form, discount });
+        toast.success('Invoice updated');
+      } else {
+        await api.post('/billing/invoices', { ...form, discount });
+        toast.success('Invoice created');
+      }
+      setModal(false); setEditingId(null); setForm(emptyForm()); load();
+    } catch { toast.error(editingId ? 'Error updating invoice' : 'Error creating invoice'); }
     finally { setSaving(false); }
   }
   async function handleDelete(e, id) {
@@ -187,11 +235,11 @@ export default function Invoices() {
         )}
       </Card>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="New Invoice" subtitle="Build and send a professional invoice" size="xl"
+      <Modal open={modal} onClose={closeModal} title={editingId ? 'Edit Invoice' : 'New Invoice'} subtitle={editingId ? 'Fix any mistakes and save' : 'Build and send a professional invoice'} size="xl"
         footer={
           <div className="flex justify-end gap-2">
-            <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
-            <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Invoice'}</Btn>
+            <Btn variant="outline" onClick={closeModal}>Cancel</Btn>
+            <Btn onClick={handleSave} loading={saving}>{saving ? 'Saving…' : (editingId ? 'Save Changes' : 'Create Invoice')}</Btn>
           </div>
         }>
         <div className="space-y-3">
@@ -228,19 +276,23 @@ export default function Invoices() {
             </div>
             <div className="space-y-2">
               {form.items.map((item, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <PriceItemInput className="col-span-12 sm:col-span-5" value={item.description} items={priceBook}
-                    onChange={v => setItem(i, 'description', v)} onPick={it => pickItem(i, it)} />
-                  <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
-                    className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
-                  <div className="col-span-4 sm:col-span-2 relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-                    <input placeholder="0.00" type="number" min="0" step="0.01" value={item.unit_price} onChange={e => setItem(i, 'unit_price', e.target.value)}
-                      className="w-full pl-6 pr-2 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                <div key={i} className="space-y-1.5 pb-1">
+                  <div className="grid grid-cols-12 gap-2 items-center">
+                    <PriceItemInput className="col-span-12 sm:col-span-5" value={item.description} items={priceBook}
+                      onChange={v => setItem(i, 'description', v)} onPick={it => pickItem(i, it)} />
+                    <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
+                      className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                    <div className="col-span-4 sm:col-span-2 relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                      <input placeholder="0.00" type="number" min="0" step="0.01" value={item.unit_price} onChange={e => setItem(i, 'unit_price', e.target.value)}
+                        className="w-full pl-6 pr-2 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                    </div>
+                    <div className="col-span-3 sm:col-span-2 text-right text-sm font-medium text-slate-700 tabular-nums">{money((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}</div>
+                    <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
+                      className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
                   </div>
-                  <div className="col-span-3 sm:col-span-2 text-right text-sm font-medium text-slate-700 tabular-nums">{money((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}</div>
-                  <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
-                    className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
+                  <input placeholder="Add a note for this line (optional) — shown to the customer" value={item.note || ''} onChange={e => setItem(i, 'note', e.target.value)}
+                    className="w-full sm:w-[calc(41.666%-0.5rem)] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-400" />
                 </div>
               ))}
               {form.items.length === 0 && <p className="text-sm text-slate-400 py-2">No items yet — add a line.</p>}
@@ -250,10 +302,11 @@ export default function Invoices() {
           <div className="rounded-xl border border-slate-200 p-4 text-sm space-y-2.5 max-w-xs ml-auto">
             <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-medium tabular-nums">{money(subtotal)}</span></div>
             <div className="flex justify-between items-center text-slate-600">
-              <span className="flex items-center gap-2">Discount $
-                <input type="number" min="0" step="0.01" value={form.discount || ''}
-                  onChange={e => setForm(f => ({ ...f, discount: e.target.value }))}
-                  className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+              <span className="flex items-center gap-1">Discount
+                <input type="number" min="0" max="100" step="0.1" value={form.discount_pct || ''}
+                  onChange={e => setForm(f => ({ ...f, discount_pct: e.target.value }))}
+                  className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                <span>%</span>
               </span>
               <span className="font-medium tabular-nums text-emerald-600">{discount ? `−${money(discount)}` : money(0)}</span>
             </div>

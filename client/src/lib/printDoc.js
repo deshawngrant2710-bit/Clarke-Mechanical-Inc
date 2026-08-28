@@ -37,7 +37,7 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
 
   const rows = (doc.items || []).map(it => `
     <tr>
-      <td class="desc">${esc(it.description)}</td>
+      <td class="desc">${esc(it.description)}${it.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${esc(it.note)}</div>` : ''}</td>
       <td class="r">${it.quantity}</td>
       <td class="r">${money(it.unit_price)}</td>
       <td class="r">${money(it.total)}</td>

@@ -107,7 +107,7 @@ export default function CustomerInvoices() {
                         <tbody className="divide-y divide-slate-200/70">
                           {(inv.items || []).map((it, i) => (
                             <tr key={i}>
-                              <td className="py-1.5 text-slate-600">{it.description}</td>
+                              <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] text-slate-400 mt-0.5">{it.note}</div>}</td>
                               <td className="py-1.5 text-right text-slate-500 w-16">×{it.quantity}</td>
                               <td className="py-1.5 text-right text-slate-800 font-medium w-24">{money(it.total)}</td>
                             </tr>
@@ -127,6 +127,7 @@ export default function CustomerInvoices() {
                         </div>
                         <div className="w-48 space-y-0.5 text-sm">
                           <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{money(inv.subtotal)}</span></div>
+                          {inv.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>−{money(inv.discount)}</span></div>}
                           <div className="flex justify-between text-slate-500"><span>Tax</span><span>{money(inv.tax_amount)}</span></div>
                           <div className="flex justify-between font-bold text-slate-800"><span>Total</span><span>{money(inv.total)}</span></div>
                         </div>
@@ -167,7 +168,7 @@ export default function CustomerInvoices() {
                           <tbody className="divide-y divide-slate-200/70">
                             {(q.items || []).map((it, i) => (
                               <tr key={i}>
-                                <td className="py-1.5 text-slate-600">{it.description}</td>
+                                <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] text-slate-400 mt-0.5">{it.note}</div>}</td>
                                 <td className="py-1.5 text-right text-slate-500 w-16">×{it.quantity}</td>
                                 <td className="py-1.5 text-right text-slate-800 font-medium w-24">{money(it.total)}</td>
                               </tr>

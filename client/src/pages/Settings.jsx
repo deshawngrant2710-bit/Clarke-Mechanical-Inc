@@ -27,10 +27,14 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [testTo, setTestTo] = useState('');
   const [busy, setBusy] = useState('');
+  const [taxPct, setTaxPct] = useState(''); // free-typed percent string (e.g. "8.875")
 
   useEffect(() => {
     if (user?.role !== 'admin') return;
-    api.get('/settings').then(r => { setData(r.data); setTestTo(r.data.business_email || ''); });
+    api.get('/settings').then(r => {
+      setData(r.data); setTestTo(r.data.business_email || '');
+      setTaxPct(String(+(Number(r.data.default_tax_rate || 0) * 100).toFixed(3)));
+    });
   }, [user]);
 
   if (user?.role !== 'admin') {
@@ -58,6 +62,7 @@ export default function Settings() {
       toast.success('Settings saved');
       const r = await api.get('/settings');
       setData({ ...r.data, smtp_pass: '' });
+      setTaxPct(String(+(Number(r.data.default_tax_rate || 0) * 100).toFixed(3)));
     } catch (e) { toast.error(e.response?.data?.error || 'Could not save'); }
     finally { setSaving(false); }
   }
@@ -102,8 +107,13 @@ export default function Settings() {
             <Input label="Tagline" value={data.business_tagline || ''} onChange={set('business_tagline')} hint="Short slogan shown in email header & footer" />
             <Input label="Online booking: jobs per time slot" type="number" min="1" step="1" value={data.booking_slot_capacity || '2'}
               onChange={set('booking_slot_capacity')} hint="How many appointments customers can book in each arrival window" />
-            <Input label="Default tax rate (%)" type="number" step="0.001" value={String(+(Number(data.default_tax_rate || 0) * 100).toFixed(3))}
-              onChange={e => setData(d => ({ ...d, default_tax_rate: String((Number(e.target.value) || 0) / 100) }))} hint="Applied to new invoices & estimates (e.g. 8.875)" />
+            <Input label="Default tax rate (%)" type="text" inputMode="decimal" value={taxPct}
+              onChange={e => {
+                const v = e.target.value;
+                if (!/^\d*\.?\d*$/.test(v)) return; // digits + one dot only
+                setTaxPct(v);
+                setData(d => ({ ...d, default_tax_rate: String((Number(v) || 0) / 100) }));
+              }} hint="Applied to new invoices & estimates (e.g. 8.875)" />
             <Input label="From address" value={data.email_from} onChange={set('email_from')} hint={'e.g. Clarke Mechanical <no-reply@…>'} />
             <Input label="Reply-to address" value={data.email_reply_to || ''} onChange={set('email_reply_to')} hint="Where customer replies go (e.g. your Gmail). Leave blank to use the public email." />
           </div>

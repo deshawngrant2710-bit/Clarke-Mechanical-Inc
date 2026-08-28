@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Spinner } from '../components/UI';
-import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing } from 'lucide-react';
+import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil } from 'lucide-react';
 import Logo from '../components/Logo';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -107,7 +107,7 @@ export default function InvoiceDetail() {
               <tbody className="divide-y divide-slate-100">
                 {invoice.items?.map(item => (
                   <tr key={item.id}>
-                    <td className="py-3 text-slate-700">{item.description}</td>
+                    <td className="py-3 text-slate-700">{item.description}{item.note && <div className="text-xs text-slate-400 mt-0.5">{item.note}</div>}</td>
                     <td className="py-3 text-right text-slate-600">{item.quantity}</td>
                     <td className="py-3 text-right text-slate-600">{money(item.unit_price)}</td>
                     <td className="py-3 text-right font-medium text-slate-800">{money(item.total)}</td>
@@ -119,6 +119,7 @@ export default function InvoiceDetail() {
             <div className="flex justify-end">
               <div className="w-64 text-sm space-y-1.5">
                 <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{money(invoice.subtotal)}</span></div>
+                {invoice.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>−{money(invoice.discount)}</span></div>}
                 <div className="flex justify-between text-slate-600"><span>Tax</span><span>{money(invoice.tax_amount)}</span></div>
                 <div className="flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-200 text-base"><span>Total</span><span>{money(invoice.total)}</span></div>
                 {amountPaid > 0 && <div className="flex justify-between text-emerald-600"><span>Paid</span><span>−{money(amountPaid)}</span></div>}
@@ -154,6 +155,13 @@ export default function InvoiceDetail() {
             </div>
 
             <div className="space-y-2">
+              {invoice.status !== 'cancelled' && (
+                <Btn variant="outline" className="w-full" onClick={() => navigate('/invoices', { state: { editInvoice: {
+                  id: invoice.id, customer_id: invoice.customer_id, job_id: invoice.job_id, status: invoice.status,
+                  issue_date: invoice.issue_date, due_date: invoice.due_date, items: invoice.items,
+                  tax_rate: invoice.tax_rate, discount: invoice.discount, deposit: invoice.deposit, notes: invoice.notes,
+                } } })}><Pencil size={15} /> Edit Invoice</Btn>
+              )}
               <Btn variant="outline" className="w-full" onClick={emailInvoice} loading={emailing}><Mail size={15} /> Email Invoice to Customer</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}
