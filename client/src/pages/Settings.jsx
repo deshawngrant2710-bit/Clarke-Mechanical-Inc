@@ -102,8 +102,8 @@ export default function Settings() {
             <Input label="Tagline" value={data.business_tagline || ''} onChange={set('business_tagline')} hint="Short slogan shown in email header & footer" />
             <Input label="Online booking: jobs per time slot" type="number" min="1" step="1" value={data.booking_slot_capacity || '2'}
               onChange={set('booking_slot_capacity')} hint="How many appointments customers can book in each arrival window" />
-            <Input label="Default tax rate (%)" type="number" step="0.01" value={(Number(data.default_tax_rate || 0) * 100).toFixed(2)}
-              onChange={e => setData(d => ({ ...d, default_tax_rate: String((Number(e.target.value) || 0) / 100) }))} hint="Applied to new invoices & estimates" />
+            <Input label="Default tax rate (%)" type="number" step="0.001" value={String(+(Number(data.default_tax_rate || 0) * 100).toFixed(3))}
+              onChange={e => setData(d => ({ ...d, default_tax_rate: String((Number(e.target.value) || 0) / 100) }))} hint="Applied to new invoices & estimates (e.g. 8.875)" />
             <Input label="From address" value={data.email_from} onChange={set('email_from')} hint={'e.g. Clarke Mechanical <no-reply@…>'} />
             <Input label="Reply-to address" value={data.email_reply_to || ''} onChange={set('email_reply_to')} hint="Where customer replies go (e.g. your Gmail). Leave blank to use the public email." />
           </div>

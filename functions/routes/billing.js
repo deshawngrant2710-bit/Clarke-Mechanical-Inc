@@ -23,19 +23,24 @@ const withItemTotals = (items = []) => items.map(i => ({
   unit_price: Number(i.unit_price) || 0, total: (Number(i.quantity) || 0) * (Number(i.unit_price) || 0),
 }));
 
-// Sequential document numbers.
-//  - useYear=false → simple running sequence like CL-0001, CL-0002 …
-//  - useYear=true  → year-scoped like QUO-2026-0001
+// Document numbers start at START_NUMBER and only ever count up (the next number
+// is one more than the highest existing one, but never below START_NUMBER).
+//  - useYear=false → running sequence like CL-4200, CL-4201 …
+//  - useYear=true  → year-scoped like QUO-2026-4200
+const START_NUMBER = 4200;
 async function nextNumber(collection, prefix, useYear = false) {
   const all = await list(collection);
   const field = collection === 'invoices' ? 'invoice_number' : 'quote_number';
-  if (useYear) {
-    const year = new Date().getFullYear();
-    const count = all.filter(x => (x[field] || '').startsWith(`${prefix}-${year}-`)).length + 1;
-    return `${prefix}-${year}-${String(count).padStart(4, '0')}`;
+  const year = new Date().getFullYear();
+  const re = useYear ? new RegExp(`^${prefix}-${year}-(\\d+)$`) : new RegExp(`^${prefix}-(\\d+)$`);
+  let max = 0;
+  for (const x of all) {
+    const m = (x[field] || '').match(re);
+    if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; }
   }
-  const count = all.filter(x => (x[field] || '').startsWith(`${prefix}-`)).length + 1;
-  return `${prefix}-${String(count).padStart(4, '0')}`;
+  const next = Math.max(max, START_NUMBER - 1) + 1;
+  const num = String(next).padStart(4, '0');
+  return useYear ? `${prefix}-${year}-${num}` : `${prefix}-${num}`;
 }
 
 /* ---------------- INVOICES ---------------- */
