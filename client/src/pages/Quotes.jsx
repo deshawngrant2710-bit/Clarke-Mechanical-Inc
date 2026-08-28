@@ -11,7 +11,7 @@ import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCirc
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
-const emptyItem = () => ({ description: '', quantity: 1, unit_price: 0 });
+const emptyItem = () => ({ description: '', note: '', quantity: 1, unit_price: 0 });
 const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -102,7 +102,7 @@ export default function Quotes() {
   function setItem(idx, key, val) {
     setForm(f => {
       const items = [...f.items];
-      items[idx] = { ...items[idx], [key]: key === 'description' ? val : Number(val) };
+      items[idx] = { ...items[idx], [key]: (key === 'description' || key === 'note') ? val : Number(val) };
       return { ...f, items };
     });
   }
@@ -240,19 +240,23 @@ export default function Quotes() {
             </div>
             <div className="space-y-2">
               {form.items.map((item, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <PriceItemInput className="col-span-12 sm:col-span-5" value={item.description} items={priceBook}
-                    onChange={v => setItem(i, 'description', v)} onPick={it => pickItem(i, it)} />
-                  <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
-                    className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
-                  <div className="col-span-4 sm:col-span-2 relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-                    <input placeholder="0.00" type="number" min="0" step="0.01" value={item.unit_price} onChange={e => setItem(i, 'unit_price', e.target.value)}
-                      className="w-full pl-6 pr-2 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                <div key={i} className="space-y-1.5 pb-1">
+                  <div className="grid grid-cols-12 gap-2 items-center">
+                    <PriceItemInput className="col-span-12 sm:col-span-5" value={item.description} items={priceBook}
+                      onChange={v => setItem(i, 'description', v)} onPick={it => pickItem(i, it)} />
+                    <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)}
+                      className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                    <div className="col-span-4 sm:col-span-2 relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                      <input placeholder="0.00" type="number" min="0" step="0.01" value={item.unit_price} onChange={e => setItem(i, 'unit_price', e.target.value)}
+                        className="w-full pl-6 pr-2 py-2 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                    </div>
+                    <div className="col-span-3 sm:col-span-2 text-right text-sm font-medium text-slate-700 tabular-nums">{money((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}</div>
+                    <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
+                      className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
                   </div>
-                  <div className="col-span-3 sm:col-span-2 text-right text-sm font-medium text-slate-700 tabular-nums">{money((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}</div>
-                  <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
-                    className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
+                  <input placeholder="Add a note for this line (optional) — shown to the customer" value={item.note || ''} onChange={e => setItem(i, 'note', e.target.value)}
+                    className="w-full sm:w-[calc(41.666%-0.5rem)] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-400" />
                 </div>
               ))}
               {form.items.length === 0 && <p className="text-sm text-slate-400 py-2">No items yet — add a line.</p>}

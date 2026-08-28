@@ -107,7 +107,7 @@ export default function InvoiceDetail() {
               <tbody className="divide-y divide-slate-100">
                 {invoice.items?.map(item => (
                   <tr key={item.id}>
-                    <td className="py-3 text-slate-700">{item.description}{item.note && <div className="text-xs text-slate-400 mt-0.5">{item.note}</div>}</td>
+                    <td className="py-3 text-slate-700">{item.description}{item.note && <div className="text-xs font-bold text-slate-700 mt-0.5">{item.note}</div>}</td>
                     <td className="py-3 text-right text-slate-600">{item.quantity}</td>
                     <td className="py-3 text-right text-slate-600">{money(item.unit_price)}</td>
                     <td className="py-3 text-right font-medium text-slate-800">{money(item.total)}</td>
