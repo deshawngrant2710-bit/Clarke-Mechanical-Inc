@@ -43,7 +43,7 @@ async function emailConfig() {
   const provider = brevo ? 'brevo' : smtp ? 'smtp' : 'none';
   return {
     from: s.email_from,
-    replyTo: s.email_reply_to || s.business_email,
+    replyTo: s.email_reply_to || 'clarkemechanical@gmail.com',
     business: {
       name: s.business_name, email: s.business_email, phone: s.business_phone, hours: s.business_hours,
       website: s.business_website || '', tagline: s.business_tagline || '',
