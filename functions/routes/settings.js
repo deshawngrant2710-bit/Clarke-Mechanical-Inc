@@ -12,8 +12,9 @@ router.get('/', async (req, res) => {
   res.json({
     business_name: s.business_name, business_email: s.business_email, business_phone: s.business_phone,
     business_address: s.business_address, business_website: s.business_website,
-    business_hours: s.business_hours, default_tax_rate: s.default_tax_rate,
-    email_from: s.email_from, smtp_host: s.smtp_host, smtp_port: s.smtp_port, smtp_user: s.smtp_user,
+    business_hours: s.business_hours, business_tagline: s.business_tagline, default_tax_rate: s.default_tax_rate,
+    booking_slot_capacity: s.booking_slot_capacity,
+    email_from: s.email_from, email_reply_to: s.email_reply_to, smtp_host: s.smtp_host, smtp_port: s.smtp_port, smtp_user: s.smtp_user,
     smtp_pass_set: !!s.smtp_pass,
     reminders_job_enabled: s.reminders_job_enabled === '1',
     reminders_overdue_enabled: s.reminders_overdue_enabled === '1',
