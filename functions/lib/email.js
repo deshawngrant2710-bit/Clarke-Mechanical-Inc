@@ -268,13 +268,14 @@ async function render(type, entity) {
 }
 
 // Send via Brevo's transactional HTTP API (works on hosts that block SMTP).
-async function sendViaBrevo(cfg, { to, toName, subject, html }) {
+async function sendViaBrevo(cfg, { to, toName, subject, html, cc }) {
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: { 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify({
       sender: { name: cfg.business.name, email: cfg.business.email },
       to: [{ email: to, name: toName || to }],
+      ...(cc && cc.length ? { cc: cc.map(e => ({ email: e })) } : {}),
       replyTo: { email: cfg.replyTo || cfg.business.email, name: cfg.business.name },
       subject,
       htmlContent: html,
@@ -284,18 +285,19 @@ async function sendViaBrevo(cfg, { to, toName, subject, html }) {
 }
 
 // Send + log to Firestore email_log.
-async function sendMail({ type, to, toName, subject, html, relatedId, customerId, sentBy }) {
+async function sendMail({ type, to, toName, subject, html, relatedId, customerId, sentBy, cc }) {
   const id = uuid();
   const cfg = await settings.emailConfig();
+  const ccList = Array.isArray(cc) ? cc.filter(Boolean) : [];
   let status = 'sent';
   let error = null;
   try {
     if (!to) throw new Error('Recipient has no email address on file');
     if (cfg.provider === 'brevo') {
-      await sendViaBrevo(cfg, { to, toName, subject, html });
+      await sendViaBrevo(cfg, { to, toName, subject, html, cc: ccList });
       status = 'sent';
     } else if (cfg.provider === 'smtp') {
-      await getTransporter(cfg).sendMail({ from: cfg.from, to, subject, html, replyTo: cfg.replyTo || undefined });
+      await getTransporter(cfg).sendMail({ from: cfg.from, to, cc: ccList.length ? ccList.join(',') : undefined, subject, html, replyTo: cfg.replyTo || undefined });
       status = 'sent';
     } else {
       status = 'simulated';
@@ -305,7 +307,7 @@ async function sendMail({ type, to, toName, subject, html, relatedId, customerId
     error = e.message;
   }
   await db.collection('email_log').doc(id).set({
-    type, to_email: to || '', to_name: toName || null, subject, related_id: relatedId || null,
+    type, to_email: to || '', cc_emails: ccList, to_name: toName || null, subject, related_id: relatedId || null,
     customer_id: customerId || null, status, error, sent_by: sentBy || null, sent_at: new Date().toISOString(),
   });
   return { id, status, error };

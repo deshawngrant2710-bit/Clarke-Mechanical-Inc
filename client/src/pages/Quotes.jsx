@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import PriceItemInput from '../components/PriceItemInput';
+import RichTextInput from '../components/RichTextInput';
+import EmailRecipientsModal from '../components/EmailRecipientsModal';
 import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
@@ -14,6 +16,10 @@ import { sendEmail } from '../lib/email';
 const emptyItem = () => ({ description: '', note: '', quantity: 1, unit_price: 0 });
 const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const DRAFT_KEY = 'clarke_draft_estimate';
+const draftHasContent = (f) => !!(f && (f.customer_id
+  || (f.items || []).some(it => (it.description || '').trim() || (it.note || '').trim() || Number(it.unit_price))
+  || (f.notes || '').trim()));
 
 export default function Quotes() {
   const navigate = useNavigate();
@@ -27,6 +33,8 @@ export default function Quotes() {
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [emailTarget, setEmailTarget] = useState(null);
+  const [emailing, setEmailing] = useState(false);
   const [taxInput, setTaxInput] = useState('8.75');
   const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
   const [priceBook, setPriceBook] = useState([]);
@@ -42,10 +50,30 @@ export default function Quotes() {
   }
   useEffect(load, []);
 
+  // Autosave a NEW estimate being typed, so it survives a closed laptop / refresh.
+  useEffect(() => {
+    if (!modal) return;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, taxInput })); } catch { /* ignore */ }
+  }, [form, taxInput, modal]);
+
   function openNew() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+      if (saved?.form && draftHasContent(saved.form)) {
+        setForm(saved.form); setTaxInput(saved.taxInput || defaultTaxPct); setModal(true);
+        toast('Restored your unsaved draft', { icon: '📝' });
+        return;
+      }
+    } catch { /* ignore */ }
     const f = emptyForm();
     f.tax_rate = (parseFloat(defaultTaxPct) || 0) / 100;
     setForm(f); setTaxInput(defaultTaxPct); setModal(true);
+  }
+  function discardDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    const f = emptyForm(); f.tax_rate = (parseFloat(defaultTaxPct) || 0) / 100;
+    setForm(f); setTaxInput(defaultTaxPct);
+    toast.success('Draft cleared');
   }
 
   // Prefill + open the New Quote modal when arriving from an inspection, or from the
@@ -134,6 +162,7 @@ export default function Quotes() {
     setSaving(true);
     try {
       await api.post('/billing/quotes', { ...form, discount });
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       toast.success('Quote created');
       setModal(false); setForm(emptyForm()); load();
     } catch { toast.error('Error creating quote'); }
@@ -145,9 +174,17 @@ export default function Quotes() {
     await api.delete(`/billing/quotes/${id}`);
     toast.success('Deleted'); load();
   }
-  async function handleEmail(e, id) {
+  function handleEmail(e, q) {
     e.stopPropagation();
-    try { await sendEmail('quote', id, 'Quote'); load(); } catch { /* toast handled */ }
+    const email = customers.find(c => c.id === q.customer_id)?.email || '';
+    setEmailTarget({ id: q.id, email, number: q.quote_number });
+  }
+  async function sendQuoteEmail(cc = []) {
+    if (!emailTarget) return;
+    setEmailing(true);
+    try { await sendEmail('quote', emailTarget.id, 'Estimate', cc); setEmailTarget(null); load(); }
+    catch { /* toast handled */ }
+    finally { setEmailing(false); }
   }
 
   if (loading) return <SkeletonPage stats={4} />;
@@ -155,7 +192,7 @@ export default function Quotes() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Quotes" subtitle={`${quotes.length} estimates`} icon={<ClipboardList size={20} />}>
-        <Btn onClick={openNew}><Plus size={16} /> New Quote</Btn>
+        <Btn onClick={() => openNew()}><Plus size={16} /> New Quote</Btn>
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -173,7 +210,7 @@ export default function Quotes() {
           <Empty icon={<ClipboardList size={28} />}
             title={search ? 'No matching quotes' : 'No quotes yet'}
             message={search ? 'Try a different search.' : 'Create a professional estimate to win new work.'}
-            action={!search && <Btn onClick={openNew}><Plus size={16} /> New Quote</Btn>} />
+            action={!search && <Btn onClick={() => openNew()}><Plus size={16} /> New Quote</Btn>} />
         ) : (
           <Table head={[
             { label: 'Quote #' }, { label: 'Customer' }, { label: 'Expires' },
@@ -193,7 +230,7 @@ export default function Quotes() {
                       : ['accepted', 'sent'].includes(q.status) && <button onClick={e => convertToJob(e, q)} title="Convert to job" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Briefcase size={15} /></button>}
                     {q.status === 'accepted' && <button onClick={e => convertToInvoice(e, q)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><FileText size={15} /></button>}
                     <button onClick={e => duplicateQuote(e, q)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
-                    <button onClick={e => handleEmail(e, q.id)} title="Email quote to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
+                    <button onClick={e => handleEmail(e, q)} title="Email estimate to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
                     <button onClick={e => handleDelete(e, q.id)} title="Delete quote" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                   </div>
                 </Cell>
@@ -255,8 +292,7 @@ export default function Quotes() {
                     <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
                       className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
                   </div>
-                  <input placeholder="Add a note for this line (optional) — shown to the customer" value={item.note || ''} onChange={e => setItem(i, 'note', e.target.value)}
-                    className="w-full sm:w-[calc(41.666%-0.5rem)] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-400" />
+                  <RichTextInput className="w-full sm:w-2/3" placeholder="Add a note for this line (optional) — bold/underline supported" value={item.note || ''} onChange={v => setItem(i, 'note', v)} />
                 </div>
               ))}
               {form.items.length === 0 && <p className="text-sm text-slate-400 py-2">No items yet — add a line.</p>}
@@ -296,10 +332,14 @@ export default function Quotes() {
             </div>
           </div>
 
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes</label>
+            <RichTextInput placeholder="Notes shown on the estimate — bold/underline supported" value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))} />
+          </div>
           <div className="flex justify-between gap-2 pt-2">
             <Btn variant="outline" onClick={previewQuote} loading={previewing}><Mail size={15} /> Preview as customer</Btn>
             <div className="flex gap-2">
+              <Btn variant="ghost" onClick={discardDraft}>Discard draft</Btn>
               <Btn variant="outline" onClick={() => setModal(false)}>Cancel</Btn>
               <Btn onClick={handleSave} loading={saving}>{saving ? 'Creating…' : 'Create Quote'}</Btn>
             </div>
@@ -311,6 +351,9 @@ export default function Quotes() {
         <p className="text-xs text-slate-400 mb-2">This is exactly what the customer will see when the estimate is sent.</p>
         <iframe title="estimate preview" srcDoc={preview?.html || ''} className="w-full h-[70vh] rounded-lg border border-slate-200 bg-white" />
       </Modal>
+
+      <EmailRecipientsModal open={!!emailTarget} onClose={() => setEmailTarget(null)} to={emailTarget?.email}
+        title={`Email estimate ${emailTarget?.number || ''}`} sending={emailing} onSend={(cc) => sendQuoteEmail(cc)} />
     </div>
   );
 }

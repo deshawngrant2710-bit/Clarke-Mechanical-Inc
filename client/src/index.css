@@ -110,6 +110,10 @@ html.native-app .app-nav {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Rich-text (bold/underline) note fields: show placeholder when empty. */
+.rich-input:empty:before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
+.rich-input u { text-decoration: underline; }
+
 /* Brand-tinted text selection. */
 ::selection { background: rgb(37 99 235 / 0.16); color: #0f172a; }
 

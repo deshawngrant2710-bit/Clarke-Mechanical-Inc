@@ -1,5 +1,7 @@
 // Opens a clean, branded printable view of an invoice or quote and triggers the
 // browser's print dialog (→ "Save as PDF"). No dependencies, works everywhere.
+import { sanitizeRich } from './richText';
+
 const LOGO_URL = 'https://clarke-mechanical-inc.web.app/email-logo.png';
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -37,7 +39,7 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
 
   const rows = (doc.items || []).map(it => `
     <tr>
-      <td class="desc">${esc(it.description)}${it.note ? `<div style="font-size:12px;color:#334155;font-weight:700;margin-top:2px">${esc(it.note)}</div>` : ''}</td>
+      <td class="desc">${esc(it.description)}${it.note ? `<div style="font-size:12px;color:#334155;margin-top:2px">${sanitizeRich(it.note)}</div>` : ''}</td>
       <td class="r">${it.quantity}</td>
       <td class="r">${money(it.unit_price)}</td>
       <td class="r">${money(it.total)}</td>
@@ -135,7 +137,7 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
 
       ${receiptBlock}
 
-      ${doc.notes ? `<div class="notes"><div class="label">Notes</div><div class="body">${esc(doc.notes)}</div></div>` : ''}
+      ${doc.notes ? `<div class="notes"><div class="label">Notes</div><div class="body">${sanitizeRich(doc.notes)}</div></div>` : ''}
 
       <div class="thanks">Thank you for your business!</div>
       <div class="foot">

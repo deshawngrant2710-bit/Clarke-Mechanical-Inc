@@ -3,6 +3,7 @@ import api from '../api/client';
 import { Card, CardHeader, Badge, Btn, Empty, Spinner, Modal } from '../components/UI';
 import { printDocument, buildDocumentHtml } from '../lib/printDoc';
 import PayInvoiceModal from '../components/PayInvoiceModal';
+import { sanitizeRich } from '../lib/richText';
 import {
   FileText, ClipboardList, ChevronDown, CreditCard, Eye, Receipt,
   Download, Check, X, DollarSign, Lock,
@@ -107,7 +108,7 @@ export default function CustomerInvoices() {
                         <tbody className="divide-y divide-slate-200/70">
                           {(inv.items || []).map((it, i) => (
                             <tr key={i}>
-                              <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] font-bold text-slate-700 mt-0.5">{it.note}</div>}</td>
+                              <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] text-slate-600 mt-0.5" dangerouslySetInnerHTML={{ __html: sanitizeRich(it.note) }} />}</td>
                               <td className="py-1.5 text-right text-slate-500 w-16">×{it.quantity}</td>
                               <td className="py-1.5 text-right text-slate-800 font-medium w-24">{money(it.total)}</td>
                             </tr>
@@ -168,7 +169,7 @@ export default function CustomerInvoices() {
                           <tbody className="divide-y divide-slate-200/70">
                             {(q.items || []).map((it, i) => (
                               <tr key={i}>
-                                <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] font-bold text-slate-700 mt-0.5">{it.note}</div>}</td>
+                                <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] text-slate-600 mt-0.5" dangerouslySetInnerHTML={{ __html: sanitizeRich(it.note) }} />}</td>
                                 <td className="py-1.5 text-right text-slate-500 w-16">×{it.quantity}</td>
                                 <td className="py-1.5 text-right text-slate-800 font-medium w-24">{money(it.total)}</td>
                               </tr>

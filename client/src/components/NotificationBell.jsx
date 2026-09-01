@@ -22,6 +22,7 @@ export default function NotificationBell({ variant = 'light' }) {
   const navigate = useNavigate();
 
   async function load() {
+    if (typeof document !== 'undefined' && document.hidden) return; // don't poll a hidden tab
     try {
       const { data } = await api.get('/notifications');
       setItems(data.items || []);
@@ -30,7 +31,7 @@ export default function NotificationBell({ variant = 'light' }) {
   }
   useEffect(() => {
     load();
-    const iv = setInterval(load, 25000);
+    const iv = setInterval(load, 120000); // every 2 min (keeps DB reads low)
     return () => clearInterval(iv);
   }, []);
 

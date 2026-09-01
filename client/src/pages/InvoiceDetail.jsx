@@ -6,6 +6,8 @@ import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pen
 import Logo from '../components/Logo';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
+import { sanitizeRich } from '../lib/richText';
+import EmailRecipientsModal from '../components/EmailRecipientsModal';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -17,13 +19,14 @@ export default function InvoiceDetail() {
   const [pay, setPay] = useState({ amount: '', method: 'cash', reference: '', notes: '' });
   const [saving, setSaving] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const [emailModal, setEmailModal] = useState(false);
 
   function load() { api.get(`/billing/invoices/${id}`).then(r => setInvoice(r.data)); }
   useEffect(load, [id]);
 
-  async function emailInvoice() {
+  async function emailInvoice(cc = []) {
     setEmailing(true);
-    try { await sendEmail('invoice', id, 'Invoice'); load(); } catch { /* toast handled */ }
+    try { await sendEmail('invoice', id, 'Invoice', cc); setEmailModal(false); load(); } catch { /* toast handled */ }
     finally { setEmailing(false); }
   }
   async function emailReceipt() {
@@ -107,7 +110,7 @@ export default function InvoiceDetail() {
               <tbody className="divide-y divide-slate-100">
                 {invoice.items?.map(item => (
                   <tr key={item.id}>
-                    <td className="py-3 text-slate-700">{item.description}{item.note && <div className="text-xs font-bold text-slate-700 mt-0.5">{item.note}</div>}</td>
+                    <td className="py-3 text-slate-700">{item.description}{item.note && <div className="text-xs text-slate-600 mt-0.5" dangerouslySetInnerHTML={{ __html: sanitizeRich(item.note) }} />}</td>
                     <td className="py-3 text-right text-slate-600">{item.quantity}</td>
                     <td className="py-3 text-right text-slate-600">{money(item.unit_price)}</td>
                     <td className="py-3 text-right font-medium text-slate-800">{money(item.total)}</td>
@@ -126,7 +129,7 @@ export default function InvoiceDetail() {
                 {balance > 0 && <div className="flex justify-between text-orange-600 font-semibold pt-1"><span>Balance Due</span><span>{money(balance)}</span></div>}
               </div>
             </div>
-            {invoice.notes && <div className="mt-8 pt-4 border-t border-slate-100"><p className="text-xs text-slate-400 uppercase font-semibold mb-1">Notes</p><p className="text-sm text-slate-600">{invoice.notes}</p></div>}
+            {invoice.notes && <div className="mt-8 pt-4 border-t border-slate-100"><p className="text-xs text-slate-400 uppercase font-semibold mb-1">Notes</p><div className="text-sm text-slate-600" dangerouslySetInnerHTML={{ __html: sanitizeRich(invoice.notes) }} /></div>}
           </Card>
         </div>
 
@@ -162,7 +165,7 @@ export default function InvoiceDetail() {
                   tax_rate: invoice.tax_rate, discount: invoice.discount, deposit: invoice.deposit, notes: invoice.notes,
                 } } })}><Pencil size={15} /> Edit Invoice</Btn>
               )}
-              <Btn variant="outline" className="w-full" onClick={emailInvoice} loading={emailing}><Mail size={15} /> Email Invoice to Customer</Btn>
+              <Btn variant="outline" className="w-full" onClick={() => setEmailModal(true)} loading={emailing}><Mail size={15} /> Email Invoice</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}
               {invoice.status !== 'paid' && <Btn className="w-full" onClick={() => setPayModal(true)}><DollarSign size={16} /> Record Payment</Btn>}
@@ -219,6 +222,9 @@ export default function InvoiceDetail() {
           </div>
         </div>
       </Modal>
+
+      <EmailRecipientsModal open={emailModal} onClose={() => setEmailModal(false)} to={invoice.customer_email}
+        title={`Email invoice ${invoice.invoice_number || ''}`} sending={emailing} onSend={(cc) => emailInvoice(cc)} />
     </div>
   );
 }

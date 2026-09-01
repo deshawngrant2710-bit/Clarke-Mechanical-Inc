@@ -12,10 +12,15 @@ import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
+import RichTextInput from '../components/RichTextInput';
 
 const emptyItem = () => ({ description: '', note: '', quantity: 1, unit_price: 0 });
 const emptyForm = () => ({ customer_id: '', job_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const DRAFT_KEY = 'clarke_draft_invoice';
+const draftHasContent = (f) => !!(f && (f.customer_id
+  || (f.items || []).some(it => (it.description || '').trim() || (it.note || '').trim() || Number(it.unit_price))
+  || (f.notes || '').trim()));
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState(() => cacheGet('/billing/invoices') || []);
@@ -58,8 +63,25 @@ export default function Invoices() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Autosave a NEW invoice being typed, so it survives a closed laptop / refresh.
+  useEffect(() => {
+    if (!modal || editingId) return;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, taxInput })); } catch { /* storage full/blocked */ }
+  }, [form, taxInput, modal, editingId]);
+
   function openNew(prefill) {
     setEditingId(null);
+    // Restore an unfinished draft if there's no prefill from a job.
+    if (!prefill) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+        if (saved?.form && draftHasContent(saved.form)) {
+          setForm(saved.form); setTaxInput(saved.taxInput || defaultTaxPct); setModal(true);
+          toast('Restored your unsaved draft', { icon: '📝' });
+          return;
+        }
+      } catch { /* ignore */ }
+    }
     const f = emptyForm();
     f.tax_rate = (parseFloat(defaultTaxPct) || 0) / 100;
     if (prefill) {
@@ -91,6 +113,12 @@ export default function Invoices() {
     setModal(true);
   }
   function closeModal() { setModal(false); setEditingId(null); }
+  function discardDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+    const f = emptyForm(); f.tax_rate = (parseFloat(defaultTaxPct) || 0) / 100;
+    setForm(f); setTaxInput(defaultTaxPct);
+    toast.success('Draft cleared');
+  }
 
   async function duplicateInvoice(e, inv) {
     e.stopPropagation();
@@ -158,6 +186,7 @@ export default function Invoices() {
         await api.post('/billing/invoices', { ...form, discount });
         toast.success('Invoice created');
       }
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       setModal(false); setEditingId(null); setForm(emptyForm()); load();
     } catch { toast.error(editingId ? 'Error updating invoice' : 'Error creating invoice'); }
     finally { setSaving(false); }
@@ -179,7 +208,7 @@ export default function Invoices() {
     <div className="animate-fade-in">
       <PageHeader title="Invoices" subtitle={`${invoices.length} invoices`} icon={<FileText size={20} />}>
         {stats.overdue > 0 && <Btn variant="outline" onClick={remindOverdue} loading={reminding}><BellRing size={15} /> Remind {stats.overdue} Overdue</Btn>}
-        <Btn onClick={openNew}><Plus size={16} /> New Invoice</Btn>
+        <Btn onClick={() => openNew()}><Plus size={16} /> New Invoice</Btn>
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -205,7 +234,7 @@ export default function Invoices() {
           <Empty icon={<FileText size={28} />}
             title={search || statusFilter ? 'No matching invoices' : 'No invoices yet'}
             message={search || statusFilter ? 'Try adjusting your search or filters.' : 'Create an invoice to start collecting payments.'}
-            action={!search && !statusFilter && <Btn onClick={openNew}><Plus size={16} /> New Invoice</Btn>} />
+            action={!search && !statusFilter && <Btn onClick={() => openNew()}><Plus size={16} /> New Invoice</Btn>} />
         ) : (
           <Table head={[
             { label: 'Invoice #' }, { label: 'Customer' }, { label: 'Due Date' },
@@ -237,9 +266,12 @@ export default function Invoices() {
 
       <Modal open={modal} onClose={closeModal} title={editingId ? 'Edit Invoice' : 'New Invoice'} subtitle={editingId ? 'Fix any mistakes and save' : 'Build and send a professional invoice'} size="xl"
         footer={
-          <div className="flex justify-end gap-2">
-            <Btn variant="outline" onClick={closeModal}>Cancel</Btn>
-            <Btn onClick={handleSave} loading={saving}>{saving ? 'Saving…' : (editingId ? 'Save Changes' : 'Create Invoice')}</Btn>
+          <div className="flex justify-between gap-2">
+            <div>{!editingId && <Btn variant="ghost" onClick={discardDraft}>Discard draft</Btn>}</div>
+            <div className="flex gap-2">
+              <Btn variant="outline" onClick={closeModal}>Cancel</Btn>
+              <Btn onClick={handleSave} loading={saving}>{saving ? 'Saving…' : (editingId ? 'Save Changes' : 'Create Invoice')}</Btn>
+            </div>
           </div>
         }>
         <div className="space-y-3">
@@ -291,8 +323,7 @@ export default function Invoices() {
                     <button onClick={() => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))}
                       className="col-span-1 text-slate-300 hover:text-red-500 flex justify-center"><MinusCircle size={16} /></button>
                   </div>
-                  <input placeholder="Add a note for this line (optional) — shown to the customer" value={item.note || ''} onChange={e => setItem(i, 'note', e.target.value)}
-                    className="w-full sm:w-[calc(41.666%-0.5rem)] px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-400" />
+                  <RichTextInput className="w-full sm:w-2/3" placeholder="Add a note for this line (optional) — bold/underline supported" value={item.note || ''} onChange={v => setItem(i, 'note', v)} />
                 </div>
               ))}
               {form.items.length === 0 && <p className="text-sm text-slate-400 py-2">No items yet — add a line.</p>}
@@ -332,7 +363,10 @@ export default function Invoices() {
             </div>
           </div>
 
-          <Textarea label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes</label>
+            <RichTextInput placeholder="Notes shown on the invoice — bold/underline supported" value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))} />
+          </div>
         </div>
       </Modal>
     </div>

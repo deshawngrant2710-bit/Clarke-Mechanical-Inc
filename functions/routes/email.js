@@ -52,6 +52,7 @@ async function loadContext(type, id) {
   return null;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 router.post('/send', async (req, res) => {
   const { type, id } = req.body;
   if (!isTemplate(type)) return res.status(400).json({ error: 'Unknown email type' });
@@ -59,8 +60,13 @@ router.post('/send', async (req, res) => {
   if (!ctx) return res.status(404).json({ error: 'Record not found' });
   if (!ctx.email) return res.status(422).json({ error: 'This customer has no email address on file' });
 
+  // Extra recipients (CC) — validate, dedupe, exclude the primary, cap at 10.
+  const rawCc = Array.isArray(req.body.cc) ? req.body.cc : [];
+  const primary = String(ctx.email).toLowerCase();
+  const cc = [...new Set(rawCc.map(e => String(e).trim().toLowerCase()).filter(e => EMAIL_RE.test(e) && e !== primary))].slice(0, 10);
+
   const { subject, html } = await render(type, ctx.entity);
-  const result = await sendMail({ type, to: ctx.email, toName: ctx.name, subject, html, relatedId: id, customerId: ctx.customerId, sentBy: req.user?.name });
+  const result = await sendMail({ type, to: ctx.email, toName: ctx.name, subject, html, relatedId: id, customerId: ctx.customerId, sentBy: req.user?.name, cc });
   if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Email failed to send' });
 
   if (type === 'invoice') {
@@ -71,7 +77,7 @@ router.post('/send', async (req, res) => {
     const q = await getById('quotes', id);
     if (q?.status === 'draft') await db.collection('quotes').doc(id).set({ status: 'sent' }, { merge: true });
   }
-  res.json({ ...result, to: ctx.email, subject });
+  res.json({ ...result, to: ctx.email, cc, subject });
 });
 
 module.exports = router;

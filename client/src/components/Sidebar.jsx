@@ -19,6 +19,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
     if (user?.role !== 'admin' && user?.role !== 'office') return;
     let active = true;
     const poll = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // skip hidden tab
       try {
         const r = await api.get('/support');
         // Count chats waiting for this person's team (or not yet assigned to a team).
@@ -26,7 +27,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       } catch { /* ignore */ }
     };
     poll();
-    const iv = setInterval(poll, 20000);
+    const iv = setInterval(poll, 90000);
     return () => { active = false; clearInterval(iv); };
   }, [user?.role]);
 
