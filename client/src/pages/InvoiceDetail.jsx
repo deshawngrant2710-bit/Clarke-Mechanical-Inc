@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Spinner } from '../components/UI';
-import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil } from 'lucide-react';
+import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer } from 'lucide-react';
+import { printDocument } from '../lib/printDoc';
 import Logo from '../components/Logo';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -24,6 +25,15 @@ export default function InvoiceDetail() {
   function load() { api.get(`/billing/invoices/${id}`).then(r => setInvoice(r.data)); }
   useEffect(load, [id]);
 
+  async function printInvoice() {
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
+    printDocument({
+      kind: 'invoice', doc: invoice,
+      business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
+      customer: { name: invoice.customer_name, email: invoice.customer_email, phone: invoice.customer_phone, address: invoice.customer_address },
+    });
+  }
   async function emailInvoice(cc = []) {
     setEmailing(true);
     try { await sendEmail('invoice', id, 'Invoice', cc); setEmailModal(false); load(); } catch { /* toast handled */ }
@@ -165,6 +175,7 @@ export default function InvoiceDetail() {
                   tax_rate: invoice.tax_rate, discount: invoice.discount, deposit: invoice.deposit, notes: invoice.notes,
                 } } })}><Pencil size={15} /> Edit Invoice</Btn>
               )}
+              <Btn variant="outline" className="w-full" onClick={printInvoice}><Printer size={15} /> Print / Download PDF</Btn>
               <Btn variant="outline" className="w-full" onClick={() => setEmailModal(true)} loading={emailing}><Mail size={15} /> Email Invoice</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}

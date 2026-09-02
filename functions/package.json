@@ -20,6 +20,7 @@
     "firebase-functions": "^6.3.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^9.0.3",
+    "pg": "^8.13.1",
     "uuid": "^11.1.0"
   }
 }

@@ -1,26 +1,36 @@
-const admin = require('firebase-admin');
+// Storage backend is chosen by env:
+//   • DATABASE_URL set  → Postgres (e.g. Render Postgres). No read quotas.
+//   • otherwise         → Firestore (Firebase Admin SDK).
+// Both expose the same tiny `db.collection(...)` surface, so nothing downstream changes.
+let admin = null;
+let db;
 
-if (!admin.apps.length) {
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (sa) {
-    // Render / any non-GCP host: authenticate with a service-account JSON string.
-    try {
-      const parsed = JSON.parse(sa);
-      admin.initializeApp({ credential: admin.credential.cert(parsed), projectId: parsed.project_id });
-      console.log('[db] Firestore initialized for project', parsed.project_id);
-    } catch (e) {
-      // Don't crash the whole server on a bad key — boot anyway so /health works and the error is visible.
-      console.error('[db] FIREBASE_SERVICE_ACCOUNT is not valid JSON:', e.message);
+if (process.env.DATABASE_URL) {
+  ({ db } = require('./pgdb'));
+  console.log('[db] Using Postgres (DATABASE_URL set)');
+} else {
+  admin = require('firebase-admin');
+  if (!admin.apps.length) {
+    const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (sa) {
+      // Render / any non-GCP host: authenticate with a service-account JSON string.
+      try {
+        const parsed = JSON.parse(sa);
+        admin.initializeApp({ credential: admin.credential.cert(parsed), projectId: parsed.project_id });
+        console.log('[db] Firestore initialized for project', parsed.project_id);
+      } catch (e) {
+        // Don't crash the whole server on a bad key — boot anyway so /health works and the error is visible.
+        console.error('[db] FIREBASE_SERVICE_ACCOUNT is not valid JSON:', e.message);
+        admin.initializeApp();
+      }
+    } else {
+      // Emulator or GCP (Functions): Application Default Credentials.
       admin.initializeApp();
     }
-  } else {
-    // Emulator or GCP (Functions): Application Default Credentials.
-    admin.initializeApp();
   }
+  db = admin.firestore();
+  db.settings({ ignoreUndefinedProperties: true });
 }
-
-const db = admin.firestore();
-db.settings({ ignoreUndefinedProperties: true });
 
 /* ------------------------------------------------------------------ */
 /*  Small Firestore helpers — keep route code readable.               */

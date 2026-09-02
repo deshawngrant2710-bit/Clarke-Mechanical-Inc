@@ -178,7 +178,8 @@ router.put('/quotes/:id', async (req, res) => {
     subtotal, discount: discount_amount, tax_rate, tax_amount, total, deposit: Number(deposit) || 0, notes: notes || null, items: lineItems,
   });
   res.json(saved);
-  emailEstimateSent(saved, existing.status);
+  // Editing never auto-emails the customer — the office sends/re-sends explicitly
+  // with the "Email estimate" button. (New estimates created as "sent" still notify.)
 });
 
 router.delete('/quotes/:id', async (req, res) => {
