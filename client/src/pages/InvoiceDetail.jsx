@@ -91,7 +91,11 @@ export default function InvoiceDetail() {
     { key: 'sent', label: 'Sent', icon: Send },
     { key: 'paid', label: 'Paid', icon: CheckCircle2 },
   ];
-  const activeIdx = invoice.status === 'paid' ? 2 : invoice.status === 'sent' ? 1 : 0;
+  const activeIdx = invoice.status === 'paid' ? 2 : (invoice.status === 'sent' || invoice.status === 'partial') ? 1 : 0;
+  function openPayment() {
+    setPay(p => ({ ...p, amount: balance > 0 ? String(Math.round(balance * 100) / 100) : '' }));
+    setPayModal(true);
+  }
 
   return (
     <div className="animate-fade-in">
@@ -164,6 +168,7 @@ export default function InvoiceDetail() {
             <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-1">Balance Due</p>
             <p className={`text-3xl font-bold tracking-tight ${balance > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>{money(balance)}</p>
             <p className="text-xs text-slate-400 mt-1">of {money(invoice.total)} total</p>
+            {amountPaid > 0 && balance > 0 && <p className="text-xs text-amber-600 font-semibold mt-1">Partially paid · {money(amountPaid)} received</p>}
 
             {/* Timeline */}
             <div className="flex items-center justify-between mt-6 mb-6">
@@ -195,7 +200,7 @@ export default function InvoiceDetail() {
               <Btn variant="outline" className="w-full" onClick={() => setEmailModal(true)} loading={emailing}><Mail size={15} /> Email Invoice</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}
-              {invoice.status !== 'paid' && <Btn className="w-full" onClick={() => setPayModal(true)}><DollarSign size={16} /> Record Payment</Btn>}
+              {invoice.status !== 'paid' && <Btn className="w-full" onClick={openPayment}><DollarSign size={16} /> Record Payment</Btn>}
               {invoice.status === 'paid' && <>
                 <div className="text-center py-2 text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg flex items-center justify-center gap-1.5"><CheckCircle2 size={15} /> Paid in full</div>
                 <Btn variant="outline" className="w-full" onClick={emailReceipt} loading={emailing}><Mail size={15} /> Email Receipt</Btn>

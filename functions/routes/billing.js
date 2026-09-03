@@ -236,7 +236,9 @@ router.post('/invoices/:id/payments', async (req, res) => {
   });
   const payments = await findWhere('payments', 'invoice_id', req.params.id);
   const paid = payments.reduce((s, p) => s + (p.amount || 0), 0);
+  // Reflect payment progress in the status: fully covered → paid, part-way → partial.
   if (paid >= invoice.total) await update('invoices', req.params.id, { status: 'paid' });
+  else if (paid > 0 && invoice.status !== 'cancelled') await update('invoices', req.params.id, { status: 'partial' });
   // Clear any pending "customer wants to pay cash" alert for this invoice.
   try {
     const reqs = await findWhere('payment_requests', 'invoice_id', req.params.id);
@@ -255,9 +257,11 @@ router.delete('/payments/:id', async (req, res) => {
   await remove('payments', req.params.id);
   if (payment.invoice_id) {
     const invoice = await getById('invoices', payment.invoice_id);
-    if (invoice && invoice.status === 'paid') {
+    if (invoice && invoice.status !== 'cancelled') {
       const remaining = (await findWhere('payments', 'invoice_id', payment.invoice_id)).reduce((s, p) => s + (p.amount || 0), 0);
-      if (remaining < (invoice.total || 0)) await update('invoices', payment.invoice_id, { status: 'sent' });
+      const total = invoice.total || 0;
+      const status = remaining >= total && total > 0 ? 'paid' : remaining > 0 ? 'partial' : 'sent';
+      if (status !== invoice.status) await update('invoices', payment.invoice_id, { status });
     }
   }
   res.json({ success: true });
