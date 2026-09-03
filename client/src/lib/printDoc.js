@@ -85,51 +85,50 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
   <style>
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; }
-    body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color: #1f2937; font-size: 13px; line-height: 1.55; }
-    .page { max-width: 800px; margin: 0 auto; padding: 54px 52px 40px; position: relative; min-height: 1040px; }
+    body { font-family: Georgia, 'Times New Roman', 'Times', serif; color: #1a1a1a; font-size: 13px; line-height: 1.55; }
+    .page { max-width: 800px; margin: 0 auto; padding: 56px 56px 44px; position: relative; }
     /* Header */
-    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 40px; }
-    .doc-title h1 { margin: 0 0 10px; font-size: 40px; letter-spacing: 1px; color: #111827; font-weight: 800; line-height: 1; }
-    .doc-title .meta { font-size: 13px; color: #374151; }
-    .doc-title .meta div { margin-top: 2px; }
-    .badge { display: inline-block; margin-top: 12px; padding: 4px 12px; border-radius: 4px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
-    .badge.paid { background: #dcfce7; color: #15803d; }
-    .badge.unpaid { background: #fef3c7; color: #b45309; }
-    .badge.other { background: #e5e7eb; color: #4b5563; text-transform: capitalize; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 20px; margin-bottom: 30px; border-bottom: 3px double #333; }
+    .doc-title h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: .5px; color: #1a1a1a; font-weight: 700; line-height: 1; }
+    .doc-title .meta { font-size: 12.5px; color: #555; }
+    .doc-title .meta div { margin-top: 3px; }
+    .badge { display: inline-block; margin-top: 12px; padding: 3px 12px; border: 1px solid #999; border-radius: 2px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #444; }
+    .badge.paid { border-color: #15803d; color: #15803d; }
+    .badge.unpaid { border-color: #b45309; color: #b45309; }
+    .badge.other { text-transform: capitalize; }
     .logo { text-align: right; flex-shrink: 0; }
-    .logo img { height: 66px; display: block; margin-left: auto; }
+    .logo img { height: 62px; display: block; margin-left: auto; }
     /* Parties */
-    .parties { display: flex; gap: 40px; margin-bottom: 34px; }
+    .parties { display: flex; gap: 44px; margin-bottom: 30px; }
     .parties .col { flex: 1; }
-    .label { text-transform: uppercase; font-size: 11px; letter-spacing: .04em; color: #111827; margin-bottom: 8px; font-weight: 800; }
-    .parties .line { color: #374151; }
-    /* Items table */
-    table.items { width: 100%; border-collapse: collapse; margin-bottom: 26px; }
-    table.items th { text-align: left; font-size: 12px; font-weight: 800; color: #111827; padding: 12px 14px; border: 1px solid #d1d5db; background: #f9fafb; }
+    .label { text-transform: uppercase; font-size: 10.5px; letter-spacing: .12em; color: #777; margin-bottom: 7px; font-weight: 700; }
+    .parties .line { color: #333; }
+    /* Items table — understated rules, no boxed grid */
+    table.items { width: 100%; border-collapse: collapse; margin-bottom: 26px; border-top: 2px solid #333; border-bottom: 2px solid #333; }
+    table.items th { text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #444; padding: 11px 10px; border-bottom: 1px solid #333; }
     table.items th.r { text-align: right; }
     table.items th.c { text-align: center; }
-    table.items td { padding: 12px 14px; border: 1px solid #d1d5db; vertical-align: top; }
+    table.items td { padding: 11px 10px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
+    table.items tr:last-child td { border-bottom: 0; }
     table.items td.r { text-align: right; white-space: nowrap; }
     table.items td.c { text-align: center; }
-    .d-name { color: #111827; }
-    .d-note { font-size: 12px; color: #4b5563; margin-top: 3px; }
+    .d-name { color: #1a1a1a; }
+    .d-note { font-size: 12px; color: #666; margin-top: 3px; font-style: italic; }
     /* Notes + totals row */
-    .lower { display: flex; justify-content: space-between; gap: 40px; align-items: flex-start; margin-bottom: 40px; }
-    .notes { flex: 1; max-width: 340px; }
-    .notes .body { color: #374151; white-space: pre-wrap; }
-    .totals { width: 300px; flex-shrink: 0; border: 1px solid #d1d5db; border-radius: 2px; }
-    .totals .row { display: flex; justify-content: space-between; padding: 11px 16px; border-bottom: 1px solid #d1d5db; color: #374151; }
-    .totals .row:last-child { border-bottom: 0; }
-    .totals .grand { font-weight: 800; font-size: 15px; color: #111827; background: #f9fafb; }
-    .receipt { margin: 0 0 34px auto; width: 320px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 14px 16px; }
-    .receipt .prow { display: flex; justify-content: space-between; padding: 4px 0; color: #065f46; font-size: 13px; }
-    .receipt .prow-total { margin-top: 6px; padding-top: 8px; border-top: 1px solid #a7f3d0; font-weight: 800; font-size: 15px; }
+    .lower { display: flex; justify-content: space-between; gap: 44px; align-items: flex-start; margin-bottom: 38px; }
+    .notes { flex: 1; max-width: 350px; }
+    .notes .body { color: #444; white-space: pre-wrap; }
+    .totals { width: 290px; flex-shrink: 0; }
+    .totals .row { display: flex; justify-content: space-between; padding: 8px 2px; color: #444; }
+    .totals .grand { margin-top: 4px; padding-top: 11px; border-top: 3px double #333; font-weight: 700; font-size: 15px; color: #1a1a1a; }
+    .receipt { margin: 0 0 34px auto; width: 320px; border: 1px solid #cbd5c0; border-top: 3px double #4b6b3a; padding: 14px 16px; }
+    .receipt .prow { display: flex; justify-content: space-between; padding: 4px 0; color: #3a5a2a; font-size: 13px; }
+    .receipt .prow-total { margin-top: 6px; padding-top: 8px; border-top: 1px solid #cbd5c0; font-weight: 700; font-size: 15px; }
     /* Footer */
-    .footcols { display: flex; gap: 40px; margin-top: 8px; }
+    .footcols { display: flex; gap: 44px; margin-top: 8px; padding-top: 20px; border-top: 1px solid #ccc; }
     .footcols .col { flex: 1; }
-    .footcols .line { color: #374151; }
-    .accent { position: absolute; left: 52px; right: 52px; bottom: 20px; height: 8px; border-radius: 2px; background: #1e3a8a; }
-    @media print { .page { padding: 30px 34px 40px; min-height: 0; } .accent { left: 34px; right: 34px; } table.items tr { page-break-inside: avoid; } }
+    .footcols .line { color: #333; }
+    @media print { .page { padding: 34px 40px 40px; } table.items tr { page-break-inside: avoid; } }
   </style></head><body>
     <div class="page">
       <div class="head">
@@ -195,8 +194,6 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
           ${business.phone ? `<div class="line">${esc(business.phone)}</div>` : ''}
         </div>
       </div>
-
-      <div class="accent"></div>
     </div>
     ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
   </body></html>`;
@@ -302,6 +299,91 @@ export function buildStatementHtml({ business = {}, customer = {}, invoices = []
     </div>
     ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
   </body></html>`;
+}
+
+// Fetches the logo once and caches it as a data URL, so the PDF renderer (which
+// can't reach across origins) always embeds it. Returns null if it can't be loaded.
+let _logoData;
+async function logoDataUrl() {
+  if (_logoData !== undefined) return _logoData;
+  try {
+    const res = await fetch(LOGO_URL, { mode: 'cors' });
+    const blob = await res.blob();
+    _logoData = await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch { _logoData = null; }
+  return _logoData;
+}
+
+// Generates a real PDF of the invoice/estimate and shares it via the device's
+// native share sheet — so the user can send it straight to WhatsApp, Mail, etc.
+// Works in the app and on mobile browsers (Web Share API with files). On desktop
+// (or anywhere file-sharing isn't supported) it downloads the PDF instead.
+// Returns { shared: bool } or throws on a real failure.
+export async function sharePdf(opts) {
+  const { kind, doc } = opts;
+  const number = kind === 'invoice' || kind === 'receipt' ? doc.invoice_number : doc.quote_number;
+  const label = kind === 'quote' ? 'Estimate' : kind === 'receipt' ? 'Receipt' : 'Invoice';
+  const filename = `${label}-${(number || 'document').toString().replace(/[^\w.-]+/g, '_')}.pdf`;
+
+  let html = buildDocumentHtml(opts, { autoPrint: false });
+  const logo = await logoDataUrl();
+  if (logo) html = html.split(LOGO_URL).join(logo); // inline the logo for the renderer
+
+  // Render off-screen in the MAIN document (not an iframe) so html2canvas can read
+  // the styles. The CSS is scoped to a `.pdf-body` wrapper so it never touches the app.
+  let style = (html.match(/<style>([\s\S]*?)<\/style>/i) || [, ''])[1];
+  const bodyInner = (html.match(/<body>([\s\S]*?)<\/body>/i) || [, html])[1].replace(/<script>[\s\S]*?<\/script>/gi, '');
+  style = style
+    .replace('* {', '.pdf-body, .pdf-body * {')
+    .replace(/html,\s*body\s*\{/g, '.pdf-body {')
+    .replace(/(^|[^-.\w])body\s*\{/g, '$1.pdf-body {');
+
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;background:#fff;z-index:-1;';
+  holder.innerHTML = `<style>${style}</style><div class="pdf-body">${bodyInner}</div>`;
+  document.body.appendChild(holder);
+
+  try {
+    // let layout settle (the logo image is already inlined as a data URL)
+    await new Promise((r) => setTimeout(r, 150));
+    const target = holder.querySelector('.page') || holder;
+
+    const { default: html2pdf } = await import('html2pdf.js');
+    const blob = await html2pdf().set({
+      margin: 0,
+      filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 800 },
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    }).from(target).outputPdf('blob');
+
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    // Prefer the native share sheet (WhatsApp shows up here) when files can be shared.
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: `${label} ${number || ''}`.trim() });
+        return { shared: true };
+      } catch (e) {
+        if (e && e.name === 'AbortError') return { shared: false }; // user cancelled
+        // fall through to download
+      }
+    }
+    // Fallback: download the PDF so the user can attach it manually.
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return { shared: false };
+  } finally {
+    holder.remove();
+  }
 }
 
 // Shows the document in a full-screen in-app preview with Print / Save-PDF and

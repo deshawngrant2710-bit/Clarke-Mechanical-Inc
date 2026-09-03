@@ -7,9 +7,10 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
+import { sharePdf } from '../lib/printDoc';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
 import RichTextInput from '../components/RichTextInput';
@@ -197,6 +198,19 @@ export default function Invoices() {
     await api.delete(`/billing/invoices/${id}`);
     toast.success('Deleted'); load();
   }
+  async function shareInvoicePdf(e, inv) {
+    e.stopPropagation();
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
+    try {
+      const { shared } = await sharePdf({
+        kind: 'invoice', doc: inv,
+        business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
+        customer: { name: inv.customer_name, email: inv.customer_email, phone: inv.customer_phone, address: inv.customer_address },
+      });
+      if (!shared) toast.success('PDF downloaded — attach it in WhatsApp');
+    } catch { toast.error('Could not create the PDF'); }
+  }
   async function handleEmail(e, id) {
     e.stopPropagation();
     try { await sendEmail('invoice', id, 'Invoice'); load(); } catch { /* toast handled */ }
@@ -254,6 +268,7 @@ export default function Invoices() {
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1">
                     <button onClick={e => duplicateInvoice(e, inv)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
+                    <button onClick={e => shareInvoicePdf(e, inv)} title="Send as PDF (WhatsApp, etc.)" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><Share2 size={15} /></button>
                     <button onClick={e => handleEmail(e, inv.id)} title="Email invoice to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
                     <button onClick={e => handleDelete(e, inv.id)} title="Delete invoice" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                   </div>

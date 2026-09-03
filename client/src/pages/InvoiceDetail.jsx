@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Spinner } from '../components/UI';
-import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer } from 'lucide-react';
-import { printDocument } from '../lib/printDoc';
+import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer, Share2 } from 'lucide-react';
+import { printDocument, sharePdf } from '../lib/printDoc';
 import Logo from '../components/Logo';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -33,6 +33,21 @@ export default function InvoiceDetail() {
       business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
       customer: { name: invoice.customer_name, email: invoice.customer_email, phone: invoice.customer_phone, address: invoice.customer_address },
     });
+  }
+  const [sharing, setSharing] = useState(false);
+  async function shareInvoicePdf() {
+    setSharing(true);
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
+    try {
+      const { shared } = await sharePdf({
+        kind: 'invoice', doc: invoice,
+        business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
+        customer: { name: invoice.customer_name, email: invoice.customer_email, phone: invoice.customer_phone, address: invoice.customer_address },
+      });
+      if (!shared) toast.success('PDF downloaded — attach it in WhatsApp');
+    } catch { toast.error('Could not create the PDF'); }
+    finally { setSharing(false); }
   }
   async function emailInvoice(cc = []) {
     setEmailing(true);
@@ -175,6 +190,7 @@ export default function InvoiceDetail() {
                   tax_rate: invoice.tax_rate, discount: invoice.discount, deposit: invoice.deposit, notes: invoice.notes,
                 } } })}><Pencil size={15} /> Edit Invoice</Btn>
               )}
+              <Btn variant="outline" className="w-full" onClick={shareInvoicePdf} loading={sharing}><Share2 size={15} /> Send as PDF (WhatsApp, etc.)</Btn>
               <Btn variant="outline" className="w-full" onClick={printInvoice}><Printer size={15} /> Print / Download PDF</Btn>
               <Btn variant="outline" className="w-full" onClick={() => setEmailModal(true)} loading={emailing}><Mail size={15} /> Email Invoice</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}

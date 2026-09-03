@@ -9,8 +9,8 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer } from 'lucide-react';
-import { printDocument } from '../lib/printDoc';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer, Share2 } from 'lucide-react';
+import { printDocument, sharePdf } from '../lib/printDoc';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -211,16 +211,28 @@ export default function Quotes() {
     const email = customers.find(c => c.id === q.customer_id)?.email || '';
     setEmailTarget({ id: q.id, email, number: q.quote_number });
   }
-  async function printQuote(e, q) {
-    e.stopPropagation();
+  function docPayload(q, b) {
     const c = customers.find(x => x.id === q.customer_id) || {};
-    let b = {};
-    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
-    printDocument({
+    return {
       kind: 'quote', doc: q,
       business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
       customer: { name: q.customer_name || c.name, email: c.email, phone: c.phone, address: c.address },
-    });
+    };
+  }
+  async function printQuote(e, q) {
+    e.stopPropagation();
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
+    printDocument(docPayload(q, b));
+  }
+  async function shareQuotePdf(e, q) {
+    e.stopPropagation();
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
+    try {
+      const { shared } = await sharePdf(docPayload(q, b));
+      if (!shared) toast.success('PDF downloaded — attach it in WhatsApp');
+    } catch { toast.error('Could not create the PDF'); }
   }
   async function sendQuoteEmail(cc = []) {
     if (!emailTarget) return;
@@ -273,6 +285,7 @@ export default function Quotes() {
                       : ['accepted', 'sent'].includes(q.status) && <button onClick={e => convertToJob(e, q)} title="Convert to job" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Briefcase size={15} /></button>}
                     {q.status === 'accepted' && <button onClick={e => convertToInvoice(e, q)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><FileText size={15} /></button>}
                     <button onClick={e => duplicateQuote(e, q)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
+                    <button onClick={e => shareQuotePdf(e, q)} title="Send as PDF (WhatsApp, etc.)" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><Share2 size={15} /></button>
                     <button onClick={e => printQuote(e, q)} title="Print / Download PDF" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Printer size={15} /></button>
                     <button onClick={e => handleEmail(e, q)} title="Email estimate to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
                     <button onClick={e => handleDelete(e, q.id)} title="Delete quote" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>

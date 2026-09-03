@@ -4,6 +4,7 @@
     "runtime": "nodejs22"
   },
   "hosting": {
+    "site": "clarke-mechanical-inc",
     "public": "client/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
