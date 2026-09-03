@@ -4,6 +4,7 @@ const { db, list, getById, create, update, remove, findWhere, nameMap } = requir
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
 const { notifyCustomerBySms } = require('../lib/sms');
+const { paidMap, balanceOf } = require('../lib/outstanding');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -46,9 +47,12 @@ async function nextNumber(collection, prefix, useYear = false) {
 
 /* ---------------- INVOICES ---------------- */
 router.get('/invoices', async (req, res) => {
-  const [invoices, customers] = await Promise.all([list('invoices'), nameMap('customers')]);
+  const [invoices, customers, paid] = await Promise.all([list('invoices'), nameMap('customers'), paidMap()]);
   const rows = invoices
-    .map(i => ({ ...i, customer_name: customers[i.customer_id] || null }))
+    .map(i => {
+      const amount_paid = paid[i.id] || 0;
+      return { ...i, customer_name: customers[i.customer_id] || null, amount_paid, balance: balanceOf(i, paid) };
+    })
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   res.json(rows);
 });

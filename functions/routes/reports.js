@@ -1,13 +1,14 @@
 const express = require('express');
 const { list } = require('../lib/db');
+const { paidMap, balanceOf } = require('../lib/outstanding');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
 
 router.get('/', async (req, res) => {
-  const [invoices, jobs, users, customers, timeEntries] = await Promise.all([
-    list('invoices'), list('jobs'), list('users'), list('customers'), list('time_entries'),
+  const [invoices, jobs, users, customers, timeEntries, paidBy] = await Promise.all([
+    list('invoices'), list('jobs'), list('users'), list('customers'), list('time_entries'), paidMap(),
   ]);
   const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
   const paid = invoices.filter(i => i.status === 'paid');
@@ -26,7 +27,7 @@ router.get('/', async (req, res) => {
   const arMap = {};
   invoices.filter(i => !['paid', 'cancelled'].includes(i.status)).forEach(i => {
     const name = custName[i.customer_id] || 'Unknown';
-    arMap[name] = (arMap[name] || 0) + (i.total || 0);
+    arMap[name] = (arMap[name] || 0) + balanceOf(i, paidBy);
   });
   const receivables = Object.entries(arMap).map(([customer, amount]) => ({ customer, amount })).sort((a, b) => b.amount - a.amount);
 
@@ -46,8 +47,8 @@ router.get('/', async (req, res) => {
     revenueByMonth,
     receivables,
     techPerformance,
-    totalPaid: paid.reduce((s, i) => s + (i.total || 0), 0),
-    totalOutstanding: invoices.filter(i => !['paid', 'cancelled'].includes(i.status)).reduce((s, i) => s + (i.total || 0), 0),
+    totalPaid: Object.values(paidBy).reduce((s, v) => s + v, 0),
+    totalOutstanding: invoices.filter(i => !['paid', 'cancelled'].includes(i.status)).reduce((s, i) => s + balanceOf(i, paidBy), 0),
   });
 });
 

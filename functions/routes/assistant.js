@@ -29,14 +29,17 @@ async function nextNumber(collection, prefix) {
 // answer about existing customers, invoices, estimates, and jobs.
 async function buildContext(message) {
   try {
-    const [customers, invoices, quotes, jobs] = await Promise.all([
-      list('customers'), list('invoices'), list('quotes'), list('jobs'),
+    const [customers, invoices, quotes, jobs, payments] = await Promise.all([
+      list('customers'), list('invoices'), list('quotes'), list('jobs'), list('payments'),
     ]);
+    const paidBy = {};
+    for (const p of payments) { if (p.invoice_id) paidBy[p.invoice_id] = (paidBy[p.invoice_id] || 0) + (Number(p.amount) || 0); }
+    const balOf = (i) => Math.max(0, (Number(i.total) || 0) - (paidBy[i.id] || 0));
     const nameOf = Object.fromEntries(customers.map(c => [c.id, c.name || 'Unknown']));
     const today = new Date().toISOString().slice(0, 10);
     const m = (v) => `$${(Number(v) || 0).toFixed(2)}`;
     const unpaid = invoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled');
-    const outstanding = unpaid.reduce((s, i) => s + (Number(i.total) || 0), 0);
+    const outstanding = unpaid.reduce((s, i) => s + balOf(i), 0);
     const overdue = unpaid.filter(i => i.due_date && i.due_date < today);
     const openJobs = jobs.filter(j => !['completed', 'cancelled'].includes(j.status));
     const openQuotes = quotes.filter(q => ['sent', 'draft'].includes(q.status));
@@ -44,7 +47,7 @@ async function buildContext(message) {
     const low = message.toLowerCase();
     const digits = message.match(/\d{3,}/g) || [];
     const hit = (n) => { n = String(n || '').toLowerCase(); return !!n && (low.includes(n) || digits.some(d => n.includes(d))); };
-    const invLine = (i) => `Invoice ${i.invoice_number} — ${nameOf[i.customer_id]}, ${i.status}, ${m(i.total)}${i.due_date ? `, due ${i.due_date}` : ''}`;
+    const invLine = (i) => { const bal = balOf(i); return `Invoice ${i.invoice_number} — ${nameOf[i.customer_id]}, ${i.status}, total ${m(i.total)}${bal > 0 && bal < (Number(i.total) || 0) ? `, ${m((paidBy[i.id] || 0))} paid, ${m(bal)} outstanding` : ''}${i.due_date ? `, due ${i.due_date}` : ''}`; };
     const quoteLine = (q) => `Estimate ${q.quote_number} — ${nameOf[q.customer_id]}, ${q.status}, ${m(q.total)}`;
 
     const matchedInv = invoices.filter(i => hit(i.invoice_number));

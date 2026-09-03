@@ -205,7 +205,7 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, {
 // and outstanding balance), styled to match the invoice/receipt documents.
 export function buildStatementHtml({ business = {}, customer = {}, invoices = [] }, { autoPrint = true } = {}) {
   const bizName = business.name || 'Clarke Mechanical Inc.';
-  const owe = (i) => (['paid', 'cancelled'].includes(String(i.status || '').toLowerCase()) ? 0 : (i.total || 0));
+  const owe = (i) => (['paid', 'cancelled'].includes(String(i.status || '').toLowerCase()) ? 0 : (i.balance != null ? i.balance : (i.total || 0)));
   const outstanding = invoices.reduce((s, i) => s + owe(i), 0);
   const custLoc = [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
   const bizAddr = (business.address || '').split('\n').map(esc).join('<br>');

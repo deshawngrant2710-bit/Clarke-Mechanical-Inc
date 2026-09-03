@@ -149,7 +149,7 @@ export default function Invoices() {
 
   const isOverdue = (i) => i.status !== 'paid' && i.due_date && i.due_date < new Date().toISOString().slice(0, 10);
   const stats = {
-    outstanding: invoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + i.total, 0),
+    outstanding: invoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + (i.balance != null ? i.balance : i.total), 0),
     paid: invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0),
     overdue: invoices.filter(isOverdue).length,
     draft: invoices.filter(i => i.status === 'draft').length,
