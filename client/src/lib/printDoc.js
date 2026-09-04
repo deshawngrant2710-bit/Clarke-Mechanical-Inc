@@ -41,7 +41,15 @@ const FOOT_ICONS = [
 // `receipt` (optional) makes this a receipt for ONE specific payment: its own
 // RCT number, that payment's amount/method/date, and the balance left afterwards.
 // Without it, a receipt summarises every payment on the invoice.
-export function buildDocumentHtml({ kind, doc, business = {}, customer = {}, receipt = null }, { autoPrint = false } = {}) {
+export function buildDocumentHtml(opts, printOpts = {}) {
+  // Estimates and invoices share the branded full-page form layout;
+  // receipts have their own (payment-focused) layout.
+  if (opts.kind === 'quote') return buildEstimateHtml(opts, printOpts);
+  if (opts.kind === 'invoice') return buildEstimateHtml({ ...opts, variant: 'invoice' }, printOpts);
+  return buildPaymentDocHtml(opts, printOpts);
+}
+
+function buildPaymentDocHtml({ kind, doc, business = {}, customer = {}, receipt = null }, { autoPrint = false } = {}) {
   const isReceipt = kind === 'receipt';
   const isInvoice = kind === 'invoice' || isReceipt;
   const isQuote = kind === 'quote';
@@ -241,6 +249,244 @@ export function buildDocumentHtml({ kind, doc, business = {}, customer = {}, rec
         <div class="icons">${FOOT_ICONS.join('<span class="sep"></span>')}</div>
         <div class="tag">HVAC SOLUTIONS YOU CAN TRUST.</div>
       </div>
+    </div>
+    ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
+  </body></html>`;
+
+  return html;
+}
+
+/* ------------------------------------------------------------------ */
+/*  SERVICE ESTIMATE — branded layout                                  */
+/* ------------------------------------------------------------------ */
+const SERVICE_ICONS = {
+  heating: '<svg viewBox="0 0 24 24" width="18" height="18" stroke="#0b6bcb" stroke-width="1.7" fill="none" stroke-linecap="round"><path d="M12 2v20M4 7l16 10M20 7L4 17M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3"/></svg>',
+  cooling: '<svg viewBox="0 0 24 24" width="18" height="18" stroke="#0b6bcb" stroke-width="1.6" fill="none"><circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 1-6 3-6s2.6 3 .6 5M14 12c4 0 6 1 6 3s-3 2.6-5 .6M12 14c0 4-1 6-3 6s-2.6-3-.6-5M10 12c-4 0-6-1-6-3s3-2.6 5-.6"/></svg>',
+  thermostat: '<svg viewBox="0 0 24 24" width="18" height="18" fill="#0b6bcb"><path d="M12 3c1.2 3.2-2 4-2 6.8A3.6 3.6 0 0 0 13.6 13c1.8 0 3-1.3 3-3.1 0-2.9-2.9-4.2-4.6-6.9z"/><path d="M9.6 13.4c-.8.8-1.3 1.8-1.3 2.7A3.7 3.7 0 0 0 12 20c-1.1-1.6.3-2.7.3-4.2 0-.8-.4-1.6-1.1-2.2z"/></svg>',
+  ventilation: '<svg viewBox="0 0 24 24" width="18" height="18" stroke="#0b6bcb" stroke-width="1.7" fill="none" stroke-linecap="round"><path d="M3 8h11a3 3 0 1 0-3-3M3 13h15a3 3 0 1 1-3 3M3 18h9"/></svg>',
+};
+const FOOT_CONTACT = {
+  phone: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="1.8"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.8a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2.1z"/></svg>',
+  email: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>',
+  location: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="1.8"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+};
+
+function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote' }, { autoPrint = false } = {}) {
+  const isInv = variant === 'invoice';
+  const bizName = business.name || 'Clarke Mechanical Inc.';
+  const number = (isInv ? doc.invoice_number : doc.quote_number) || '';
+
+  // Invoice-only figures.
+  const payments = doc.payments || [];
+  const paidTotal = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const balanceDue = Math.max(0, (Number(doc.total) || 0) - paidTotal);
+  const custLoc = [customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
+  const svcAddr = doc.service_address || doc.job_address || customer.address || '';
+  const svcLoc = doc.service_city || custLoc;
+
+  let taxPct = Number(doc.tax_rate);
+  if (!taxPct && doc.subtotal) taxPct = Number(doc.tax_amount) / Number(doc.subtotal);
+  const taxLabel = taxPct ? `TAX (${(taxPct * 100).toFixed(3).replace(/\.?0+$/, '')}%)` : 'TAX';
+
+  const rows = (doc.items || []).map(it => `
+    <tr>
+      <td class="desc">${esc(it.description)}${it.note ? `<div class="d-note">${sanitizeRich(it.note)}</div>` : ''}</td>
+      <td class="c">${it.quantity ?? ''}</td>
+      <td class="r">${money(it.unit_price)}</td>
+      <td class="r">${money(it.total)}</td>
+    </tr>`).join('');
+  // Keep the ruled-form look even on short estimates.
+  const filler = Array.from({ length: Math.max(0, 8 - (doc.items || []).length) },
+    () => '<tr><td class="desc">&nbsp;</td><td class="c"></td><td class="r"></td><td class="r"></td></tr>').join('');
+
+  const services = [
+    ['cooling', 'Heating System', 'Installation & Repair'],
+    ['ventilation', 'Air Conditioning', 'Installation & Repair'],
+    ['thermostat', 'Thermostat', 'Installation & Repair'],
+    ['heating', 'Ventilation & Indoor', 'Air Quality'],
+  ].map(([icon, a, b]) => `
+    <div class="svc"><span class="svc-ico">${SERVICE_ICONS[icon]}</span><span><strong>${a}</strong><br>${b}</span></div>`).join('');
+
+  const contact = [
+    ['phone', business.phone || ''],
+    ['email', business.email || ''],
+    ['location', (business.address || '').split('\n').join(', ') || business.website || ''],
+  ].map(([k, v]) => `<div class="fc"><span class="fc-ico">${FOOT_CONTACT[k]}</span><span class="fc-val">${esc(v)}</span></div>`).join('<span class="fc-sep"></span>');
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(number || 'Estimate')}</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: 'Poppins', 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif; color: #111; font-size: 12.5px; line-height: 1.45; }
+    .page { max-width: 820px; margin: 0 auto; padding: 30px 40px 0; position: relative; overflow: hidden; }
+    /* Decorative corner sweep */
+    .corner { position: absolute; top: 0; right: 0; width: 260px; height: 230px; pointer-events: none; }
+    /* Masthead */
+    .brand { margin-bottom: 2px; }
+    .brand img { height: 92px; display: block; }
+    .title-wrap { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 4px 0 14px; }
+    .title-wrap .rule { height: 3px; width: 110px; background: #0b2265; border-radius: 2px; }
+    h1.title { margin: 0; font-size: 40px; line-height: 1; font-weight: 800; letter-spacing: .5px; color: #0b2265; }
+    /* Meta */
+    .meta { width: 56%; margin-left: auto; margin-bottom: 16px; }
+    .mrow { display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px; }
+    .mlabel { font-weight: 600; white-space: nowrap; }
+    .mval { flex: 1; border-bottom: 1px solid #111; padding-left: 6px; min-height: 17px; }
+    /* Two info columns */
+    .cols { display: flex; gap: 26px; margin-bottom: 16px; }
+    .cols .col { flex: 1; }
+    .cols .col + .col { border-left: 1px solid #bbb; padding-left: 26px; }
+    .col h2 { margin: 0 0 10px; font-size: 13.5px; font-weight: 800; letter-spacing: .02em; }
+    .col.cust h2 { color: #d81f26; }
+    .col.svc-loc h2 { color: #0b2265; }
+    .frow { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+    .flabel { min-width: 104px; }
+    .fval { flex: 1; border-bottom: 1px solid #111; padding-left: 6px; min-height: 16px; }
+    /* Items */
+    table.items { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    table.items th { background: #0b2265; color: #fff; font-size: 12.5px; font-weight: 700; padding: 9px 10px; border: 1px solid #0b2265; }
+    table.items td { border: 1px solid #111; padding: 8px 10px; height: 30px; vertical-align: top; }
+    table.items th.c, table.items td.c { text-align: center; width: 13%; }
+    table.items th.r, table.items td.r { text-align: right; width: 17%; }
+    .d-note { font-size: 11px; color: #555; margin-top: 2px; }
+    /* Scope + totals */
+    .mid { display: flex; gap: 26px; align-items: flex-start; margin-bottom: 20px; }
+    .scope { width: 48%; }
+    .scope h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 800; color: #0b2265; }
+    .scope-box { border: 1px solid #111; border-radius: 8px; min-height: 108px; padding: 9px 11px; font-size: 11.5px; white-space: pre-wrap; }
+    .tot { flex: 1; padding-top: 4px; }
+    .tot .trow { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+    .tot .tlabel { font-weight: 700; min-width: 132px; }
+    .tot .tdollar { font-weight: 600; }
+    .tot .tval { flex: 1; border-bottom: 1px solid #111; text-align: right; padding: 0 6px 2px 0; }
+    .tot .grand { background: #0b2265; color: #fff; border-radius: 6px; padding: 11px 14px; display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+    .tot .grand .tlabel { min-width: 128px; font-weight: 800; }
+    .tot .grand .tval { border-bottom: 1px solid rgba(255,255,255,.65); color: #fff; font-weight: 800; }
+    .tot .grand.owing { background: #d81f26; }
+    .tot .grand.settled { background: #0f7a3d; }
+    /* Info band */
+    .band { display: flex; gap: 22px; border-top: 1px solid #ccc; padding-top: 14px; margin-bottom: 16px; }
+    .band .bcol { flex: 1; }
+    .band .bcol + .bcol { border-left: 1px solid #ccc; padding-left: 22px; }
+    .band h4 { margin: 0 0 10px; font-size: 12px; font-weight: 800; text-align: center; letter-spacing: .02em; }
+    .band .bcol:nth-child(1) h4, .band .bcol:nth-child(3) h4 { color: #d81f26; }
+    .band .bcol:nth-child(2) h4 { color: #0b2265; }
+    .svc { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; font-size: 11.5px; line-height: 1.3; }
+    .svc-ico { width: 30px; height: 30px; border-radius: 7px; background: #eaf2fd; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+    .band ul { margin: 0; padding-left: 16px; font-size: 11.5px; }
+    .band li { margin-bottom: 7px; }
+    /* Sign-off */
+    .signbox { border: 1px solid #111; border-radius: 8px; padding: 11px 16px; display: flex; gap: 40px; margin-bottom: 14px; }
+    .signbox .frow { flex: 1; margin: 0; }
+    /* Footer band */
+    .footband { background: #0b2265; color: #fff; padding: 12px 20px; margin: 0 -40px; display: flex; align-items: center; justify-content: center; }
+    .fc { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .fc-ico { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.85); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+    .fc-val { font-size: 11.5px; border-bottom: 1px solid rgba(255,255,255,.55); flex: 1; padding-bottom: 2px; }
+    .fc-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.4); margin: 0 18px; }
+    @media print { .page { padding: 16px 26px 0; } table.items tr { page-break-inside: avoid; } .footband { margin: 0 -26px; } }
+  </style></head><body>
+    <div class="page">
+      <svg class="corner" viewBox="0 0 260 230" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#f7a01b"/><stop offset="55%" stop-color="#ef4b23"/><stop offset="100%" stop-color="#d81f26"/>
+          </linearGradient>
+        </defs>
+        <path d="M96 -10 A250 250 0 0 1 285 175 L285 -10 Z" fill="#0b2265"/>
+        <path d="M60 -10 A280 280 0 0 1 285 215" fill="none" stroke="url(#warm)" stroke-width="17"/>
+      </svg>
+
+      <div class="brand"><img src="${LOGO_URL}" alt="${esc(bizName)}" /></div>
+
+      <div class="title-wrap"><span class="rule"></span><h1 class="title">${isInv ? 'INVOICE' : 'SERVICE ESTIMATE'}</h1><span class="rule"></span></div>
+
+      <div class="meta">
+        <div class="mrow"><span class="mlabel">${isInv ? 'Invoice' : 'Estimate'} #:</span><span class="mval">${esc(number)}</span></div>
+        <div class="mrow"><span class="mlabel">Date:</span><span class="mval">${fmtDate(doc.issue_date)}</span></div>
+        <div class="mrow"><span class="mlabel">${isInv ? 'Due Date:' : 'Valid Until:'}</span><span class="mval">${isInv ? (doc.due_date ? fmtDate(doc.due_date) : '') : (doc.expiry_date ? fmtDate(doc.expiry_date) : '')}</span></div>
+      </div>
+
+      <div class="cols">
+        <div class="col cust">
+          <h2>${isInv ? 'BILL TO:' : 'CUSTOMER INFORMATION:'}</h2>
+          <div class="frow"><span class="flabel">Name:</span><span class="fval">${esc(customer.name || '')}</span></div>
+          <div class="frow"><span class="flabel">Address:</span><span class="fval">${esc(customer.address || '')}</span></div>
+          <div class="frow"><span class="flabel">City, State, ZIP:</span><span class="fval">${esc(custLoc)}</span></div>
+          <div class="frow"><span class="flabel">Phone:</span><span class="fval">${esc(customer.phone || '')}</span></div>
+          <div class="frow"><span class="flabel">Email:</span><span class="fval">${esc(customer.email || '')}</span></div>
+        </div>
+        <div class="col svc-loc">
+          <h2>SERVICE LOCATION:</h2>
+          <div class="frow"><span class="flabel">Name:</span><span class="fval">${esc(doc.service_name || customer.name || '')}</span></div>
+          <div class="frow"><span class="flabel">Address:</span><span class="fval">${esc(svcAddr)}</span></div>
+          <div class="frow"><span class="flabel">City, State, ZIP:</span><span class="fval">${esc(svcLoc)}</span></div>
+          <div class="frow"><span class="flabel">Phone:</span><span class="fval">${esc(customer.phone || '')}</span></div>
+          <div class="frow"><span class="flabel">Contact Person:</span><span class="fval">${esc(doc.contact_person || '')}</span></div>
+        </div>
+      </div>
+
+      <table class="items">
+        <thead><tr><th>DESCRIPTION OF WORK</th><th class="c">QTY</th><th class="r">UNIT PRICE</th><th class="r">TOTAL</th></tr></thead>
+        <tbody>${rows}${filler}</tbody>
+      </table>
+
+      <div class="mid">
+        <div class="scope">
+          <h3>${isInv ? 'NOTES:' : 'SCOPE OF WORK / NOTES:'}</h3>
+          <div class="scope-box">${doc.notes ? sanitizeRich(doc.notes) : ''}</div>
+        </div>
+        <div class="tot">
+          <div class="trow"><span class="tlabel">SUBTOTAL</span><span class="tdollar">$</span><span class="tval">${money(doc.subtotal).replace('$', '')}</span></div>
+          ${doc.discount ? `<div class="trow"><span class="tlabel">DISCOUNT</span><span class="tdollar">$</span><span class="tval">&minus;${money(doc.discount).replace('$', '')}</span></div>` : ''}
+          <div class="trow"><span class="tlabel">${taxLabel}</span><span class="tdollar">$</span><span class="tval">${money(doc.tax_amount).replace('$', '')}</span></div>
+          <div class="grand"><span class="tlabel">${isInv ? 'TOTAL' : 'ESTIMATED TOTAL'}</span><span class="tdollar">$</span><span class="tval">${money(doc.total).replace('$', '')}</span></div>
+          ${isInv && paidTotal > 0 ? `<div class="trow" style="margin-top:12px"><span class="tlabel">AMOUNT PAID</span><span class="tdollar">$</span><span class="tval">${money(paidTotal).replace('$', '')}</span></div>` : ''}
+          ${isInv ? `<div class="grand ${balanceDue > 0 ? 'owing' : 'settled'}" style="margin-top:10px"><span class="tlabel">BALANCE DUE</span><span class="tdollar">$</span><span class="tval">${money(balanceDue).replace('$', '')}</span></div>` : ''}
+          ${!isInv && doc.deposit ? `<div class="trow" style="margin-top:12px"><span class="tlabel">DEPOSIT REQUESTED</span><span class="tdollar">$</span><span class="tval">${money(doc.deposit).replace('$', '')}</span></div>` : ''}
+        </div>
+      </div>
+
+      <div class="band">
+        <div class="bcol">
+          <h4>SERVICES WE PROVIDE</h4>
+          ${services}
+        </div>
+        <div class="bcol">
+          <h4>${isInv ? 'HOW TO PAY' : 'IMPORTANT INFORMATION'}</h4>
+          <ul>
+            ${isInv
+              ? (paymentLines().length
+                  ? paymentLines().map(l => `<li>${l}</li>`).join('')
+                  : '<li>Please contact our office for payment details.</li>')
+              : `<li>This estimate is based on the information provided and on-site conditions at the time of inspection.</li>
+                 <li>Prices are valid for the period stated above.</li>
+                 <li>Additional work may be required if unforeseen conditions are discovered.</li>
+                 <li>This is an estimate only and not a guarantee of the final cost.</li>`}
+          </ul>
+        </div>
+        <div class="bcol">
+          <h4>TERMS &amp; CONDITIONS</h4>
+          <ul>
+            ${isInv
+              ? `<li>Payment is due by the date shown above.</li>
+                 <li>Please reference invoice ${esc(number)} with your payment.</li>
+                 <li>All work has been completed to the highest standard and in accordance with industry guidelines.</li>
+                 <li>Thank you for your business — ${esc(bizName)}.</li>`
+              : `<li>This estimate is valid until the date shown above.</li>
+                 <li>Payment terms will be discussed prior to work commencement.</li>
+                 <li>All work will be completed to the highest standard and in accordance with industry guidelines.</li>
+                 <li>Thank you for considering ${esc(bizName)}.</li>`}
+          </ul>
+        </div>
+      </div>
+
+      <div class="signbox">
+        <div class="frow"><span class="flabel" style="min-width:92px">Prepared By:</span><span class="fval">${esc(doc.prepared_by || bizName)}</span></div>
+        <div class="frow"><span class="flabel" style="min-width:44px">Date:</span><span class="fval">${fmtDate(doc.issue_date)}</span></div>
+      </div>
+
+      <div class="footband">${contact}</div>
     </div>
     ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
   </body></html>`;

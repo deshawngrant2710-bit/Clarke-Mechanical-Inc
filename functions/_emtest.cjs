@@ -1,7 +1,7 @@
-const nodemailer = require('nodemailer');
-const { v4: uuid } = require('uuid');
-const { db } = require('./db');
-const settings = require('./settings');
+const nodemailer = { createTransport: () => ({}) };
+const uuid = () => 'test-id';
+const db = {};
+const settings = { emailConfig: async () => ({ business: { name: 'Clarke Mechanical Inc.', email: 'service@clarkemechanicalinc.org', phone: '(516)206-6256', hours: 'Mon-Fri 8-6', website: 'clarkemechanicalinc.org', tagline: 'Mechanical Expertise You Can Trust.', appUrl: 'https://clarkemechanicalinc.org' } }) };
 
 // Publicly-hosted brand logo (works in Brevo HTTP API and all mail clients).
 const LOGO_URL = process.env.EMAIL_LOGO_URL || 'https://clarkemechanicalinc.org/email-logo.png';
