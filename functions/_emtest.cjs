@@ -82,8 +82,17 @@ function itemsTable(items = []) {
 
 // The shared email frame: white header (logo + contact), title, body, navy footer.
 function shell(b, { heading, accent = BLUE, body }) {
-  const contact = `📞 ${b.phone}<br/>✉️ <a href="mailto:${b.email}" style="color:#475569;text-decoration:none;">${b.email}</a>${b.website ? `<br/>🌐 ${b.website}` : ''}`;
-  return `<div style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+  const contact = `&#128222; ${b.phone}<br/>&#9993;&#65039; <a href="mailto:${b.email}" style="color:#475569;text-decoration:none;">${b.email}</a>${b.website ? `<br/>&#127760; ${b.website}` : ''}`;
+  // A full HTML document with an explicit UTF-8 charset. Without this some mail
+  // clients guess Latin-1 and mangle apostrophes, dashes and icons ("donâ€™t").
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${heading}</title>
+</head><body style="margin:0;padding:0;">
+    <div style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
     <div style="max-width:600px;margin:0 auto;padding:22px 12px 32px;">
       <div style="height:8px;background:${NAVY};border-radius:14px 14px 0 0;font-size:0;line-height:0;">&nbsp;</div>
       <!-- Header -->
@@ -104,11 +113,12 @@ function shell(b, { heading, accent = BLUE, body }) {
       <div style="background:${NAVY};border-radius:0 0 14px 14px;padding:22px 28px;text-align:center;">
         <div style="font-size:15px;font-weight:700;color:#ffffff;">${b.name}</div>
         ${b.tagline ? `<div style="font-size:12px;color:#93c5fd;font-style:italic;margin-top:3px;">${b.tagline}</div>` : ''}
-        <div style="font-size:12px;color:#cbd5e1;margin-top:12px;line-height:1.9;">📞 ${b.phone} &nbsp;·&nbsp; ✉️ ${b.email}${b.website ? ` &nbsp;·&nbsp; 🌐 ${b.website}` : ''}${b.hours ? `<br/>🕐 ${b.hours}` : ''}</div>
-        <div style="font-size:11px;color:#64748b;margin-top:12px;">© ${new Date().getFullYear()} ${b.name}. All rights reserved.</div>
+        <div style="font-size:12px;color:#cbd5e1;margin-top:12px;line-height:1.9;">&#128222; ${b.phone} &nbsp;&middot;&nbsp; &#9993;&#65039; ${b.email}${b.website ? ` &nbsp;&middot;&nbsp; &#127760; ${b.website}` : ''}${b.hours ? `<br/>&#128336; ${b.hours}` : ''}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:12px;">&copy; ${new Date().getFullYear()} ${b.name}. All rights reserved.</div>
       </div>
     </div>
-  </div>`;
+  </div>
+</body></html>`;
 }
 
 const totalsBlock = (label, value, color = NAVY) => `<table style="width:100%;margin-top:6px;"><tr><td></td><td style="text-align:right;">
@@ -122,20 +132,20 @@ const templates = {
         // The full message reads first, uninterrupted — the invoice follows below it.
         body: p(`Hi ${inv.customer_name || 'there'},`) +
           p(`Thank you for choosing ${b.name} for your HVAC service. We truly appreciate your business and the opportunity to help keep your home or business comfortable.`) +
-          p(`Please find your invoice below for the services completed${inv.due_date ? `, due <strong>${inv.due_date}</strong>` : ''}. If you have any questions about the invoice, the work carried out, or anything regarding your HVAC system, please don’t hesitate to reach out. We’re always happy to assist.`) +
-          p(`Your satisfaction is important to us, and we’re grateful for the trust you’ve placed in our company. We look forward to working with you again whenever you need us.`) +
+          p(`Please find your invoice below for the services completed${inv.due_date ? `, due <strong>${inv.due_date}</strong>` : ''}. If you have any questions about the invoice, the work carried out, or anything regarding your HVAC system, please don&rsquo;t hesitate to reach out. We&rsquo;re always happy to assist.`) +
+          p(`Your satisfaction is important to us, and we&rsquo;re grateful for the trust you&rsquo;ve placed in our company. We look forward to working with you again whenever you need us.`) +
           p('Thank you again for your support!') +
           signature(b) +
           // ── Invoice, below the message ──
           `<div style="margin-top:30px;padding-top:22px;border-top:2px solid #e2e8f0;">
-             <p style="margin:0 0 14px;font-size:17px;font-weight:800;color:#0f172a;">Invoice ${inv.invoice_number}${inv.due_date ? ` · Due ${inv.due_date}` : ''}</p>
+             <p style="margin:0 0 14px;font-size:17px;font-weight:800;color:#0f172a;">Invoice ${inv.invoice_number}${inv.due_date ? ` &middot; Due ${inv.due_date}` : ''}</p>
            </div>` +
           itemsTable(inv.items) +
           `<table style="width:100%;margin-top:4px;"><tr><td></td><td style="text-align:right;">
             <p style="margin:2px 0;color:#64748b;font-size:14px;">Subtotal: ${money(inv.subtotal)}</p>
             <p style="margin:2px 0;color:#64748b;font-size:14px;">Tax: ${money(inv.tax_amount)}</p>
             <p style="margin:6px 0 0;color:#0f172a;font-size:19px;font-weight:800;">Total Due: ${money(balance)}</p></td></tr></table>` +
-          buttonRow([{ label: '🔒 Pay Now', url: portal(b), color: BLUE }]) }) };
+          buttonRow([{ label: '&#128274; Pay Now', url: portal(b), color: BLUE }]) }) };
   },
   invoice_reminder(inv, b) {
     const balance = inv.total - (inv.amountPaid || 0);
@@ -143,12 +153,12 @@ const templates = {
       html: shell(b, { accent: ORANGE, heading: 'Friendly payment reminder',
         body: p(`Hi ${inv.customer_name || 'there'},`) + p(`This is a friendly reminder that invoice <strong>${inv.invoice_number}</strong> became due on <strong>${inv.due_date}</strong> and is currently unpaid.`) +
           detailBox('Invoice summary', [
-            { icon: '📄', label: 'Invoice', value: inv.invoice_number },
-            { icon: '📅', label: 'Due date', value: inv.due_date || '—' },
-            { icon: '💵', label: 'Balance due', value: `<span style="color:${RED};">${money(balance)}</span>` },
+            { icon: '&#128196;', label: 'Invoice', value: inv.invoice_number },
+            { icon: '&#128197;', label: 'Due date', value: inv.due_date || '—' },
+            { icon: '&#128181;', label: 'Balance due', value: `<span style="color:${RED};">${money(balance)}</span>` },
           ]) +
           p(`If you've already sent payment, thank you — please disregard this notice.`) +
-          buttonRow([{ label: '🔒 Pay Now', url: portal(b), color: BLUE }]) }) };
+          buttonRow([{ label: '&#128274; Pay Now', url: portal(b), color: BLUE }]) }) };
   },
   receipt(inv, b) {
     const bal = Number(inv.balance_after) || 0;
@@ -156,47 +166,58 @@ const templates = {
     const paidOn = inv.paid_at ? new Date(inv.paid_at) : new Date();
     return { subject: `Payment received${inv.receipt_number ? ` — Receipt ${inv.receipt_number}` : ''} — Invoice ${inv.invoice_number}`,
       html: shell(b, { accent: GREEN, heading: 'Payment received — thank you!',
+        // The full message reads first, uninterrupted — the receipt follows below it.
         body: p(`Hi ${inv.customer_name || 'there'},`) +
+          p(`Thank you for your payment. We truly appreciate your business and the trust you&rsquo;ve placed in ${b.name}.`) +
           p(partial
-            ? `We've received your payment toward invoice <strong>${inv.invoice_number}</strong>. Here are the details, with the remaining balance below.`
-            : `We've received your payment for invoice <strong>${inv.invoice_number}</strong>. Your account is now paid in full.`) +
+            ? `We've received your payment toward invoice <strong>${inv.invoice_number}</strong>. Your receipt is below, along with the balance remaining on the account.`
+            : `We've received your payment for invoice <strong>${inv.invoice_number}</strong> and your account is now paid in full. Your receipt is below for your records.`) +
+          p('If you have any questions about this payment, the work carried out, or anything regarding your HVAC system, please don&rsquo;t hesitate to reach out. We&rsquo;re always happy to assist.') +
+          p('Thank you again for your support!') +
+          signature(b) +
+          // ── Receipt, below the message ──
+          `<div style="margin-top:30px;padding-top:22px;border-top:2px solid #e2e8f0;">
+             <p style="margin:0 0 14px;font-size:17px;font-weight:800;color:#0f172a;">${inv.receipt_number ? `Receipt ${inv.receipt_number}` : 'Receipt'}</p>
+           </div>` +
           detailBox('Payment summary', [
-            ...(inv.receipt_number ? [{ icon: '🧾', label: 'Receipt', value: inv.receipt_number }] : []),
-            { icon: '📄', label: 'Invoice', value: inv.invoice_number },
-            { icon: '📅', label: 'Date', value: paidOn.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) },
-            ...(inv.payment_method ? [{ icon: '💳', label: 'Method', value: String(inv.payment_method).replace(/_/g, ' ') }] : []),
-            { icon: '✅', label: 'Amount paid', value: `<span style="color:${GREEN};">${money(inv.lastPayment || inv.total)}</span>` },
+            ...(inv.receipt_number ? [{ icon: '&#129534;', label: 'Receipt', value: inv.receipt_number }] : []),
+            { icon: '&#128196;', label: 'Invoice', value: inv.invoice_number },
+            { icon: '&#128197;', label: 'Date', value: paidOn.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) },
+            ...(inv.payment_method ? [{ icon: '&#128179;', label: 'Method', value: String(inv.payment_method).replace(/_/g, ' ') }] : []),
+            { icon: '&#9989;', label: 'Amount paid', value: `<span style="color:${GREEN};">${money(inv.lastPayment || inv.total)}</span>` },
             ...(partial
-              ? [{ icon: '💵', label: 'Balance remaining', value: `<span style="color:${RED};">${money(bal)}</span>` }]
-              : [{ icon: '🎉', label: 'Balance', value: `<span style="color:${GREEN};">Paid in full</span>` }]),
+              ? [{ icon: '&#128181;', label: 'Balance remaining', value: `<span style="color:${RED};">${money(bal)}</span>` }]
+              : [{ icon: '&#127881;', label: 'Balance', value: `<span style="color:${GREEN};">Paid in full</span>` }]),
           ], '#f0fdf4') +
-          p(partial
-            ? 'Thank you — we’ll send another receipt when the remaining balance is settled.'
-            : 'We appreciate your business and look forward to serving you again.') }) };
+          (partial ? p('We&rsquo;ll send another receipt once the remaining balance is settled.') : '') }) };
   },
   quote(q, b) {
     return { subject: `Your estimate ${q.quote_number} from ${b.name}`,
       html: shell(b, { heading: `Estimate ${q.quote_number}`,
-        body: p(`Hi ${q.customer_name || 'there'},`) + p(`Thank you for the opportunity to earn your business. Here is your estimate${q.expiry_date ? `, valid until <strong>${q.expiry_date}</strong>` : ''}.`) +
+        // The full message reads first, uninterrupted — the estimate follows below it.
+        body: p(`Hi ${q.customer_name || 'there'},`) +
+          p(`Thank you for considering ${b.name} for your HVAC work. We truly appreciate the opportunity to earn your business and to help keep your home or business comfortable.`) +
+          p(`Please find your estimate below for the work discussed${q.expiry_date ? `, valid until <strong>${q.expiry_date}</strong>` : ''}. If you have any questions about the scope of work, the pricing, or anything regarding your HVAC system, please don&rsquo;t hesitate to reach out. We&rsquo;re always happy to assist.`) +
+          p('If everything looks good, simply reply to this email to approve and we&rsquo;ll get you scheduled.') +
+          p('Thank you again for your consideration!') +
+          signature(b) +
+          // ── Estimate, below the message ──
+          `<div style="margin-top:30px;padding-top:22px;border-top:2px solid #e2e8f0;">
+             <p style="margin:0 0 14px;font-size:17px;font-weight:800;color:#0f172a;">Estimate ${q.quote_number}${q.expiry_date ? ` &middot; Valid until ${q.expiry_date}` : ''}</p>
+           </div>` +
           itemsTable(q.items) + totalsBlock('Total Estimate', q.total, BLUE) +
-          detailBox('Next steps', [
-            { icon: '👀', label: 'Step 1', value: 'Review the estimate' },
-            { icon: '💬', label: 'Step 2', value: 'Reply with any questions' },
-            { icon: '✍️', label: 'Step 3', value: 'Approve to get started' },
-          ]) +
-          buttonRow([{ label: 'View in your account', url: portal(b), color: BLUE }]) +
-          p('Reply to this email to approve the estimate or ask any questions.') }) };
+          buttonRow([{ label: 'View in your account', url: portal(b), color: BLUE }]) }) };
   },
   job_confirmation(job, b) {
     return { subject: `Your appointment with ${b.name} is confirmed`,
       html: shell(b, { accent: GREEN, heading: 'Appointment confirmed',
         body: p(`Hi ${job.customer_name || 'there'},`) + p('Great news — your appointment is scheduled. Here are the details:') +
           detailBox('Appointment details', [
-            { icon: '📅', label: 'Date', value: job.scheduled_date || 'To be scheduled' },
-            { icon: '🕐', label: 'Time', value: job.scheduled_time || job.booking_window || 'To be confirmed' },
-            { icon: '🔧', label: 'Service', value: job.title || '—' },
-            ...(job.technician_name ? [{ icon: '👤', label: 'Technician', value: job.technician_name }] : []),
-            ...(job.address ? [{ icon: '📍', label: 'Location', value: job.address }] : []),
+            { icon: '&#128197;', label: 'Date', value: job.scheduled_date || 'To be scheduled' },
+            { icon: '&#128336;', label: 'Time', value: job.scheduled_time || job.booking_window || 'To be confirmed' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            ...(job.technician_name ? [{ icon: '&#128100;', label: 'Technician', value: job.technician_name }] : []),
+            ...(job.address ? [{ icon: '&#128205;', label: 'Location', value: job.address }] : []),
           ], '#f0fdf4') +
           buttonRow([{ label: 'Reschedule', url: portal(b), color: BLUE }, { label: 'Cancel', url: portal(b), color: RED }]) +
           p('Need to make a change? Use the buttons above or just reply to this email.') }) };
@@ -206,10 +227,10 @@ const templates = {
       html: shell(b, { heading: 'Appointment reminder',
         body: p(`Hi ${job.customer_name || 'there'},`) + p('This is a friendly reminder about your upcoming service appointment:') +
           detailBox('Appointment details', [
-            { icon: '📅', label: 'Date', value: job.scheduled_date || '' },
-            { icon: '🕐', label: 'Time', value: job.scheduled_time || job.booking_window || '' },
-            { icon: '🔧', label: 'Service', value: job.title || '—' },
-            ...(job.technician_name ? [{ icon: '👤', label: 'Technician', value: job.technician_name }] : []),
+            { icon: '&#128197;', label: 'Date', value: job.scheduled_date || '' },
+            { icon: '&#128336;', label: 'Time', value: job.scheduled_time || job.booking_window || '' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            ...(job.technician_name ? [{ icon: '&#128100;', label: 'Technician', value: job.technician_name }] : []),
           ], '#eff6ff') +
           p('Please ensure someone is available to provide access. If you need to reschedule, use the button below.') +
           buttonRow([{ label: 'Reschedule', url: portal(b), color: BLUE }, { label: 'Cancel', url: portal(b), color: RED }]) }) };
@@ -219,21 +240,21 @@ const templates = {
       html: shell(b, { accent: GREEN, heading: 'Service complete',
         body: p(`Hi ${job.customer_name || 'there'},`) + p(`We've completed <strong>${job.title}</strong>${job.completed_date ? ` on ${job.completed_date}` : ''}. Thank you for choosing ${b.name}!`) +
           detailBox('Service summary', [
-            ...(job.completed_date ? [{ icon: '📅', label: 'Completed', value: job.completed_date }] : []),
-            { icon: '🔧', label: 'Service', value: job.title || '—' },
-            ...(job.technician_name ? [{ icon: '👤', label: 'Technician', value: job.technician_name }] : []),
+            ...(job.completed_date ? [{ icon: '&#128197;', label: 'Completed', value: job.completed_date }] : []),
+            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            ...(job.technician_name ? [{ icon: '&#128100;', label: 'Technician', value: job.technician_name }] : []),
           ], '#f0fdf4') +
           p("We'd love your feedback — it helps us serve you better.") +
-          buttonRow([{ label: '⭐ Leave a Review', url: portal(b), color: GREEN }]) }) };
+          buttonRow([{ label: '&#11088; Leave a Review', url: portal(b), color: GREEN }]) }) };
   },
   service_confirmation(job, b) {
     return { subject: `We received your request — ${b.name}`,
       html: shell(b, { heading: 'Request received',
         body: p(`Hi ${job.customer_name || 'there'},`) + p(`Thanks — we've received your request for <strong>${job.title}</strong>${job.scheduled_date ? ` (requested date: ${job.scheduled_date})` : ''}${job.booking_window ? `, ${job.booking_window}` : ''}. Your slot is held while our team confirms the exact time.`) +
           detailBox("What happens next", [
-            { icon: '📋', label: 'Step 1', value: 'We review your request' },
-            { icon: '📞', label: 'Step 2', value: 'We confirm your time' },
-            { icon: '🔧', label: 'Step 3', value: 'We complete your service' },
+            { icon: '&#128203;', label: 'Step 1', value: 'We review your request' },
+            { icon: '&#128222;', label: 'Step 2', value: 'We confirm your time' },
+            { icon: '&#128295;', label: 'Step 3', value: 'We complete your service' },
           ], '#eff6ff') +
           buttonRow([{ label: 'View in your account', url: portal(b), color: BLUE }]) +
           p('You can track its status anytime by logging into your account.') }) };
@@ -243,9 +264,9 @@ const templates = {
       html: shell(b, { heading: 'Suggested new time',
         body: p(`Hi ${job.customer_name || 'there'},`) + p(`Your originally requested time wasn't available, so we'd like to propose a new time for <strong>${job.title}</strong>:`) +
           detailBox('Suggested appointment', [
-            { icon: '📅', label: 'Date', value: job.scheduled_date || '' },
-            { icon: '🕐', label: 'Arrival window', value: job.booking_window || '' },
-            { icon: '🔧', label: 'Service', value: job.title || '—' },
+            { icon: '&#128197;', label: 'Date', value: job.scheduled_date || '' },
+            { icon: '&#128336;', label: 'Arrival window', value: job.booking_window || '' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
           ], '#eff6ff') +
           p("If this works, no action is needed — we'll confirm it. If not, pick another open time in your account or reply to this email.") +
           buttonRow([{ label: 'View my appointment', url: portal(b), color: BLUE }]) }) };
@@ -261,7 +282,7 @@ const templates = {
     return { subject: `Reset your ${b.name} password`,
       html: shell(b, { heading: 'Password reset requested',
         body: p(`Hi ${e.name || 'there'},`) + p(`We received a request to reset the password for your ${b.name} account. Click the button below to choose a new one.`) +
-          buttonRow([{ label: '🔒 Reset my password', url: e.link, color: BLUE }]) +
+          buttonRow([{ label: '&#128274; Reset my password', url: e.link, color: BLUE }]) +
           p(`<span style="color:#64748b;font-size:13px;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't change.</span>`) }) };
   },
   verify_code(e, b) {
