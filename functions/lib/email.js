@@ -154,10 +154,10 @@ const templates = {
         body: p(`Hi ${inv.customer_name || 'there'},`) + p(`This is a friendly reminder that invoice <strong>${inv.invoice_number}</strong> became due on <strong>${inv.due_date}</strong> and is currently unpaid.`) +
           detailBox('Invoice summary', [
             { icon: '&#128196;', label: 'Invoice', value: inv.invoice_number },
-            { icon: '&#128197;', label: 'Due date', value: inv.due_date || '—' },
+            { icon: '&#128197;', label: 'Due date', value: inv.due_date || '&mdash;' },
             { icon: '&#128181;', label: 'Balance due', value: `<span style="color:${RED};">${money(balance)}</span>` },
           ]) +
-          p(`If you've already sent payment, thank you — please disregard this notice.`) +
+          p(`If you've already sent payment, thank you &mdash; please disregard this notice.`) +
           buttonRow([{ label: '&#128274; Pay Now', url: portal(b), color: BLUE }]) }) };
   },
   receipt(inv, b) {
@@ -165,7 +165,7 @@ const templates = {
     const partial = bal > 0;
     const paidOn = inv.paid_at ? new Date(inv.paid_at) : new Date();
     return { subject: `Payment received${inv.receipt_number ? ` — Receipt ${inv.receipt_number}` : ''} — Invoice ${inv.invoice_number}`,
-      html: shell(b, { accent: GREEN, heading: 'Payment received — thank you!',
+      html: shell(b, { accent: GREEN, heading: 'Payment received &mdash; thank you!',
         // The full message reads first, uninterrupted — the receipt follows below it.
         body: p(`Hi ${inv.customer_name || 'there'},`) +
           p(`Thank you for your payment. We truly appreciate your business and the trust you&rsquo;ve placed in ${b.name}.`) +
@@ -211,11 +211,11 @@ const templates = {
   job_confirmation(job, b) {
     return { subject: `Your appointment with ${b.name} is confirmed`,
       html: shell(b, { accent: GREEN, heading: 'Appointment confirmed',
-        body: p(`Hi ${job.customer_name || 'there'},`) + p('Great news — your appointment is scheduled. Here are the details:') +
+        body: p(`Hi ${job.customer_name || 'there'},`) + p('Great news &mdash; your appointment is scheduled. Here are the details:') +
           detailBox('Appointment details', [
             { icon: '&#128197;', label: 'Date', value: job.scheduled_date || 'To be scheduled' },
             { icon: '&#128336;', label: 'Time', value: job.scheduled_time || job.booking_window || 'To be confirmed' },
-            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '&mdash;' },
             ...(job.technician_name ? [{ icon: '&#128100;', label: 'Technician', value: job.technician_name }] : []),
             ...(job.address ? [{ icon: '&#128205;', label: 'Location', value: job.address }] : []),
           ], '#f0fdf4') +
@@ -229,7 +229,7 @@ const templates = {
           detailBox('Appointment details', [
             { icon: '&#128197;', label: 'Date', value: job.scheduled_date || '' },
             { icon: '&#128336;', label: 'Time', value: job.scheduled_time || job.booking_window || '' },
-            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '&mdash;' },
             ...(job.technician_name ? [{ icon: '&#128100;', label: 'Technician', value: job.technician_name }] : []),
           ], '#eff6ff') +
           p('Please ensure someone is available to provide access. If you need to reschedule, use the button below.') +
@@ -241,16 +241,16 @@ const templates = {
         body: p(`Hi ${job.customer_name || 'there'},`) + p(`We've completed <strong>${job.title}</strong>${job.completed_date ? ` on ${job.completed_date}` : ''}. Thank you for choosing ${b.name}!`) +
           detailBox('Service summary', [
             ...(job.completed_date ? [{ icon: '&#128197;', label: 'Completed', value: job.completed_date }] : []),
-            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '&mdash;' },
             ...(job.technician_name ? [{ icon: '&#128100;', label: 'Technician', value: job.technician_name }] : []),
           ], '#f0fdf4') +
-          p("We'd love your feedback — it helps us serve you better.") +
+          p("We'd love your feedback &mdash; it helps us serve you better.") +
           buttonRow([{ label: '&#11088; Leave a Review', url: portal(b), color: GREEN }]) }) };
   },
   service_confirmation(job, b) {
     return { subject: `We received your request — ${b.name}`,
       html: shell(b, { heading: 'Request received',
-        body: p(`Hi ${job.customer_name || 'there'},`) + p(`Thanks — we've received your request for <strong>${job.title}</strong>${job.scheduled_date ? ` (requested date: ${job.scheduled_date})` : ''}${job.booking_window ? `, ${job.booking_window}` : ''}. Your slot is held while our team confirms the exact time.`) +
+        body: p(`Hi ${job.customer_name || 'there'},`) + p(`Thanks &mdash; we've received your request for <strong>${job.title}</strong>${job.scheduled_date ? ` (requested date: ${job.scheduled_date})` : ''}${job.booking_window ? `, ${job.booking_window}` : ''}. Your slot is held while our team confirms the exact time.`) +
           detailBox("What happens next", [
             { icon: '&#128203;', label: 'Step 1', value: 'We review your request' },
             { icon: '&#128222;', label: 'Step 2', value: 'We confirm your time' },
@@ -266,16 +266,16 @@ const templates = {
           detailBox('Suggested appointment', [
             { icon: '&#128197;', label: 'Date', value: job.scheduled_date || '' },
             { icon: '&#128336;', label: 'Arrival window', value: job.booking_window || '' },
-            { icon: '&#128295;', label: 'Service', value: job.title || '—' },
+            { icon: '&#128295;', label: 'Service', value: job.title || '&mdash;' },
           ], '#eff6ff') +
-          p("If this works, no action is needed — we'll confirm it. If not, pick another open time in your account or reply to this email.") +
+          p("If this works, no action is needed &mdash; we'll confirm it. If not, pick another open time in your account or reply to this email.") +
           buttonRow([{ label: 'View my appointment', url: portal(b), color: BLUE }]) }) };
   },
   decline(job, b) {
     return { subject: 'About your appointment request',
       html: shell(b, { accent: RED, heading: 'About your request',
         body: p(`Hi ${job.customer_name || 'there'},`) + p(`Unfortunately we're unable to accommodate your requested appointment for <strong>${job.title}</strong>${job.scheduled_date ? ` on ${job.scheduled_date}` : ''}. We're sorry for any inconvenience.`) +
-          p("We'd be glad to find another time that works for you — book an open slot in your account, or reply to this email and we'll help.") +
+          p("We'd be glad to find another time that works for you &mdash; book an open slot in your account, or reply to this email and we'll help.") +
           buttonRow([{ label: 'Choose another time', url: portal(b), color: BLUE }]) }) };
   },
   password_reset(e, b) {
@@ -283,7 +283,7 @@ const templates = {
       html: shell(b, { heading: 'Password reset requested',
         body: p(`Hi ${e.name || 'there'},`) + p(`We received a request to reset the password for your ${b.name} account. Click the button below to choose a new one.`) +
           buttonRow([{ label: '&#128274; Reset my password', url: e.link, color: BLUE }]) +
-          p(`<span style="color:#64748b;font-size:13px;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't change.</span>`) }) };
+          p(`<span style="color:#64748b;font-size:13px;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email &mdash; your password won't change.</span>`) }) };
   },
   verify_code(e, b) {
     return { subject: `Your verification code: ${e.code}`,
