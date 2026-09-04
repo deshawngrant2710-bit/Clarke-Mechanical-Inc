@@ -6,7 +6,12 @@ const { Pool } = require('pg');
 const connectionString = process.env.DATABASE_URL;
 let ssl = false;
 try { ssl = new URL(connectionString).hostname.includes('.') ? { rejectUnauthorized: false } : false; } catch { /* internal host */ }
-const pool = new Pool({ connectionString, ssl, max: 5 });
+const pool = new Pool({ connectionString, ssl, max: 5, idleTimeoutMillis: 30000, connectionTimeoutMillis: 15000 });
+
+// A dropped idle connection emits an 'error' on the pool. Without a listener,
+// Node treats it as an unhandled error event and kills the server — so log it and
+// let the pool replace the client instead.
+pool.on('error', (err) => console.error('[db] idle Postgres client error:', err.message));
 
 let schemaReady = null;
 function ensureSchema() {

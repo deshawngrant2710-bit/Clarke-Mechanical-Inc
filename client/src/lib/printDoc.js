@@ -26,173 +26,220 @@ function paymentLines() {
   return out;
 }
 
+// Small inline icons for the footer band (kept as SVG so they render identically
+// in the browser, in print, and in the generated PDF).
+const FOOT_ICONS = [
+  '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M12 2c1.5 4-2.5 5-2.5 8.5A4.5 4.5 0 0 0 14 15c2.2 0 3.8-1.6 3.8-3.9 0-3.6-3.6-5.2-5.8-9.1z"/><path d="M9 14c-1 1-1.6 2.2-1.6 3.4A4.6 4.6 0 0 0 12 22c-1.4-2 .4-3.4.4-5.2 0-1-.5-2-1.4-2.8z"/></svg>',
+  '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>',
+  '<svg viewBox="0 0 24 24" width="20" height="20" fill="#ff3b30"><path d="M12 2c1.5 4-2.5 5-2.5 8.5A4.5 4.5 0 0 0 14 15c2.2 0 3.8-1.6 3.8-3.9 0-3.6-3.6-5.2-5.8-9.1z"/><path d="M9 14c-1 1-1.6 2.2-1.6 3.4A4.6 4.6 0 0 0 12 22c-1.4-2 .4-3.4.4-5.2 0-1-.5-2-1.4-2.8z"/></svg>',
+  '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"><path d="M3 8h11a3 3 0 1 0-3-3M3 13h15a3 3 0 1 1-3 3M3 18h9"/></svg>',
+  '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" stroke-width="1.5" fill="none"><circle cx="12" cy="12" r="2.2"/><path d="M12 10c0-4 1-6 3-6s2.6 3 .6 5M14 12c4 0 6 1 6 3s-3 2.6-5 .6M12 14c0 4-1 6-3 6s-2.6-3-.6-5M10 12c-4 0-6-1-6-3s3-2.6 5-.6"/></svg>',
+];
+
 // Builds the full branded HTML document. Set autoPrint to open the print dialog
 // automatically (for "Download PDF"); leave it off for an on-screen preview.
-export function buildDocumentHtml({ kind, doc, business = {}, customer = {} }, { autoPrint = false } = {}) {
+// `receipt` (optional) makes this a receipt for ONE specific payment: its own
+// RCT number, that payment's amount/method/date, and the balance left afterwards.
+// Without it, a receipt summarises every payment on the invoice.
+export function buildDocumentHtml({ kind, doc, business = {}, customer = {}, receipt = null }, { autoPrint = false } = {}) {
   const isReceipt = kind === 'receipt';
   const isInvoice = kind === 'invoice' || isReceipt;
-  const number = isInvoice ? doc.invoice_number : doc.quote_number;
+  const isQuote = kind === 'quote';
   const payments = doc.payments || [];
-  const lastPaidAt = payments.length ? payments[payments.length - 1].paid_at : null;
-  const title = isReceipt ? 'RECEIPT' : kind === 'invoice' ? 'INVOICE' : 'ESTIMATE';
-  const dateLabel = isReceipt ? 'Paid On' : kind === 'invoice' ? 'Due Date' : 'Valid Until';
-  const dateVal = isReceipt ? (lastPaidAt ? String(lastPaidAt).slice(0, 10) : '—') : (kind === 'invoice' ? doc.due_date : doc.expiry_date);
+  const lastPaidAt = receipt ? receipt.paid_at : (payments.length ? payments[payments.length - 1].paid_at : null);
+  const title = isReceipt ? 'RECEIPT' : isInvoice ? 'INVOICE' : 'ESTIMATE';
   const bizName = business.name || 'Clarke Mechanical Inc.';
+  const number = receipt ? receipt.receipt_number : (isInvoice ? doc.invoice_number : doc.quote_number);
 
-  const st = String(doc.status || '').toLowerCase();
-  const isPaid = st === 'paid' || isReceipt;
-  let badgeClass = 'other';
-  let badgeText = doc.status || '';
-  if (isPaid) { badgeClass = 'paid'; badgeText = 'Paid'; }
-  else if (kind === 'invoice') { badgeClass = 'unpaid'; badgeText = st === 'overdue' ? 'Overdue' : 'Unpaid'; }
-  const statusBadge = (doc.status || isReceipt) ? `<span class="badge ${badgeClass}">${esc(badgeText)}</span>` : '';
+  const total = Number(doc.total) || 0;
+  const paidTotal = receipt ? (Number(receipt.amount) || 0) : payments.reduce((s, p) => s + (p.amount || 0), 0);
+  const balance = receipt ? Math.max(0, Number(receipt.balance_after) || 0) : Math.max(0, total - paidTotal);
 
-  const paidTotal = payments.reduce((s, p) => s + (p.amount || 0), 0);
-  const paymentRows = payments.map(p => `
-    <div class="prow"><span><span style="text-transform:capitalize">${esc((p.method || 'payment').replace('_', ' '))}</span> · ${esc(String(p.paid_at || '').slice(0, 10))}${p.reference ? ` · #${esc(p.reference)}` : ''}</span><span>${money(p.amount)}</span></div>`).join('');
-  const receiptBlock = isReceipt ? `
-    <div class="receipt">
-      <div class="label" style="margin-bottom:8px">Payment received</div>
-      ${paymentRows || `<div class="prow"><span>Payment</span><span>${money(doc.total)}</span></div>`}
-      <div class="prow prow-total"><span>Total paid</span><span>${money(paidTotal || doc.total)}</span></div>
-    </div>` : '';
+  // Line items — description (with optional note and qty x unit price) + amount.
+  const rows = (doc.items || []).map(it => {
+    const q = Number(it.quantity) || 0;
+    const unit = Number(it.unit_price) || 0;
+    const detail = q && unit ? `<div class="d-qty">${q} &times; ${money(unit)}</div>` : '';
+    return `<tr>
+      <td class="desc">${esc(it.description)}${it.note ? `<div class="d-note">${sanitizeRich(it.note)}</div>` : ''}${detail}</td>
+      <td class="amt">${money(it.total)}</td>
+    </tr>`;
+  }).join('');
+  // Keep the table looking like the printed form even with only a couple of lines.
+  const minRows = Math.max(0, 4 - (doc.items || []).length);
+  const filler = Array.from({ length: minRows }, () => '<tr><td class="desc">&nbsp;</td><td class="amt"></td></tr>').join('');
 
-  const rows = (doc.items || []).map(it => `
-    <tr>
-      <td class="desc"><span class="d-name">${esc(it.description)}</span>${it.note ? `<div class="d-note">${sanitizeRich(it.note)}</div>` : ''}</td>
-      <td class="r">${money(it.unit_price)}</td>
-      <td class="c">${it.quantity}</td>
-      <td class="r">${money(it.total)}</td>
-    </tr>`).join('');
-  const custLoc = [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
-  const bizAddr = (business.address || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const custLoc = [customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
+  const svcAddr = doc.service_address || doc.job_address || customer.address || '';
+  const svcLoc = doc.service_city || custLoc;
 
-  // Tax percentage for the "Tax (x%)" label.
+  // Tax percentage for the "TAX (x%)" label.
   let taxPct = Number(doc.tax_rate);
   if (!taxPct && doc.subtotal) taxPct = Number(doc.tax_amount) / Number(doc.subtotal);
-  const taxLabel = taxPct ? `Tax (${(taxPct * 100).toFixed(3).replace(/\.?0+$/, '')}%)` : 'Tax';
+  const taxLabel = taxPct ? `TAX (${(taxPct * 100).toFixed(3).replace(/\.?0+$/, '')}%)` : 'TAX';
 
-  const notesText = doc.notes
-    ? sanitizeRich(doc.notes)
-    : (kind === 'invoice' ? 'Payment is due within 15 days of receiving this invoice. Thank you for your business.'
-      : kind === 'quote' ? 'This estimate is valid for 30 days. Prices subject to change after expiration.'
-      : 'Thank you for your business.');
+  // Tick the payment method actually used (falls back to "Other").
+  const usedMethod = (receipt ? receipt.method : (payments.length ? payments[payments.length - 1].method : doc.payment_method)) || '';
+  const m = String(usedMethod).toLowerCase().replace(/[\s-]/g, '_');
+  const isChecked = (key) => (key === 'other'
+    ? !!m && !['cash', 'credit_card', 'check', 'cheque'].includes(m)
+    : key === 'check' ? (m === 'check' || m === 'cheque') : m === key);
+  const box = (key, label, extra = '') =>
+    `<div class="pm"><span class="cb">${isChecked(key) ? '&#10005;' : ''}</span>${label}${extra}</div>`;
+  const otherLabelExtra = isChecked('other') && m
+    ? ` <span class="pm-other">${esc(String(usedMethod).replace(/_/g, ' '))}</span>` : ' <span class="pm-line"></span>';
 
-  const payLines = paymentLines();
-  const preparedBy = business.website || business.email || '';
+  const notesText = doc.notes ? sanitizeRich(doc.notes) : '';
+  // A receipt is already paid, so it carries no payment terms.
+  const footerNote = isReceipt ? ''
+    : isInvoice ? 'PAYMENT IS DUE UPON RECEIPT. THANK YOU!'
+    : 'THIS ESTIMATE IS VALID FOR 30 DAYS.';
+
+  const dateRow3 = isReceipt
+    ? `<div class="mrow"><span class="mlabel">Payment Date:</span><span class="mval">${fmtDate(lastPaidAt)}</span></div>`
+    : isInvoice
+      ? `<div class="mrow"><span class="mlabel">Due Date:</span><span class="mval">${doc.due_date ? fmtDate(doc.due_date) : '&mdash;'}</span></div>`
+      : `<div class="mrow"><span class="mlabel">Valid Until:</span><span class="mval">${doc.expiry_date ? fmtDate(doc.expiry_date) : '&mdash;'}</span></div>`;
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(number || title)}</title>
   <style>
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; }
-    body { font-family: Georgia, 'Times New Roman', 'Times', serif; color: #1a1a1a; font-size: 13px; line-height: 1.55; }
-    .page { max-width: 800px; margin: 0 auto; padding: 56px 56px 44px; position: relative; }
-    /* Header */
-    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; padding-bottom: 20px; margin-bottom: 30px; border-bottom: 3px double #333; }
-    .doc-title h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: .5px; color: #1a1a1a; font-weight: 700; line-height: 1; }
-    .doc-title .meta { font-size: 12.5px; color: #555; }
-    .doc-title .meta div { margin-top: 3px; }
-    .badge { display: inline-block; margin-top: 12px; padding: 3px 12px; border: 1px solid #999; border-radius: 2px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #444; }
-    .badge.paid { border-color: #15803d; color: #15803d; }
-    .badge.unpaid { border-color: #b45309; color: #b45309; }
-    .badge.other { text-transform: capitalize; }
-    .logo { text-align: right; flex-shrink: 0; }
-    .logo img { height: 62px; display: block; margin-left: auto; }
-    /* Parties */
-    .parties { display: flex; gap: 44px; margin-bottom: 30px; }
-    .parties .col { flex: 1; }
-    .label { text-transform: uppercase; font-size: 10.5px; letter-spacing: .12em; color: #777; margin-bottom: 7px; font-weight: 700; }
-    .parties .line { color: #333; }
-    /* Items table — understated rules, no boxed grid */
-    table.items { width: 100%; border-collapse: collapse; margin-bottom: 26px; border-top: 2px solid #333; border-bottom: 2px solid #333; }
-    table.items th { text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #444; padding: 11px 10px; border-bottom: 1px solid #333; }
-    table.items th.r { text-align: right; }
-    table.items th.c { text-align: center; }
-    table.items td { padding: 11px 10px; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
-    table.items tr:last-child td { border-bottom: 0; }
-    table.items td.r { text-align: right; white-space: nowrap; }
-    table.items td.c { text-align: center; }
-    .d-name { color: #1a1a1a; }
-    .d-note { font-size: 12px; color: #666; margin-top: 3px; font-style: italic; }
-    /* Notes + totals row */
-    .lower { display: flex; justify-content: space-between; gap: 44px; align-items: flex-start; margin-bottom: 38px; }
-    .notes { flex: 1; max-width: 350px; }
-    .notes .body { color: #444; white-space: pre-wrap; }
-    .totals { width: 290px; flex-shrink: 0; }
-    .totals .row { display: flex; justify-content: space-between; padding: 8px 2px; color: #444; }
-    .totals .grand { margin-top: 4px; padding-top: 11px; border-top: 3px double #333; font-weight: 700; font-size: 15px; color: #1a1a1a; }
-    .receipt { margin: 0 0 34px auto; width: 320px; border: 1px solid #cbd5c0; border-top: 3px double #4b6b3a; padding: 14px 16px; }
-    .receipt .prow { display: flex; justify-content: space-between; padding: 4px 0; color: #3a5a2a; font-size: 13px; }
-    .receipt .prow-total { margin-top: 6px; padding-top: 8px; border-top: 1px solid #cbd5c0; font-weight: 700; font-size: 15px; }
-    /* Footer */
-    .footcols { display: flex; gap: 44px; margin-top: 8px; padding-top: 20px; border-top: 1px solid #ccc; }
-    .footcols .col { flex: 1; }
-    .footcols .line { color: #333; }
-    @media print { .page { padding: 34px 40px 40px; } table.items tr { page-break-inside: avoid; } }
+    body { font-family: 'Poppins', 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif; color: #111; font-size: 13px; line-height: 1.5; }
+    .page { max-width: 820px; margin: 0 auto; padding: 34px 40px 0; position: relative; }
+    /* Masthead */
+    .brand { text-align: center; margin-bottom: 4px; }
+    .brand img { height: 96px; display: inline-block; }
+    .title-wrap { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 6px 0 18px; }
+    .title-wrap .rule { height: 3px; width: 120px; background: #0b2265; border-radius: 2px; }
+    h1.title { margin: 0; font-size: 46px; line-height: 1; font-weight: 800; letter-spacing: 1px; color: #0b2265; }
+    /* Meta */
+    .meta { width: 62%; margin-left: auto; }
+    .mrow { display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px; }
+    .mlabel { font-weight: 700; color: #111; white-space: nowrap; }
+    .mval { flex: 1; border-bottom: 1px solid #111; padding-left: 6px; min-height: 18px; }
+    .divider { border-top: 1px solid #999; margin: 14px 0 14px; }
+    /* Blocks */
+    .block { margin-bottom: 12px; }
+    .block h2 { margin: 0 0 8px; font-size: 14px; font-weight: 800; color: #0b2265; letter-spacing: .02em; }
+    .frow { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; max-width: 88%; }
+    .flabel { min-width: 118px; color: #111; }
+    .fval { flex: 1; border-bottom: 1px solid #111; padding-left: 6px; min-height: 17px; }
+    /* Items table */
+    table.items { width: 100%; border-collapse: collapse; margin: 14px 0 16px; }
+    table.items th { background: #0b2265; color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .04em; padding: 10px 12px; border: 1px solid #0b2265; }
+    table.items th.amt, table.items td.amt { text-align: center; width: 32%; }
+    table.items td { border: 1px solid #111; padding: 9px 12px; vertical-align: top; height: 34px; }
+    .d-note { font-size: 11.5px; color: #444; margin-top: 2px; }
+    .d-qty { font-size: 11.5px; color: #666; margin-top: 2px; }
+    /* Lower band: payment method | notes | totals */
+    .lower { display: flex; gap: 18px; align-items: flex-start; }
+    .pm-col { width: 27%; }
+    .pm-col h3, .notes-col h3 { margin: 0 0 10px; font-size: 13px; font-weight: 800; color: #0b2265; }
+    .pm { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+    .cb { width: 15px; height: 15px; border: 1.5px solid #111; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: #0b2265; flex: none; }
+    .pm-line { display: inline-block; width: 74px; border-bottom: 1px solid #111; }
+    .pm-other { text-transform: capitalize; border-bottom: 1px solid #111; padding: 0 4px; }
+    .notes-col { width: 24%; border-left: 1px solid #ccc; padding-left: 16px; }
+    .notes-box { border: 1px solid #111; border-radius: 4px; min-height: 118px; padding: 8px; font-size: 11.5px; white-space: pre-wrap; }
+    .tot-col { flex: 1; }
+    table.tot { width: 100%; border-collapse: collapse; }
+    table.tot td { border: 1px solid #111; padding: 9px 12px; font-size: 13px; }
+    table.tot td.lbl { font-weight: 600; }
+    table.tot td.val { width: 45%; }
+    table.tot tr.grand td { background: #0b2265; color: #fff; font-weight: 800; border-color: #0b2265; }
+    table.tot tr.due td { background: #d81f26; color: #fff; font-weight: 800; border-color: #d81f26; }
+    table.tot tr.settled td { background: #0f7a3d; color: #fff; font-weight: 800; border-color: #0f7a3d; }
+    /* Thanks */
+    .thanks { text-align: center; margin: 22px 0 4px; display: flex; align-items: center; justify-content: center; gap: 16px; }
+    .thanks .rule { height: 2px; width: 110px; background: #d81f26; }
+    .thanks .script { font-family: 'Brush Script MT', 'Snell Roundhand', cursive; font-size: 36px; color: #d81f26; line-height: 1; }
+    .thanks-sub { text-align: center; font-weight: 700; letter-spacing: .04em; font-size: 14px; }
+    .terms { text-align: center; font-size: 12.5px; margin: 6px 0 18px; }
+    /* Sign-off */
+    .signoff { display: flex; gap: 40px; margin-bottom: 16px; }
+    .signoff .frow { flex: 1; max-width: none; }
+    /* Footer band */
+    .footband { background: #0b2265; color: #fff; padding: 12px 0 10px; text-align: center; margin: 0 -40px; }
+    .footband .icons { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 6px; }
+    .footband .icons span.sep { width: 1px; height: 22px; background: rgba(255,255,255,.45); margin: 0 26px; display: inline-block; }
+    .footband .tag { font-size: 13px; letter-spacing: .06em; font-weight: 600; }
+    @media print { .page { padding: 18px 26px 0; } table.items tr { page-break-inside: avoid; } .footband { margin: 0 -26px; } }
   </style></head><body>
     <div class="page">
-      <div class="head">
-        <div class="doc-title">
-          <h1>${title}</h1>
-          <div class="meta">
-            <div>${kind === 'invoice' ? 'Invoice' : kind === 'quote' ? 'Estimate' : 'Receipt'} Number: #${esc(number || '')}</div>
-            <div>${kind === 'quote' ? 'Estimate' : 'Invoice'} Date: ${fmtDate(doc.issue_date)}</div>
-            <div>${esc(dateLabel)}: ${dateVal ? fmtDate(dateVal) : '—'}</div>
-          </div>
-          ${statusBadge}
-        </div>
-        <div class="logo"><img src="${LOGO_URL}" alt="${esc(bizName)}" /></div>
+      <div class="brand"><img src="${LOGO_URL}" alt="${esc(bizName)}" /></div>
+
+      <div class="title-wrap"><span class="rule"></span><h1 class="title">${title}</h1><span class="rule"></span></div>
+
+      <div class="meta">
+        <div class="mrow"><span class="mlabel">${isReceipt ? 'Receipt' : isQuote ? 'Estimate' : 'Invoice'} #:</span><span class="mval">${esc(number || '')}</span></div>
+        ${receipt ? `<div class="mrow"><span class="mlabel">For Invoice #:</span><span class="mval">${esc(receipt.invoice_number || doc.invoice_number || '')}</span></div>` : ''}
+        <div class="mrow"><span class="mlabel">Date:</span><span class="mval">${fmtDate(doc.issue_date)}</span></div>
+        ${dateRow3}
       </div>
 
-      <div class="parties">
-        <div class="col">
-          <div class="label">${esc(bizName)}</div>
-          ${bizAddr.map(l => `<div class="line">${esc(l)}</div>`).join('')}
-          ${business.phone ? `<div class="line">${esc(business.phone)}</div>` : ''}
-          ${business.email ? `<div class="line">${esc(business.email)}</div>` : ''}
-        </div>
-        <div class="col">
-          <div class="label">Bill To</div>
-          <div class="line" style="font-weight:700;color:#111827">${esc(customer.name || '')}</div>
-          ${custLoc ? `<div class="line">${esc(custLoc)}</div>` : ''}
-          ${customer.phone ? `<div class="line">${esc(customer.phone)}</div>` : ''}
-          ${customer.email ? `<div class="line">${esc(customer.email)}</div>` : ''}
-        </div>
+      <div class="divider"></div>
+
+      <div class="block">
+        <h2>BILL TO:</h2>
+        <div class="frow"><span class="flabel">Name:</span><span class="fval">${esc(customer.name || '')}</span></div>
+        <div class="frow"><span class="flabel">Address:</span><span class="fval">${esc(customer.address || '')}</span></div>
+        <div class="frow"><span class="flabel">City, State, ZIP:</span><span class="fval">${esc(custLoc)}</span></div>
+        <div class="frow"><span class="flabel">Phone:</span><span class="fval">${esc(customer.phone || '')}</span></div>
+        <div class="frow"><span class="flabel">Email:</span><span class="fval">${esc(customer.email || '')}</span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="block">
+        <h2>SERVICE LOCATION:</h2>
+        <div class="frow"><span class="flabel">Address:</span><span class="fval">${esc(svcAddr)}</span></div>
+        <div class="frow"><span class="flabel">City, State, ZIP:</span><span class="fval">${esc(svcLoc)}</span></div>
+        <div class="frow"><span class="flabel">Phone:</span><span class="fval">${esc(customer.phone || '')}</span></div>
+        <div class="frow"><span class="flabel">Technician:</span><span class="fval">${esc(doc.technician_name || '')}</span></div>
       </div>
 
       <table class="items">
-        <thead><tr><th>Item &amp; Description</th><th class="r">Unit Price</th><th class="c">Qty</th><th class="r">Amount</th></tr></thead>
-        <tbody>${rows || '<tr><td class="desc" colspan="4" style="color:#9ca3af">No line items</td></tr>'}</tbody>
+        <thead><tr><th>DESCRIPTION</th><th class="amt">AMOUNT</th></tr></thead>
+        <tbody>${rows}${filler}</tbody>
       </table>
 
       <div class="lower">
-        <div class="notes">
-          <div class="label">Notes / Terms:</div>
-          <div class="body">${notesText}</div>
+        <div class="pm-col">
+          <h3>PAYMENT METHOD:</h3>
+          ${box('cash', 'Cash')}
+          ${box('credit_card', 'Credit Card')}
+          ${box('check', 'Check')}
+          ${box('other', 'Other', otherLabelExtra)}
         </div>
-        <div class="totals">
-          <div class="row"><span>Sub-Total</span><span>${money(doc.subtotal)}</span></div>
-          ${doc.discount ? `<div class="row"><span>Discount</span><span>−${money(doc.discount)}</span></div>` : ''}
-          <div class="row"><span>${taxLabel}</span><span>${money(doc.tax_amount)}</span></div>
-          <div class="row grand"><span>Total</span><span>${money(doc.total)}</span></div>
-          ${isInvoice && !isPaid && paidTotal ? `<div class="row"><span>Amount Paid</span><span>−${money(paidTotal)}</span></div><div class="row grand"><span>Balance Due</span><span>${money((doc.total || 0) - paidTotal)}</span></div>` : ''}
-          ${doc.deposit ? `<div class="row"><span>Deposit Requested</span><span>${money(doc.deposit)}</span></div>` : ''}
+        <div class="notes-col">
+          <h3>NOTES:</h3>
+          <div class="notes-box">${notesText}</div>
+        </div>
+        <div class="tot-col">
+          <table class="tot">
+            <tr><td class="lbl">SUBTOTAL</td><td class="val">${money(doc.subtotal)}</td></tr>
+            ${doc.discount ? `<tr><td class="lbl">DISCOUNT</td><td class="val">&minus;${money(doc.discount)}</td></tr>` : ''}
+            <tr><td class="lbl">${taxLabel}</td><td class="val">${money(doc.tax_amount)}</td></tr>
+            <tr class="grand"><td class="lbl">TOTAL</td><td class="val">${money(total)}</td></tr>
+            <tr><td class="lbl">AMOUNT PAID</td><td class="val">${money(paidTotal)}</td></tr>
+            <tr class="${balance > 0 ? 'due' : 'settled'}"><td class="lbl">BALANCE DUE</td><td class="val">${money(balance)}</td></tr>
+          </table>
         </div>
       </div>
 
-      ${receiptBlock}
+      <div class="thanks"><span class="rule"></span><span class="script">Thank You!</span><span class="rule"></span></div>
+      <div class="thanks-sub">FOR YOUR BUSINESS!</div>
+      ${footerNote ? `<div class="terms">${footerNote}</div>` : '<div style="height:14px"></div>'}
 
-      <div class="footcols">
-        <div class="col">
-          <div class="label">Payment Method</div>
-          ${payLines.length ? payLines.map(l => `<div class="line">${l}</div>`).join('') : '<div class="line">Contact our office for payment details.</div>'}
-        </div>
-        <div class="col">
-          <div class="label">Prepared By</div>
-          <div class="line" style="font-weight:700;color:#111827">${esc(bizName)}</div>
-          ${preparedBy ? `<div class="line">${esc(preparedBy)}</div>` : ''}
-          ${business.phone ? `<div class="line">${esc(business.phone)}</div>` : ''}
-        </div>
+      <div class="signoff">
+        <div class="frow"><span class="flabel" style="min-width:96px">Prepared By:</span><span class="fval">${esc(doc.prepared_by || bizName)}</span></div>
+        <div class="frow"><span class="flabel" style="min-width:46px">Date:</span><span class="fval">${fmtDate(doc.issue_date)}</span></div>
+      </div>
+
+      <div class="footband">
+        <div class="icons">${FOOT_ICONS.join('<span class="sep"></span>')}</div>
+        <div class="tag">HVAC SOLUTIONS YOU CAN TRUST.</div>
       </div>
     </div>
     ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
@@ -330,6 +377,22 @@ export async function sharePdf(opts) {
   const label = kind === 'quote' ? 'Estimate' : kind === 'receipt' ? 'Receipt' : 'Invoice';
   const filename = `${label}-${(number || 'document').toString().replace(/[^\w.-]+/g, '_')}.pdf`;
 
+  // Can this device share files (mobile share sheet with WhatsApp, Mail, etc.)?
+  let canShareFiles = false;
+  try {
+    const probe = new File([new Blob(['%PDF-'], { type: 'application/pdf' })], 'probe.pdf', { type: 'application/pdf' });
+    canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [probe] }));
+  } catch { canShareFiles = false; }
+
+  // Desktop (or anywhere file-sharing isn't supported): use the browser's own
+  // print-to-PDF engine — crisp, vector, selectable text. Far more professional
+  // than a rasterized screenshot. The in-app preview offers "Save as PDF".
+  if (!canShareFiles) {
+    printDocument(opts);
+    return { shared: false, method: 'print' };
+  }
+
+  // Mobile: render a high-resolution PDF file and open the native share sheet.
   let html = buildDocumentHtml(opts, { autoPrint: false });
   const logo = await logoDataUrl();
   if (logo) html = html.split(LOGO_URL).join(logo); // inline the logo for the renderer
@@ -344,43 +407,38 @@ export async function sharePdf(opts) {
     .replace(/(^|[^-.\w])body\s*\{/g, '$1.pdf-body {');
 
   const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;background:#fff;z-index:-1;';
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;background:#fff;z-index:-1;';
   holder.innerHTML = `<style>${style}</style><div class="pdf-body">${bodyInner}</div>`;
   document.body.appendChild(holder);
 
   try {
-    // let layout settle (the logo image is already inlined as a data URL)
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 150)); // let layout settle
     const target = holder.querySelector('.page') || holder;
 
     const { default: html2pdf } = await import('html2pdf.js');
     const blob = await html2pdf().set({
       margin: 0,
       filename,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 800 },
-      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      image: { type: 'jpeg', quality: 0.95 }, // sharp, but keeps the file small enough to send
+      html2canvas: { scale: 2.5, useCORS: true, backgroundColor: '#ffffff', windowWidth: 816 },
+      jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] },
     }).from(target).outputPdf('blob');
 
     const file = new File([blob], filename, { type: 'application/pdf' });
-    // Prefer the native share sheet (WhatsApp shows up here) when files can be shared.
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: `${label} ${number || ''}`.trim() });
-        return { shared: true };
-      } catch (e) {
-        if (e && e.name === 'AbortError') return { shared: false }; // user cancelled
-        // fall through to download
-      }
+    try {
+      await navigator.share({ files: [file], title: `${label} ${number || ''}`.trim() });
+      return { shared: true, method: 'share' };
+    } catch (e) {
+      if (e && e.name === 'AbortError') return { shared: false, method: 'cancel' };
+      // Rare: sharing threw — fall back to a download.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return { shared: false, method: 'download' };
     }
-    // Fallback: download the PDF so the user can attach it manually.
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    return { shared: false };
   } finally {
     holder.remove();
   }

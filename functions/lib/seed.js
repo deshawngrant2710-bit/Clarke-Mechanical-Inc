@@ -12,8 +12,17 @@ const pick = (arr, i) => arr[i % arr.length];
 const set = (col, id, data) => db.collection(col).doc(id).set({ ...data, created_at: data.created_at || now() }).then(() => id);
 
 async function seedIfEmpty() {
-  const users = await db.collection('users').limit(1).get();
-  if (!users.empty) return { seeded: false };
+  // Seed ONLY a genuinely brand-new database. Checking several collections (not
+  // just users) means a transient empty read can never inject demo data into a
+  // live company account.
+  const [hasUsers, hasCustomers, hasInvoices, hasJobs] = await Promise.all([
+    db.collection('users').limit(1).get(),
+    db.collection('customers').limit(1).get(),
+    db.collection('invoices').limit(1).get(),
+    db.collection('jobs').limit(1).get(),
+  ]);
+  if (!hasUsers.empty || !hasCustomers.empty || !hasInvoices.empty || !hasJobs.empty) return { seeded: false };
+  if (process.env.DISABLE_SEED === '1') return { seeded: false, reason: 'disabled' };
 
   // Admin
   await set('users', uuid(), { name: 'Clarke Admin', email: 'admin@clarkemechanical.com', password: bcrypt.hashSync('clarke2024', 10), role: 'admin', phone: null });

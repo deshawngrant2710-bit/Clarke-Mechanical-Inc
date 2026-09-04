@@ -18,6 +18,7 @@ router.get('/', async (req, res) => {
     smtp_pass_set: !!s.smtp_pass,
     reminders_job_enabled: s.reminders_job_enabled === '1',
     reminders_overdue_enabled: s.reminders_overdue_enabled === '1',
+    receipts_autosend_enabled: s.receipts_autosend_enabled !== '0',
     configured: !!(s.smtp_host && s.smtp_user),
   });
 });
@@ -28,6 +29,7 @@ router.put('/', async (req, res) => {
   for (const k of textKeys) if (k in req.body) patch[k] = req.body[k];
   if ('reminders_job_enabled' in req.body) patch.reminders_job_enabled = req.body.reminders_job_enabled ? '1' : '0';
   if ('reminders_overdue_enabled' in req.body) patch.reminders_overdue_enabled = req.body.reminders_overdue_enabled ? '1' : '0';
+  if ('receipts_autosend_enabled' in req.body) patch.receipts_autosend_enabled = req.body.receipts_autosend_enabled ? '1' : '0';
   if (req.body.smtp_pass) patch.smtp_pass = req.body.smtp_pass;
   await settings.setMany(patch);
   resetTransport();

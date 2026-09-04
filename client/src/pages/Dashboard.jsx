@@ -103,14 +103,24 @@ function CreateFab({ navigate }) {
   );
 }
 
+// Guarantees every list the dashboard renders is an array, so an incomplete or
+// out-of-date payload degrades to empty sections instead of a blank screen.
+const DASH_LISTS = ['todaysSchedule', 'upcomingJobs', 'technicians', 'recentReviews', 'jobsByStatus', 'recentJobs', 'recentInvoices', 'myJobs'];
+function normalizeDash(d) {
+  if (!d || typeof d !== 'object') return d;
+  const out = { ...d };
+  for (const k of DASH_LISTS) if (!Array.isArray(out[k])) out[k] = [];
+  return out;
+}
+
 export default function Dashboard() {
-  const [data, setData] = useState(() => cacheGet('/dashboard') || null);
+  const [data, setData] = useState(() => normalizeDash(cacheGet('/dashboard')) || null);
   const [showOverview, setShowOverview] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
   useEffect(() => {
-    api.get('/dashboard').then(r => { setData(r.data); cacheSet('/dashboard', r.data); }).catch(console.error);
+    api.get('/dashboard').then(r => { const d = normalizeDash(r.data); setData(d); cacheSet('/dashboard', d); }).catch(console.error);
   }, []);
 
   if (!data) return <SkeletonPage stats={data?.scope === 'technician' ? 4 : 8} />;
@@ -127,9 +137,9 @@ export default function Dashboard() {
     { label: 'Cash payment requests', count: na.cashRequests, to: '/invoices', Icon: DollarSign },
   ].filter(i => i.count > 0);
 
-  const donutData = data.jobsByStatus
-    .filter(s => s.count > 0)
-    .map(s => ({ label: s.status.replace('-', ' '), value: s.count, color: STATUS_COLORS[s.status] || '#94a3b8' }));
+  const donutData = (Array.isArray(data.jobsByStatus) ? data.jobsByStatus : [])
+    .filter(s => s && s.count > 0)
+    .map(s => ({ label: String(s.status || '').replace('-', ' '), value: s.count, color: STATUS_COLORS[s.status] || '#94a3b8' }));
 
   const techs = data.technicians || [];
   const availableTechs = techs.filter(t => !(t.active_jobs > 0)).length;

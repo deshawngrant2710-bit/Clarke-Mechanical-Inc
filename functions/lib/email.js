@@ -126,16 +126,28 @@ const templates = {
           buttonRow([{ label: '🔒 Pay Now', url: portal(b), color: BLUE }]) }) };
   },
   receipt(inv, b) {
-    return { subject: `Payment received — Invoice ${inv.invoice_number}`,
+    const bal = Number(inv.balance_after) || 0;
+    const partial = bal > 0;
+    const paidOn = inv.paid_at ? new Date(inv.paid_at) : new Date();
+    return { subject: `Payment received${inv.receipt_number ? ` — Receipt ${inv.receipt_number}` : ''} — Invoice ${inv.invoice_number}`,
       html: shell(b, { accent: GREEN, heading: 'Payment received — thank you!',
-        body: p(`Hi ${inv.customer_name || 'there'},`) + p(`We've received your payment for invoice <strong>${inv.invoice_number}</strong>. Your account is now up to date.`) +
+        body: p(`Hi ${inv.customer_name || 'there'},`) +
+          p(partial
+            ? `We've received your payment toward invoice <strong>${inv.invoice_number}</strong>. Here are the details, with the remaining balance below.`
+            : `We've received your payment for invoice <strong>${inv.invoice_number}</strong>. Your account is now paid in full.`) +
           detailBox('Payment summary', [
+            ...(inv.receipt_number ? [{ icon: '🧾', label: 'Receipt', value: inv.receipt_number }] : []),
             { icon: '📄', label: 'Invoice', value: inv.invoice_number },
-            { icon: '📅', label: 'Date', value: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) },
-            { icon: '👤', label: 'Billed to', value: inv.customer_name || '—' },
+            { icon: '📅', label: 'Date', value: paidOn.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) },
+            ...(inv.payment_method ? [{ icon: '💳', label: 'Method', value: String(inv.payment_method).replace(/_/g, ' ') }] : []),
             { icon: '✅', label: 'Amount paid', value: `<span style="color:${GREEN};">${money(inv.lastPayment || inv.total)}</span>` },
+            ...(partial
+              ? [{ icon: '💵', label: 'Balance remaining', value: `<span style="color:${RED};">${money(bal)}</span>` }]
+              : [{ icon: '🎉', label: 'Balance', value: `<span style="color:${GREEN};">Paid in full</span>` }]),
           ], '#f0fdf4') +
-          p('We appreciate your business and look forward to serving you again.') }) };
+          p(partial
+            ? 'Thank you — we’ll send another receipt when the remaining balance is settled.'
+            : 'We appreciate your business and look forward to serving you again.') }) };
   },
   quote(q, b) {
     return { subject: `Your estimate ${q.quote_number} from ${b.name}`,

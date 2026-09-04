@@ -40,12 +40,12 @@ export default function InvoiceDetail() {
     let b = {};
     try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
     try {
-      const { shared } = await sharePdf({
+      const res = await sharePdf({
         kind: 'invoice', doc: invoice,
         business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
         customer: { name: invoice.customer_name, email: invoice.customer_email, phone: invoice.customer_phone, address: invoice.customer_address },
       });
-      if (!shared) toast.success('PDF downloaded — attach it in WhatsApp');
+      if (res.method === 'download') toast.success('PDF saved to your downloads');
     } catch { toast.error('Could not create the PDF'); }
     finally { setSharing(false); }
   }

@@ -17,6 +17,7 @@ const DEFAULTS = {
   smtp_pass: process.env.SMTP_PASS || '',
   reminders_job_enabled: '1',
   reminders_overdue_enabled: '1',
+  receipts_autosend_enabled: '1', // email a receipt automatically when a payment is recorded
   booking_slot_capacity: '2', // max jobs bookable per online arrival window
 };
 

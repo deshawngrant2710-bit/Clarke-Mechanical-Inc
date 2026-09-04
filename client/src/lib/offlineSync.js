@@ -78,6 +78,23 @@ const CACHE_GET = [
 ];
 const isCacheableGet = (url) => CACHE_GET.some(r => r.test((url || '').split('#')[0]));
 
+// Bump this whenever an API response shape changes. Cached entries stamped with
+// an older version are ignored (and overwritten), so a payload saved by a previous
+// release can never be replayed into a newer page that expects more fields.
+const CACHE_SCHEMA = 2;
+
+// Only cache real payloads. An error body, an empty object, or an HTML error page
+// must never be stored — otherwise it gets replayed later as a "successful"
+// response and crashes whichever page expects the real shape.
+function isCacheableBody(data) {
+  if (data == null) return false;
+  if (typeof data === 'string') return false;          // HTML/text error pages
+  if (Array.isArray(data)) return true;                // list endpoints (empty list is valid)
+  if (typeof data !== 'object') return false;
+  if (data.error || data.message === 'Quota exceeded') return false;
+  return Object.keys(data).length > 0;                 // reject {}
+}
+
 // New-record creates that may happen offline (Phase 2). Each maps to the list
 // cache to optimistically insert into.
 const CREATE_LISTS = { '/customers': true, '/jobs': true, '/billing/quotes': true };
@@ -280,8 +297,8 @@ export function installOffline(api) {
   api.interceptors.response.use(
     async (resp) => {
       const cfg = resp.config || {};
-      if ((cfg.method || 'get').toLowerCase() === 'get' && isCacheableGet(cfg.url)) {
-        try { await idbSet('cache', cfg.url, { data: resp.data, at: Date.now() }); } catch { /* ignore */ }
+      if ((cfg.method || 'get').toLowerCase() === 'get' && isCacheableGet(cfg.url) && isCacheableBody(resp.data)) {
+        try { await idbSet('cache', cfg.url, { data: resp.data, at: Date.now(), v: CACHE_SCHEMA }); } catch { /* ignore */ }
       }
       setOnline(true);
       return resp;
@@ -295,7 +312,11 @@ export function installOffline(api) {
         const m = (cfg.method || 'get').toLowerCase();
         if (m === 'get' && isCacheableGet(cfg.url)) {
           const c = await idbGet('cache', cfg.url);
-          if (c) return { data: c.data, status: 200, statusText: 'OK (cache)', headers: {}, config: cfg, fromCache: true };
+          // Serve the cache only if it holds a real payload — a previously stored
+          // error/partial body must not be replayed as a success.
+          if (c && c.v === CACHE_SCHEMA && isCacheableBody(c.data)) {
+            return { data: c.data, status: 200, statusText: 'OK (cache)', headers: {}, config: cfg, fromCache: true };
+          }
         }
         if (isQueueable(cfg)) {
           const item = await enqueue(cfg);

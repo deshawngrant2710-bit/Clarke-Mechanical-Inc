@@ -230,8 +230,8 @@ export default function Quotes() {
     let b = {};
     try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
     try {
-      const { shared } = await sharePdf(docPayload(q, b));
-      if (!shared) toast.success('PDF downloaded — attach it in WhatsApp');
+      const res = await sharePdf(docPayload(q, b));
+      if (res.method === 'download') toast.success('PDF saved to your downloads');
     } catch { toast.error('Could not create the PDF'); }
   }
   async function sendQuoteEmail(cc = []) {

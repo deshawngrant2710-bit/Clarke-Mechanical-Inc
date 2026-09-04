@@ -5,6 +5,7 @@ const { authMiddleware, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
 const { notifyCustomerBySms } = require('../lib/sms');
 const { paidMap, balanceOf } = require('../lib/outstanding');
+const receipts = require('../lib/receipts');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -228,6 +229,39 @@ router.post('/quotes/:id/convert-to-job', async (req, res) => {
   res.status(201).json(job);
 });
 
+// Emails a receipt to the customer right after a payment is recorded. Runs in the
+// background — the office never waits on it, and a failure is logged, not thrown.
+// Turn it off with the `receipts_autosend_enabled` setting.
+async function emailReceipt(receipt, invoice) {
+  try {
+    if ((await settings.get('receipts_autosend_enabled')) === '0') return;
+    if (!invoice.customer_id) return;
+    const customer = await getById('customers', invoice.customer_id);
+    if (!customer?.email) return;
+
+    const entity = {
+      ...invoice,
+      customer_name: customer.name,
+      receipt_number: receipt.receipt_number,
+      lastPayment: receipt.amount,
+      amountPaid: receipt.amount,
+      balance_after: receipt.balance_after,
+      paid_at: receipt.paid_at,
+      payment_method: receipt.method,
+    };
+    const { subject, html } = await render('receipt', entity);
+    await sendMail({
+      type: 'receipt', to: customer.email, toName: customer.name, subject, html,
+      relatedId: receipt.id, customerId: invoice.customer_id, sentBy: 'Automated',
+    });
+    await update('receipts', receipt.id, { emailed_at: new Date().toISOString() });
+
+    const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+    await notifyCustomerBySms(customer,
+      `${biz}: payment of ${money(receipt.amount)} received — thank you. Receipt ${receipt.receipt_number}.${receipt.balance_after > 0 ? ` Balance remaining ${money(receipt.balance_after)}.` : ''} Reply STOP to opt out.`);
+  } catch (e) { console.error('[billing] receipt email failed:', e.message); }
+}
+
 /* ---------------- PAYMENTS ---------------- */
 router.post('/invoices/:id/payments', async (req, res) => {
   const invoice = await getById('invoices', req.params.id);
@@ -243,6 +277,19 @@ router.post('/invoices/:id/payments', async (req, res) => {
   // Reflect payment progress in the status: fully covered → paid, part-way → partial.
   if (paid >= invoice.total) await update('invoices', req.params.id, { status: 'paid' });
   else if (paid > 0 && invoice.status !== 'cancelled') await update('invoices', req.params.id, { status: 'partial' });
+
+  // Issue a numbered receipt for THIS payment, then email it to the customer.
+  // Never let receipt/email trouble fail the payment itself.
+  let receipt = null;
+  try {
+    const payment = await getById('payments', id);
+    receipt = await receipts.createForPayment({
+      invoice: { ...invoice, id: req.params.id },
+      payment,
+      balanceAfter: (Number(invoice.total) || 0) - paid,
+    });
+    emailReceipt(receipt, invoice);
+  } catch (e) { console.error('[billing] receipt failed:', e.message); }
   // Clear any pending "customer wants to pay cash" alert for this invoice.
   try {
     const reqs = await findWhere('payment_requests', 'invoice_id', req.params.id);
@@ -250,7 +297,7 @@ router.post('/invoices/:id/payments', async (req, res) => {
       await update('payment_requests', r.id, { status: 'resolved', resolved_at: new Date().toISOString() });
     }
   } catch (e) { console.error('[billing] clear cash request:', e.message); }
-  res.status(201).json(await getById('payments', id));
+  res.status(201).json({ ...(await getById('payments', id)), receipt });
 });
 
 // DELETE /billing/payments/:id — remove a recorded payment; re-open the invoice if
@@ -268,6 +315,31 @@ router.delete('/payments/:id', async (req, res) => {
       if (status !== invoice.status) await update('invoices', payment.invoice_id, { status });
     }
   }
+  res.json({ success: true });
+});
+
+// GET /billing/receipts — every receipt issued, newest first (Receipts page + CSV).
+router.get('/receipts', async (req, res) => {
+  const [rows, customers] = await Promise.all([list('receipts'), nameMap('customers')]);
+  const out = rows
+    .map(r => ({ ...r, customer_name: customers[r.customer_id] || null }))
+    .sort((a, b) => (b.paid_at || '').localeCompare(a.paid_at || ''));
+  res.json(out);
+});
+
+// GET /billing/receipts/:id — one receipt with its invoice + customer, for printing.
+router.get('/receipts/:id', async (req, res) => {
+  const full = await receipts.loadFull(req.params.id);
+  if (!full) return res.status(404).json({ error: 'Receipt not found' });
+  res.json(full);
+});
+
+// POST /billing/receipts/:id/email — re-send a receipt on request.
+router.post('/receipts/:id/email', async (req, res) => {
+  const full = await receipts.loadFull(req.params.id);
+  if (!full) return res.status(404).json({ error: 'Receipt not found' });
+  if (!full.invoice) return res.status(400).json({ error: 'The linked invoice no longer exists' });
+  await emailReceipt(full.receipt, full.invoice);
   res.json({ success: true });
 });
 
