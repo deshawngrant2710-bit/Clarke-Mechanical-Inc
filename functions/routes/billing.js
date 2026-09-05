@@ -31,19 +31,20 @@ const withItemTotals = (items = []) => items.map(i => ({
 //  - useYear=false → running sequence like CL-4200, CL-4201 …
 //  - useYear=true  → year-scoped like QUO-2026-4200
 const START_NUMBER = 4200;
-async function nextNumber(collection, prefix, useYear = false) {
+async function nextNumber(collection, prefix) {
   const all = await list(collection);
   const field = collection === 'invoices' ? 'invoice_number' : 'quote_number';
-  const year = new Date().getFullYear();
-  const re = useYear ? new RegExp(`^${prefix}-${year}-(\\d+)$`) : new RegExp(`^${prefix}-(\\d+)$`);
+  // Match ANY prefix, with or without a year segment (e.g. CL-4205, EST-4201,
+  // QUO-2026-4201). That keeps the sequence running continuously even though the
+  // prefix has changed over time — no restarts and no duplicate numbers.
+  const re = /^[A-Za-z]+-(?:\d{4}-)?(\d+)$/;
   let max = 0;
   for (const x of all) {
-    const m = (x[field] || '').match(re);
+    const m = String(x[field] || '').match(re);
     if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; }
   }
   const next = Math.max(max, START_NUMBER - 1) + 1;
-  const num = String(next).padStart(4, '0');
-  return useYear ? `${prefix}-${year}-${num}` : `${prefix}-${num}`;
+  return `${prefix}-${String(next).padStart(4, '0')}`;
 }
 
 /* ---------------- INVOICES ---------------- */
@@ -162,7 +163,7 @@ router.post('/quotes', async (req, res) => {
   const rate = tax_rate != null ? Number(tax_rate) : (Number(await settings.get('default_tax_rate')) || 0.0875);
   const lineItems = withItemTotals(items);
   const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, rate, discount);
-  const quote_number = await nextNumber('quotes', 'QUO', true);
+  const quote_number = await nextNumber('quotes', 'EST');
   const saved = await create('quotes', uuid(), {
     quote_number, customer_id: customer_id || null, status: status || 'draft', issue_date: issue_date || null,
     expiry_date: expiry_date || null, subtotal, discount: discount_amount, tax_rate: rate, tax_amount, total,

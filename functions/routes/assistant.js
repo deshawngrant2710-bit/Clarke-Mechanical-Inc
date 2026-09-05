@@ -103,7 +103,7 @@ async function runAction(action) {
     const cust = await resolveCustomer(action.customer_name);
     const items = withItemTotals(action.items);
     const { subtotal, tax_amount, total } = calcTotals(items, rate);
-    const number = await nextNumber('quotes', 'QUO');
+    const number = await nextNumber('quotes', 'EST');
     const id = uuid();
     await create('quotes', id, { quote_number: number, customer_id: cust.id, status: 'draft', issue_date: t, expiry_date: action.expiry_date || null, subtotal, tax_rate: rate, tax_amount, total, notes: action.notes || null, items });
     return { type: 'estimate', id, label: number, to: '/quotes', customer: cust.name };

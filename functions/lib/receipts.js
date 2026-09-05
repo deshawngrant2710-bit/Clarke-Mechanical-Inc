@@ -1,4 +1,4 @@
-// Receipts: one record per payment received, with its own RCT-#### sequence
+// Receipts: one record per payment received, with its own REC-#### sequence
 // (kept separate from invoice numbers so bookkeeping lines up).
 const { v4: uuid } = require('uuid');
 const { list, create, getById } = require('./db');
@@ -9,11 +9,12 @@ const START_NUMBER = 4200;
 async function nextReceiptNumber() {
   const all = await list('receipts');
   let max = START_NUMBER - 1;
+  // Accepts any prefix (REC-, legacy RCT-) so the run never restarts or repeats.
   for (const r of all) {
-    const m = String(r.receipt_number || '').match(/^RCT-(\d+)$/);
+    const m = String(r.receipt_number || '').match(/^[A-Za-z]+-(?:\d{4}-)?(\d+)$/);
     if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; }
   }
-  return `RCT-${String(max + 1).padStart(4, '0')}`;
+  return `REC-${String(max + 1).padStart(4, '0')}`;
 }
 
 // Create the receipt for a single payment. `balanceAfter` is what the customer
