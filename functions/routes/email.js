@@ -3,6 +3,7 @@ const { db, getById, findWhere } = require('../lib/db');
 const { authMiddleware, requireStaff } = require('../middleware/auth');
 const { sendMail, render, isTemplate } = require('../lib/email');
 const { notifyCustomerBySms } = require('../lib/sms');
+const { buildAttachment } = require('../lib/attachDoc');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -32,9 +33,11 @@ router.post('/log/:id/resend', async (req, res) => {
   const to = req.body?.to || entry.to_email || ctx.email;
   if (!to) return res.status(422).json({ error: 'No email address to send to' });
   const { subject, html } = await render(entry.type, ctx.entity);
+  const attachments = (entry.type === 'invoice' || entry.type === 'quote')
+    ? await buildAttachment(entry.type, ctx.entity) : [];
   const result = await sendMail({
     type: entry.type, to, toName: ctx.name, subject, html,
-    relatedId: entry.related_id, customerId: entry.customer_id, sentBy: req.user?.name,
+    relatedId: entry.related_id, customerId: entry.customer_id, sentBy: req.user?.name, attachments,
   });
   if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Email failed to send' });
   res.json({ ...result, to });
@@ -85,7 +88,10 @@ router.post('/send', async (req, res) => {
   const cc = [...new Set(rawCc.map(e => String(e).trim().toLowerCase()).filter(e => EMAIL_RE.test(e) && e !== primary))].slice(0, 10);
 
   const { subject, html } = await render(type, ctx.entity);
-  const result = await sendMail({ type, to: ctx.email, toName: ctx.name, subject, html, relatedId: id, customerId: ctx.customerId, sentBy: req.user?.name, cc });
+  // Attach the branded PDF so the customer has a real document to keep or forward.
+  const attachments = (type === 'invoice' || type === 'quote')
+    ? await buildAttachment(type, ctx.entity) : [];
+  const result = await sendMail({ type, to: ctx.email, toName: ctx.name, subject, html, relatedId: id, customerId: ctx.customerId, sentBy: req.user?.name, cc, attachments });
   if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Email failed to send' });
 
   // Also text the customer. Email can be silently filtered (iCloud/Outlook are the

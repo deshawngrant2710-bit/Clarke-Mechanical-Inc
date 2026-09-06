@@ -594,100 +594,55 @@ export function buildStatementHtml({ business = {}, customer = {}, invoices = []
   </body></html>`;
 }
 
-// Fetches the logo once and caches it as a data URL, so the PDF renderer (which
-// can't reach across origins) always embeds it. Returns null if it can't be loaded.
-let _logoData;
-async function logoDataUrl() {
-  if (_logoData !== undefined) return _logoData;
-  try {
-    const res = await fetch(LOGO_URL, { mode: 'cors' });
-    const blob = await res.blob();
-    _logoData = await new Promise((resolve) => {
-      const r = new FileReader();
-      r.onloadend = () => resolve(r.result);
-      r.onerror = () => resolve(null);
-      r.readAsDataURL(blob);
-    });
-  } catch { _logoData = null; }
-  return _logoData;
+// Builds the branded PDF (real vector text) for an invoice / estimate / receipt.
+async function buildPdfBlob(opts) {
+  const [{ jsPDF }, { renderPdf, loadPdfLogo }] = await Promise.all([
+    import('jspdf'),
+    import('./pdfDoc'),
+  ]);
+  const logo = await loadPdfLogo();
+  const pdf = renderPdf(jsPDF, { ...opts, logo });
+  return pdf.output('blob');
 }
 
-// Generates a real PDF of the invoice/estimate and shares it via the device's
-// native share sheet — so the user can send it straight to WhatsApp, Mail, etc.
-// Works in the app and on mobile browsers (Web Share API with files). On desktop
-// (or anywhere file-sharing isn't supported) it downloads the PDF instead.
-// Returns { shared: bool } or throws on a real failure.
+// Shares the document as a real PDF. On phones/tablets this opens the native
+// share sheet (WhatsApp, Mail, Messages…); everywhere else it downloads the file.
+// Returns { shared, method }.
 export async function sharePdf(opts) {
-  const { kind, doc } = opts;
-  const number = kind === 'invoice' || kind === 'receipt' ? doc.invoice_number : doc.quote_number;
-  const label = kind === 'quote' ? 'Estimate' : kind === 'receipt' ? 'Receipt' : 'Invoice';
-  const filename = `${label}-${(number || 'document').toString().replace(/[^\w.-]+/g, '_')}.pdf`;
+  const { pdfFilename } = await import('./pdfDoc');
+  const filename = pdfFilename(opts);
+  const blob = await buildPdfBlob(opts);
+  const file = new File([blob], filename, { type: 'application/pdf' });
 
-  // Can this device share files (mobile share sheet with WhatsApp, Mail, etc.)?
   let canShareFiles = false;
-  try {
-    const probe = new File([new Blob(['%PDF-'], { type: 'application/pdf' })], 'probe.pdf', { type: 'application/pdf' });
-    canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [probe] }));
-  } catch { canShareFiles = false; }
+  try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch { canShareFiles = false; }
 
-  // Desktop (or anywhere file-sharing isn't supported): use the browser's own
-  // print-to-PDF engine — crisp, vector, selectable text. Far more professional
-  // than a rasterized screenshot. The in-app preview offers "Save as PDF".
-  if (!canShareFiles) {
-    printDocument(opts);
-    return { shared: false, method: 'print' };
-  }
-
-  // Mobile: render a high-resolution PDF file and open the native share sheet.
-  let html = buildDocumentHtml(opts, { autoPrint: false });
-  const logo = await logoDataUrl();
-  if (logo) html = html.split(LOGO_URL).join(logo); // inline the logo for the renderer
-
-  // Render off-screen in the MAIN document (not an iframe) so html2canvas can read
-  // the styles. The CSS is scoped to a `.pdf-body` wrapper so it never touches the app.
-  let style = (html.match(/<style>([\s\S]*?)<\/style>/i) || [, ''])[1];
-  const bodyInner = (html.match(/<body>([\s\S]*?)<\/body>/i) || [, html])[1].replace(/<script>[\s\S]*?<\/script>/gi, '');
-  style = style
-    .replace('* {', '.pdf-body, .pdf-body * {')
-    .replace(/html,\s*body\s*\{/g, '.pdf-body {')
-    .replace(/(^|[^-.\w])body\s*\{/g, '$1.pdf-body {');
-
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:816px;background:#fff;z-index:-1;';
-  holder.innerHTML = `<style>${style}</style><div class="pdf-body">${bodyInner}</div>`;
-  document.body.appendChild(holder);
-
-  try {
-    await new Promise((r) => setTimeout(r, 150)); // let layout settle
-    const target = holder.querySelector('.page') || holder;
-
-    const { default: html2pdf } = await import('html2pdf.js');
-    const blob = await html2pdf().set({
-      margin: 0,
-      filename,
-      image: { type: 'jpeg', quality: 0.95 }, // sharp, but keeps the file small enough to send
-      html2canvas: { scale: 2.5, useCORS: true, backgroundColor: '#ffffff', windowWidth: 816 },
-      jsPDF: { unit: 'pt', format: 'letter', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] },
-    }).from(target).outputPdf('blob');
-
-    const file = new File([blob], filename, { type: 'application/pdf' });
+  if (canShareFiles) {
     try {
-      await navigator.share({ files: [file], title: `${label} ${number || ''}`.trim() });
+      await navigator.share({ files: [file], title: filename.replace(/\.pdf$/, '') });
       return { shared: true, method: 'share' };
     } catch (e) {
       if (e && e.name === 'AbortError') return { shared: false, method: 'cancel' };
-      // Rare: sharing threw — fall back to a download.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-      return { shared: false, method: 'download' };
+      // fall through to a download
     }
-  } finally {
-    holder.remove();
   }
+  downloadBlob(blob, filename);
+  return { shared: false, method: 'download' };
+}
+
+// Downloads the document as a PDF (no share sheet).
+export async function downloadPdf(opts) {
+  const { pdfFilename } = await import('./pdfDoc');
+  downloadBlob(await buildPdfBlob(opts), pdfFilename(opts));
+  return { method: 'download' };
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 // Shows the document in a full-screen in-app preview with Print / Save-PDF and

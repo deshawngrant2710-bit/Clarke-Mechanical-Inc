@@ -6,6 +6,7 @@ const { render, sendMail } = require('../lib/email');
 const { notifyCustomerBySms } = require('../lib/sms');
 const { paidMap, balanceOf } = require('../lib/outstanding');
 const receipts = require('../lib/receipts');
+const { buildAttachment } = require('../lib/attachDoc');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -135,7 +136,8 @@ async function emailEstimateSent(quote, prevStatus) {
     const customer = await getById('customers', quote.customer_id);
     if (customer?.email) {
       const { subject, html } = await render('quote', { ...quote, customer_name: customer.name });
-      await sendMail({ type: 'quote', to: customer.email, toName: customer.name, subject, html, relatedId: quote.id, customerId: quote.customer_id, sentBy: 'Automated' });
+      const attachments = await buildAttachment('quote', quote);
+      await sendMail({ type: 'quote', to: customer.email, toName: customer.name, subject, html, relatedId: quote.id, customerId: quote.customer_id, sentBy: 'Automated', attachments });
     }
     const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
     await notifyCustomerBySms(customer, `${biz}: your estimate ${quote.quote_number || ''} for ${money(quote.total)} is ready. View and approve it in your account. Reply STOP to opt out.`);
@@ -251,9 +253,10 @@ async function emailReceipt(receipt, invoice) {
       payment_method: receipt.method,
     };
     const { subject, html } = await render('receipt', entity);
+    const attachments = await buildAttachment('receipt', { ...invoice, customer_id: invoice.customer_id }, { receipt });
     await sendMail({
       type: 'receipt', to: customer.email, toName: customer.name, subject, html,
-      relatedId: receipt.id, customerId: invoice.customer_id, sentBy: 'Automated',
+      relatedId: receipt.id, customerId: invoice.customer_id, sentBy: 'Automated', attachments,
     });
     await update('receipts', receipt.id, { emailed_at: new Date().toISOString() });
 

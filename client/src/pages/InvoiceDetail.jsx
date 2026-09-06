@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Spinner } from '../components/UI';
-import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer, Share2 } from 'lucide-react';
-import { printDocument, sharePdf } from '../lib/printDoc';
+import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer, Share2, Download } from 'lucide-react';
+import { printDocument, sharePdf, downloadPdf } from '../lib/printDoc';
+import { PAYMENT_INFO } from '../lib/paymentInfo';
 import Logo from '../components/Logo';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -11,6 +12,22 @@ import { sanitizeRich } from '../lib/richText';
 import EmailRecipientsModal from '../components/EmailRecipientsModal';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// "How to pay" lines printed on the invoice PDF, from the office's saved details.
+function paymentLines() {
+  const p = PAYMENT_INFO || {};
+  const out = [];
+  if (p.zelle?.enabled && p.zelle.email) out.push(`Zelle: ${p.zelle.email}`);
+  if (p.bank?.enabled) {
+    if (p.bank.bankName) out.push(`Bank: ${p.bank.bankName}`);
+    if (p.bank.accountName) out.push(`Account name: ${p.bank.accountName}`);
+    if (p.bank.accountNumber) out.push(`Account number: ${p.bank.accountNumber}`);
+    if (p.bank.routingNumber) out.push(`Routing (ACH): ${p.bank.routingNumber}`);
+  }
+  if (p.check?.enabled && p.check.payableTo) out.push(`Checks payable to: ${p.check.payableTo}`);
+  if (p.check?.enabled && p.check.mailTo) out.push(`Mail checks to: ${p.check.mailTo}`);
+  return out;
+}
 
 export default function InvoiceDetail() {
   const { id } = useParams();
@@ -25,29 +42,36 @@ export default function InvoiceDetail() {
   function load() { api.get(`/billing/invoices/${id}`).then(r => setInvoice(r.data)); }
   useEffect(load, [id]);
 
-  async function printInvoice() {
+  // Everything the printed / PDF document needs.
+  async function docPayload() {
     let b = {};
     try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
-    printDocument({
+    return {
       kind: 'invoice', doc: invoice,
-      business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
+      business: {
+        name: b.business_name, phone: b.business_phone, email: b.business_email,
+        address: b.business_address, website: b.business_website, paymentLines: paymentLines(),
+      },
       customer: { name: invoice.customer_name, email: invoice.customer_email, phone: invoice.customer_phone, address: invoice.customer_address },
-    });
+    };
   }
+  async function printInvoice() { printDocument(await docPayload()); }
+
   const [sharing, setSharing] = useState(false);
+  const [saving_, setSaving_] = useState(false);
   async function shareInvoicePdf() {
     setSharing(true);
-    let b = {};
-    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
     try {
-      const res = await sharePdf({
-        kind: 'invoice', doc: invoice,
-        business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
-        customer: { name: invoice.customer_name, email: invoice.customer_email, phone: invoice.customer_phone, address: invoice.customer_address },
-      });
+      const res = await sharePdf(await docPayload());
       if (res.method === 'download') toast.success('PDF saved to your downloads');
     } catch { toast.error('Could not create the PDF'); }
     finally { setSharing(false); }
+  }
+  async function downloadInvoicePdf() {
+    setSaving_(true);
+    try { await downloadPdf(await docPayload()); toast.success('PDF saved to your downloads'); }
+    catch { toast.error('Could not create the PDF'); }
+    finally { setSaving_(false); }
   }
   async function emailInvoice(cc = []) {
     setEmailing(true);
@@ -196,7 +220,8 @@ export default function InvoiceDetail() {
                 } } })}><Pencil size={15} /> Edit Invoice</Btn>
               )}
               <Btn variant="outline" className="w-full" onClick={shareInvoicePdf} loading={sharing}><Share2 size={15} /> Send as PDF (WhatsApp, etc.)</Btn>
-              <Btn variant="outline" className="w-full" onClick={printInvoice}><Printer size={15} /> Print / Download PDF</Btn>
+              <Btn variant="outline" className="w-full" onClick={downloadInvoicePdf} loading={saving_}><Download size={15} /> Download PDF</Btn>
+              <Btn variant="outline" className="w-full" onClick={printInvoice}><Printer size={15} /> Print</Btn>
               <Btn variant="outline" className="w-full" onClick={() => setEmailModal(true)} loading={emailing}><Mail size={15} /> Email Invoice</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}
