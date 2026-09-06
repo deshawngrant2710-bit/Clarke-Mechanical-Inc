@@ -1,6 +1,16 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'clarke-mechanical-super-secret-key-2024';
+// The key that signs every login token. It MUST come from the environment — there
+// is deliberately no hardcoded fallback, because a fallback baked into the source
+// (which lives in a public repo) would let anyone forge an admin token.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 16) {
+  // Crash on boot rather than run insecurely — a loud failure is far safer than a
+  // silent hole. Set JWT_SECRET in the Render environment to a long random string.
+  console.error('[FATAL] JWT_SECRET is not set (or is too short). Refusing to start. ' +
+    'Set a long random JWT_SECRET in the environment.');
+  process.exit(1);
+}
 
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization || '';
