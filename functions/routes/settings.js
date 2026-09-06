@@ -2,6 +2,7 @@ const express = require('express');
 const { authMiddleware, adminOnly } = require('../middleware/auth');
 const settings = require('../lib/settings');
 const { sendMail, render, resetTransport } = require('../lib/email');
+const { buildAttachment } = require('../lib/attachDoc');
 const { runReminders } = require('../lib/scheduler');
 
 const router = express.Router();
@@ -43,6 +44,65 @@ router.post('/test-email', async (req, res) => {
   const result = await sendMail({ type: 'test', to, toName: 'Test', subject, html, sentBy: req.user.name });
   if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Send failed' });
   res.json({ ...result, to });
+});
+
+// POST /settings/test-document — sends a realistic sample invoice / estimate /
+// receipt to yourself, including the PDF attachment, so you can check exactly
+// what a customer receives before sending them anything.
+const SAMPLE_ITEMS = [
+  { description: 'Central A/C diagnostic & inspection', note: 'Includes refrigerant pressure test', quantity: 1, unit_price: 150, total: 150 },
+  { description: 'Compressor capacitor (45/5 MFD)', quantity: 2, unit_price: 65, total: 130 },
+  { description: 'Labor - condenser fan motor replacement', quantity: 3, unit_price: 110, total: 330 },
+];
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+
+router.post('/test-document', async (req, res) => {
+  const type = String(req.body.type || 'invoice');
+  if (!['invoice', 'quote', 'receipt'].includes(type)) return res.status(400).json({ error: 'Unknown document type' });
+  const to = (req.body.to || (await settings.get('business_email')) || '').trim();
+  if (!to) return res.status(400).json({ error: 'No recipient address' });
+
+  const base = {
+    customer_id: null,
+    customer_name: 'Sample Customer (TEST)',
+    issue_date: today(),
+    items: SAMPLE_ITEMS,
+    subtotal: 610,
+    tax_rate: Number(await settings.get('default_tax_rate')) || 0.08875,
+    notes: 'This is a TEST document generated from Settings. No customer has been contacted.',
+  };
+  base.tax_amount = Math.round(base.subtotal * base.tax_rate * 100) / 100;
+  base.total = Math.round((base.subtotal + base.tax_amount) * 100) / 100;
+
+  let entity, extra = {}, templateType = type;
+  if (type === 'invoice') {
+    entity = { ...base, invoice_number: 'CL-TEST', due_date: addDays(15), amountPaid: 0, payments: [] };
+  } else if (type === 'quote') {
+    entity = { ...base, quote_number: 'EST-TEST', expiry_date: addDays(30) };
+  } else {
+    const amount = Math.round(base.total / 2 * 100) / 100;
+    entity = { ...base, invoice_number: 'CL-TEST', amountPaid: amount, lastPayment: amount, payments: [{ amount }] };
+    extra.receipt = {
+      receipt_number: 'REC-TEST', invoice_number: 'CL-TEST', amount,
+      method: 'check', reference: '1042', paid_at: new Date().toISOString(),
+      balance_after: Math.round((base.total - amount) * 100) / 100,
+    };
+    // fields the receipt email template reads
+    entity.receipt_number = extra.receipt.receipt_number;
+    entity.balance_after = extra.receipt.balance_after;
+    entity.payment_method = extra.receipt.method;
+    entity.paid_at = extra.receipt.paid_at;
+  }
+
+  const { subject, html } = await render(templateType, entity);
+  const attachments = await buildAttachment(type, entity, extra);
+  const result = await sendMail({
+    type: templateType, to, toName: 'Test', subject: `[TEST] ${subject}`, html,
+    sentBy: req.user.name, attachments,
+  });
+  if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Send failed' });
+  res.json({ ...result, to, attached: attachments.length > 0, filename: attachments[0]?.filename || null });
 });
 
 router.post('/run-reminders', async (req, res) => {

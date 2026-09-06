@@ -3,7 +3,7 @@ import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Btn, Input, Spinner } from '../components/UI';
 import { useAuth } from '../context/AuthContext';
-import { Settings as Cog, Building2, Server, BellRing, Mail, ShieldAlert, CheckCircle2, Send, Play } from 'lucide-react';
+import { Settings as Cog, Building2, Server, BellRing, Mail, ShieldAlert, CheckCircle2, Send, Play, FileText, ClipboardList, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 function Toggle({ checked, onChange, label, desc }) {
@@ -77,6 +77,24 @@ export default function Settings() {
     finally { setBusy(''); }
   }
 
+  // Sends a realistic sample document (with its PDF attached) to the address in
+  // the test box, so you can see exactly what a customer receives.
+  async function sendTestDoc(type, label) {
+    setBusy(type);
+    const tId = toast.loading(`Sending sample ${label}…`);
+    try {
+      const { data: res } = await api.post('/settings/test-document', { type, to: testTo });
+      const attached = res.attached ? ` with ${res.filename}` : ' (no PDF attached — check the server log)';
+      toast.success(
+        res.status === 'simulated'
+          ? `Sample ${label} logged (demo mode) → ${res.to}`
+          : `Sample ${label} sent to ${res.to}${attached}`,
+        { id: tId, duration: 6000 },
+      );
+    } catch (e) { toast.error(e.response?.data?.error || `Could not send the sample ${label}`, { id: tId }); }
+    finally { setBusy(''); }
+  }
+
   async function runReminders() {
     setBusy('reminders');
     const tId = toast.loading('Running reminders…');
@@ -136,6 +154,26 @@ export default function Settings() {
                 className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
             </div>
             <Btn variant="outline" onClick={sendTest} loading={busy === 'test'}><Send size={15} /> Send Test</Btn>
+          </div>
+
+          {/* Sample documents — see exactly what a customer receives */}
+          <div className="px-5 pb-5 pt-4 border-t border-slate-100">
+            <p className="text-sm font-semibold text-slate-700 mb-1">Preview customer documents</p>
+            <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+              Sends a realistic sample to the address above — the same wording, layout and PDF attachment a
+              customer gets. Subjects are prefixed <span className="font-semibold">[TEST]</span> and no customer is contacted.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Btn variant="outline" onClick={() => sendTestDoc('invoice', 'invoice')} loading={busy === 'invoice'}>
+                <FileText size={15} /> Test Invoice
+              </Btn>
+              <Btn variant="outline" onClick={() => sendTestDoc('quote', 'estimate')} loading={busy === 'quote'}>
+                <ClipboardList size={15} /> Test Estimate
+              </Btn>
+              <Btn variant="outline" onClick={() => sendTestDoc('receipt', 'receipt')} loading={busy === 'receipt'}>
+                <Receipt size={15} /> Test Receipt
+              </Btn>
+            </div>
           </div>
         </Card>
 
