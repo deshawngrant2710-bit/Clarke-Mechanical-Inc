@@ -39,7 +39,7 @@ async function buildAttachment(kind, entity, extra = {}) {
         email: s.business_email,
         address: s.business_address,
         website: s.business_website,
-        paymentLines: kind === 'invoice' ? paymentLines(s) : [],
+        paymentLines: (kind === 'invoice' || kind === 'proposal') ? paymentLines(s) : [],
       },
       customer: {
         name: customer?.name || entity.customer_name,

@@ -191,6 +191,20 @@ const templates = {
           ], '#f0fdf4') +
           (partial ? p('We&rsquo;ll send another receipt once the remaining balance is settled.') : '') }) };
   },
+  proposal(pr, b) {
+    return { subject: `Your proposal ${pr.proposal_number} from ${b.name}`,
+      html: shell(b, { heading: `Proposal ${pr.proposal_number}`,
+        body: p(`Hi ${pr.customer_name || 'there'},`) +
+          p(`Thank you for the opportunity to work with you. Please find your proposal, <strong>${pr.title || 'Service Proposal'}</strong>, attached and summarized below.`) +
+          p(`It covers the full scope of work, pricing${(pr.milestones || []).length ? ', payment schedule' : ''} and terms. When you&rsquo;re ready, you can review and sign it electronically in your account &mdash; it takes less than a minute.`) +
+          `<div style="margin:18px 0;padding:16px 18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
+             <div style="font-size:13px;color:#0f172a;font-weight:700;">${pr.title || 'Service Proposal'}</div>
+             <div style="font-size:13px;color:#475569;margin-top:6px;">Total: <strong style="color:#0f172a;">${money(pr.total)}</strong>${pr.expiry_date ? ` &nbsp;&middot;&nbsp; Valid until ${pr.expiry_date}` : ''}</div>
+           </div>` +
+          buttonRow([{ label: 'Review &amp; sign', url: portal(b), color: BLUE }]) +
+          p('If you have any questions about the scope, pricing or terms, just reply to this email &mdash; we&rsquo;re glad to help.') +
+          signature(b) }) };
+  },
   quote(q, b) {
     return { subject: `Your estimate ${q.quote_number} from ${b.name}`,
       html: shell(b, { heading: `Estimate ${q.quote_number}`,

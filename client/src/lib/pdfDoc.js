@@ -30,7 +30,9 @@ function fmtDate(d) {
  * @param jsPDFCtor the jsPDF constructor (passed in so this file stays env-agnostic)
  * @param opts { kind, doc, business, customer, receipt, logo }  logo = dataURL (optional)
  */
-export function renderPdf(jsPDFCtor, { kind, doc = {}, business = {}, customer = {}, receipt = null, logo = null }) {
+export function renderPdf(jsPDFCtor, opts) {
+  if (opts.kind === 'proposal') return renderProposal(jsPDFCtor, opts);
+  const { kind, doc = {}, business = {}, customer = {}, receipt = null, logo = null } = opts;
   const pdf = new jsPDFCtor({ unit: 'pt', format: 'letter', compress: true });
   const isReceipt = kind === 'receipt';
   const isQuote = kind === 'quote';
@@ -279,8 +281,182 @@ export async function loadPdfLogo() {
   return _logo;
 }
 
+// Turn the proposal's rich-text body (simple HTML) into ordered blocks the PDF
+// engine can lay out: headings, paragraphs and bullet lines, with bold runs
+// flattened to a bold flag (jsPDF has no inline rich text).
+function htmlToBlocks(html) {
+  if (!html) return [];
+  const H = '\u0001'; // sentinel marking a heading line
+  const s = String(html)
+    .replace(/\r/g, '')
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<h[1-3][^>]*>/gi, H)      // heading start -> sentinel
+    .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\u2022 '); // list item -> bullet
+  const blocks = [];
+  for (const raw of s.split('\n')) {
+    const heading = raw.includes(H);
+    const bold = heading || /<(strong|b)>/i.test(raw);
+    const text = raw
+      .split(H).join('')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .trim();
+    const bullet = text.startsWith('\u2022');
+    const clean = text.replace(/^\u2022\s*/, '').trim();
+    if (clean) blocks.push({ text: clean, bold, bullet, heading });
+    else blocks.push({ spacer: true });
+  }
+  return blocks;
+}
+
+// Full proposal / contract layout: cover, long body, optional priced items,
+// payment schedule and a signature block. Flows across as many pages as needed.
+function renderProposal(jsPDFCtor, { doc = {}, business = {}, customer = {}, logo = null }) {
+  const pdf = new jsPDFCtor({ unit: 'pt', format: 'letter', compress: true });
+  const bizName = business.name || 'Clarke Mechanical Inc.';
+  let y = PAGE.m; const L = PAGE.m; const R = PAGE.w - PAGE.m; const W = R - L;
+
+  const setFont = (size, style = 'normal', color = INK) => {
+    pdf.setFont('helvetica', style); pdf.setFontSize(size); pdf.setTextColor(color[0], color[1], color[2]);
+  };
+  const line = (x1, y1, x2, y2, color = LINE, w = 0.8) => { pdf.setDrawColor(...color); pdf.setLineWidth(w); pdf.line(x1, y1, x2, y2); };
+  const box = (x, yy, w, h, color) => { pdf.setFillColor(...color); pdf.rect(x, yy, w, h, 'F'); };
+  const footer = () => {
+    const n = pdf.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      pdf.setPage(i);
+      const fy = PAGE.h - 40;
+      line(L, fy, R, fy);
+      setFont(8, 'normal', MUTED);
+      const contact = [business.phone, business.email, business.website].filter(Boolean).join('   •   ');
+      pdf.text(contact || bizName, L, fy + 14);
+      pdf.text(`Page ${i} of ${n}`, R, fy + 14, { align: 'right' });
+    }
+  };
+  const need = (h) => { if (y + h > PAGE.h - 64) { pdf.addPage(); y = PAGE.m; } };
+
+  /* Header */
+  if (logo) { try { pdf.addImage(logo, 'PNG', L, y - 6, 148, 81, undefined, 'FAST'); } catch { /* optional */ } }
+  else { setFont(16, 'bold', NAVY); pdf.text('CLARKE MECHANICAL', L, y + 12); }
+  setFont(22, 'bold', NAVY); pdf.text('PROPOSAL', R, y + 20, { align: 'right' });
+  y += 84; line(L, y, R, y, NAVY, 2); y += 18;
+
+  /* Title + meta */
+  setFont(15, 'bold', INK);
+  const titleLines = pdf.splitTextToSize(String(doc.title || 'Service Proposal'), W);
+  pdf.text(titleLines, L, y); y += titleLines.length * 18 + 4;
+
+  const meta = [
+    ['Proposal #', doc.proposal_number || ''],
+    ['Date', fmtDate(doc.issue_date)],
+    ['Valid until', doc.expiry_date ? fmtDate(doc.expiry_date) : '—'],
+    ['Prepared by', doc.prepared_by || bizName],
+  ];
+  setFont(9.5, 'normal', MUTED);
+  meta.forEach(([k, v]) => { pdf.text(`${k}: `, L, y); setFont(9.5, 'bold', INK); pdf.text(String(v), L + 68, y); setFont(9.5, 'normal', MUTED); y += 14; });
+  y += 6;
+
+  /* Prepared for */
+  const forLines = [customer.name, customer.address, [customer.city, customer.state, customer.zip].filter(Boolean).join(', '), customer.email, customer.phone].filter(Boolean);
+  if (forLines.length) {
+    setFont(8.5, 'bold', MUTED); pdf.text('PREPARED FOR', L, y); y += 14;
+    forLines.forEach((t, i) => { setFont(i === 0 ? 10.5 : 9.5, i === 0 ? 'bold' : 'normal', i === 0 ? INK : MUTED); pdf.text(String(t), L, y); y += i === 0 ? 14 : 12; });
+    y += 8;
+  }
+  line(L, y, R, y); y += 16;
+
+  /* Body — scope, terms, stipulations */
+  for (const b of htmlToBlocks(doc.body)) {
+    if (b.spacer) { y += 6; continue; }
+    const size = b.heading ? 12 : 10;
+    setFont(size, b.bold ? 'bold' : 'normal', b.heading ? NAVY : INK);
+    const indent = b.bullet ? 14 : 0;
+    const lines = pdf.splitTextToSize((b.bullet ? '•  ' : '') + b.text, W - indent);
+    need(lines.length * (size + 3) + 4);
+    if (b.heading) y += 4;
+    pdf.text(lines, L + indent, y);
+    y += lines.length * (size + 3) + (b.heading ? 4 : 2);
+  }
+
+  /* Priced items (optional) */
+  const items = doc.items || [];
+  if (items.length) {
+    need(60); y += 8;
+    box(L, y, W, 20, NAVY); setFont(8.5, 'bold', [255, 255, 255]);
+    pdf.text('DESCRIPTION', L + 8, y + 14); pdf.text('QTY', R - 150, y + 14, { align: 'right' });
+    pdf.text('UNIT', R - 80, y + 14, { align: 'right' }); pdf.text('AMOUNT', R - 8, y + 14, { align: 'right' });
+    y += 20;
+    for (const it of items) {
+      const dl = pdf.splitTextToSize(plain(it.description), R - 170 - L);
+      const h = Math.max(22, 8 + dl.length * 12);
+      need(h + 4);
+      setFont(9.5, 'normal', INK); pdf.text(dl, L + 8, y + 13);
+      setFont(9.5, 'normal', MUTED);
+      pdf.text(String(it.quantity ?? ''), R - 150, y + 13, { align: 'right' });
+      pdf.text(money(it.unit_price), R - 80, y + 13, { align: 'right' });
+      setFont(9.5, 'bold', INK); pdf.text(money(it.total), R - 8, y + 13, { align: 'right' });
+      y += h; line(L, y, R, y);
+    }
+    // totals
+    need(70); y += 10;
+    const tx = R - 200;
+    const tRow = (lbl, val, opts = {}) => { setFont(9.5, opts.bold ? 'bold' : 'normal', opts.color || MUTED); pdf.text(lbl, tx, y); setFont(9.5, opts.bold ? 'bold' : 'normal', opts.color || INK); pdf.text(val, R, y, { align: 'right' }); y += 15; };
+    tRow('Subtotal', money(doc.subtotal));
+    if (doc.discount) tRow('Discount', `-${money(doc.discount)}`);
+    if (doc.tax_amount) tRow('Tax', money(doc.tax_amount));
+    box(tx - 10, y - 11, R - tx + 10, 24, NAVY); setFont(10.5, 'bold', [255, 255, 255]);
+    pdf.text('TOTAL', tx, y + 5); pdf.text(money(doc.total), R - 8, y + 5, { align: 'right' }); y += 30;
+  }
+
+  /* Payment schedule */
+  const ms = doc.milestones || [];
+  if (ms.length) {
+    need(30 + ms.length * 16); y += 6;
+    setFont(11, 'bold', NAVY); pdf.text('PAYMENT SCHEDULE', L, y); y += 16;
+    setFont(9.5, 'normal', INK);
+    ms.forEach(m => {
+      const right = `${m.percent != null ? m.percent + '%  ' : ''}${money(m.amount)}`;
+      pdf.text('•  ' + plain(m.label) + (m.due ? `  (${fmtDate(m.due)})` : ''), L + 4, y);
+      setFont(9.5, 'bold', INK); pdf.text(right, R, y, { align: 'right' }); setFont(9.5, 'normal', INK);
+      y += 15;
+    });
+    y += 6;
+  }
+
+  /* Signature block */
+  need(120); y += 14; line(L, y, R, y); y += 18;
+  setFont(11, 'bold', NAVY); pdf.text('ACCEPTANCE', L, y); y += 8;
+  setFont(9, 'normal', MUTED);
+  const accept = pdf.splitTextToSize('By signing below, the client agrees to the scope of work, pricing and terms set out in this proposal.', W);
+  pdf.text(accept, L, y + 12); y += accept.length * 12 + 14;
+
+  const sig = doc.signature;
+  const colW = (W - 30) / 2;
+  if (sig && sig.image) {
+    try { pdf.addImage(sig.image, 'PNG', L, y, colW, 50, undefined, 'FAST'); } catch { /* ignore */ }
+  }
+  line(L, y + 54, L + colW, y + 54); line(L + colW + 30, y + 54, R, y + 54);
+  setFont(8.5, 'normal', MUTED);
+  pdf.text('Client signature', L, y + 66);
+  pdf.text('Date', L + colW + 30, y + 66);
+  if (sig) {
+    setFont(10, 'bold', INK);
+    pdf.text(sig.name || '', L, y + 48);
+    setFont(9.5, 'normal', INK);
+    pdf.text(fmtDate(sig.signed_at), L + colW + 30, y + 48);
+    setFont(8, 'normal', MUTED);
+    pdf.text('Signed electronically', L, y + 78);
+  }
+
+  footer();
+  pdf.setProperties({ title: `Proposal ${doc.proposal_number || ''}`.trim(), author: bizName, creator: bizName });
+  return pdf;
+}
+
 // Filename used for downloads, shares and email attachments.
 export function pdfFilename({ kind, doc = {}, receipt = null }) {
+  if (kind === 'proposal') return `Proposal-${String(doc.proposal_number || 'document').replace(/[^\w.-]+/g, '_')}.pdf`;
   const label = kind === 'quote' ? 'Estimate' : kind === 'receipt' ? 'Receipt' : 'Invoice';
   const num = receipt ? receipt.receipt_number : (kind === 'quote' ? doc.quote_number : doc.invoice_number);
   return `${label}-${String(num || 'document').replace(/[^\w.-]+/g, '_')}.pdf`;

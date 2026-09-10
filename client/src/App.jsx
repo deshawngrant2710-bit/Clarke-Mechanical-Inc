@@ -21,6 +21,7 @@ import Schedule from './pages/Schedule';
 import Invoices from './pages/Invoices';
 import InvoiceDetail from './pages/InvoiceDetail';
 import Quotes from './pages/Quotes';
+import Proposals from './pages/Proposals';
 import Inventory from './pages/Inventory';
 import Inspections from './pages/Inspections';
 import InspectionDetail from './pages/InspectionDetail';
@@ -28,6 +29,7 @@ import Employees from './pages/Employees';
 import Settings from './pages/Settings';
 import Portal from './pages/Portal';
 import CustomerInvoices from './pages/CustomerInvoices';
+import CustomerProposals from './pages/CustomerProposals';
 import Appointments from './pages/Appointments';
 import PayLink from './pages/PayLink';
 import Account from './pages/Account';
@@ -156,6 +158,7 @@ function CustomerTopBar({ name }) {
           <NavLink to="/portal" end className={linkCls}>Home</NavLink>
           <NavLink to="/appointments" className={linkCls}>Appointments</NavLink>
           <NavLink to="/billing" className={linkCls}>Billing</NavLink>
+          <NavLink to="/my-proposals" className={linkCls}>Proposals</NavLink>
           <NavLink to="/refer" className={linkCls}>Refer &amp; Earn</NavLink>
           <button onClick={signOut}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors">
@@ -210,6 +213,7 @@ export default function App() {
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/quotes" element={<Quotes />} />
+            <Route path="/proposals" element={<Proposals />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inspections" element={<Inspections />} />
             <Route path="/inspections/:id" element={<InspectionDetail />} />
@@ -231,6 +235,7 @@ export default function App() {
             <Route path="/assistant" element={<AdminAssistant />} />
             <Route path="/portal" element={<Portal />} />
             <Route path="/billing" element={<CustomerInvoices />} />
+            <Route path="/my-proposals" element={<CustomerProposals />} />
             <Route path="/appointments" element={<Appointments />} />
             <Route path="/account" element={<Account />} />
             <Route path="/more" element={<MoreCustomer />} />

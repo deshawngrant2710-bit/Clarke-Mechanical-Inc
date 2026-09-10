@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -44,6 +44,7 @@ export const NAV_GROUPS = [
       { to: '/receipts', label: 'Receipts', icon: Receipt, roles: ['admin', 'office'] },
       { to: '/email-log', label: 'Email Log', icon: Mail, roles: ['admin', 'office'] },
       { to: '/quotes', label: 'Quotes', icon: ClipboardList, roles: ['admin', 'office'] },
+      { to: '/proposals', label: 'Proposals', icon: FileSignature, roles: ['admin', 'office'] },
       { to: '/price-book', label: 'Price Book', icon: BookOpen, roles: ['admin', 'office'] },
       { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'office'] },
       { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin'] },
@@ -104,7 +105,7 @@ export function bottomNavForRole(role) {
 }
 
 // Utility routes any signed-in user may reach (not shown in the sidebar).
-const OPEN_ROUTES = ['/account', '/more', '/about', '/refer', '/addresses', '/notifications', '/security', '/appointments', '/billing'];
+const OPEN_ROUTES = ['/account', '/more', '/about', '/refer', '/addresses', '/notifications', '/security', '/appointments', '/billing', '/my-proposals'];
 
 // May this role open this pathname? Detail routes inherit their base (e.g. /jobs/123 → /jobs).
 export function canAccess(role, pathname) {

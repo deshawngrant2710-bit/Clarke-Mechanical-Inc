@@ -9,6 +9,8 @@ const { smsConfigured, sendSms } = require('../lib/sms');
 const helcim = require('../lib/helcim');
 const { notify } = require('../lib/notify');
 
+const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const router = express.Router();
 router.use(authMiddleware);
 // The customer portal is only for customer accounts. If this user has since been
@@ -171,6 +173,63 @@ router.get('/quotes', async (req, res) => {
   if (!ids.length) return res.json([]);
   const qNested = await Promise.all(ids.map(id => findWhere('quotes', 'customer_id', id)));
   res.json(qNested.flat().sort(byCreated));
+});
+
+// The customer's proposals/contracts.
+router.get('/proposals', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  if (!ids.length) return res.json([]);
+  const nested = await Promise.all(ids.map(id => findWhere('proposals', 'customer_id', id)));
+  res.json(nested.flat().sort(byCreated));
+});
+
+router.get('/proposals/:id', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const p = await getById('proposals', req.params.id);
+  if (!p || !ids.includes(p.customer_id)) return res.status(404).json({ error: 'Not found' });
+  res.json(p);
+});
+
+// Accept a proposal with a typed name + drawn signature image.
+router.post('/proposals/:id/accept', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const p = await getById('proposals', req.params.id);
+  if (!p || !ids.includes(p.customer_id)) return res.status(404).json({ error: 'Not found' });
+  if (p.status === 'accepted') return res.json(p);
+  if (['declined', 'expired'].includes(p.status)) return res.status(409).json({ error: 'This proposal can no longer be accepted.' });
+
+  const name = String(req.body?.name || '').trim();
+  const image = String(req.body?.image || '');
+  if (!name) return res.status(400).json({ error: 'Please type your full name to sign.' });
+  if (!image.startsWith('data:image')) return res.status(400).json({ error: 'Please draw your signature.' });
+
+  const signature = {
+    name, image,
+    signed_at: new Date().toISOString(),
+    ip: (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim() || null,
+    user_agent: (req.headers['user-agent'] || '').toString().slice(0, 200),
+  };
+  const saved = await update('proposals', p.id, { status: 'accepted', signature });
+
+  // Let the office know it was signed.
+  try {
+    const { notify } = require('../lib/notify');
+    await notify(['admin', 'office'], {
+      title: 'Proposal signed',
+      body: `${name} accepted proposal ${p.proposal_number} (${money(p.total)}).`,
+      link: `/proposals/${p.id}`,
+    });
+  } catch (e) { console.error('[portal] proposal notify failed:', e.message); }
+  res.json(saved);
+});
+
+// Decline a proposal.
+router.post('/proposals/:id/decline', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const p = await getById('proposals', req.params.id);
+  if (!p || !ids.includes(p.customer_id)) return res.status(404).json({ error: 'Not found' });
+  const saved = await update('proposals', p.id, { status: 'declined' });
+  res.json(saved);
 });
 
 // POST /portal/service-request — customer books a new service (creates a pending job).

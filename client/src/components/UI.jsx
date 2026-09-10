@@ -25,6 +25,8 @@ export const STATUS_COLORS = {
   overdue:    'bg-red-100 text-red-700 ring-red-600/20',
   accepted:   'bg-emerald-100 text-emerald-800 ring-emerald-600/20',
   declined:   'bg-red-100 text-red-700 ring-red-600/20',
+  // Proposals
+  expired:    'bg-slate-100 text-slate-600 ring-slate-500/20',
   // Priority
   low:        'bg-slate-100 text-slate-600 ring-slate-500/20',
   normal:     'bg-blue-100 text-blue-800 ring-blue-600/20',
