@@ -306,6 +306,13 @@ const templates = {
           `<div style="text-align:center;margin:14px 0 18px;"><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 26px;font-size:30px;font-weight:800;letter-spacing:8px;color:${NAVY};">${e.code}</span></div>` +
           p(`<span style="color:#64748b;font-size:13px;">This code expires in 15 minutes. If you didn't request it, you can ignore this email.</span>`) }) };
   },
+  twofa_code(e, b) {
+    return { subject: `Your ${b.name} sign-in code: ${e.code}`,
+      html: shell(b, { heading: 'Your sign-in code',
+        body: p(`Hi ${e.name || 'there'},`) + p(`Use this code to finish signing in to your ${b.name} account:`) +
+          `<div style="text-align:center;margin:14px 0 18px;"><span style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 26px;font-size:30px;font-weight:800;letter-spacing:8px;color:${NAVY};">${e.code}</span></div>` +
+          p(`<span style="color:#64748b;font-size:13px;">This code expires in 5 minutes. If you didn't try to sign in, someone may have your password &mdash; change it right away.</span>`) }) };
+  },
   purchase_order(po, b) {
     const rows = (po.items || []).map(i => `<tr>
       <td style="padding:8px 0;border-bottom:1px solid #eef2f7;color:#334155;font-size:14px;">${i.description}</td>

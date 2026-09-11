@@ -3,6 +3,9 @@ const cors = require('cors');
 
 // Shared Express app — used by server.js (Render) and index.js (Firebase, optional).
 const app = express();
+// Behind Render's proxy: trust it so req.ip / X-Forwarded-For reflect the real client
+// (needed for accurate login rate-limiting).
+app.set('trust proxy', 1);
 app.use(cors({ origin: true }));
 // Allow base64 photo/PDF uploads (portal, inspections, time clock, job photos).
 app.use(express.json({ limit: '50mb' }));

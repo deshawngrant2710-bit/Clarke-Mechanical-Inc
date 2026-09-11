@@ -7,10 +7,37 @@ const { JWT_SECRET, authMiddleware, adminOnly } = require('../middleware/auth');
 const { genTempPassword } = require('../lib/passwords');
 const { referralCode } = require('../lib/referral');
 const { sendMail, render } = require('../lib/email');
+const { sendSms, smsConfigured } = require('../lib/sms');
 const settings = require('../lib/settings');
+const { createFailureGuard, requestLimiter } = require('../middleware/rateLimit');
+const twofa = require('../lib/twofa');
 
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Brute-force protection for login: lock out after repeated FAILED attempts,
+// per account (ip+email) and per IP. A correct login clears the counter.
+const loginGuard = createFailureGuard({ windowMs: 15 * 60 * 1000, perAccountMax: 8, perIpMax: 30 });
+// Cap password-reset emails so the endpoint can't be used to spam an inbox.
+const forgotLimiter = requestLimiter({ windowMs: 15 * 60 * 1000, max: 5, keyPrefix: 'forgot', message: 'Too many reset requests. Please wait a few minutes and try again.' });
+
+// Sign the session token + shape the user object returned to the client.
+function issueToken(user) {
+  const token = jwt.sign(
+    { id: user.id, name: user.name, email: user.email, role: user.role },
+    JWT_SECRET, { expiresIn: '7d' }
+  );
+  return { token, user: {
+    id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone,
+    also_technician: !!user.also_technician, must_change_password: !!user.must_change_password,
+    twofa_enabled: !!(user.twofa && user.twofa.enabled), twofa_method: user.twofa?.method || null,
+  } };
+}
+const maskEmail = (e) => String(e || '').replace(/^(.).*(@.*)$/, (_, a, b) => `${a}•••${b}`);
+const maskPhone = (p) => { const d = String(p || '').replace(/\D/g, ''); return d ? `•••••${d.slice(-4)}` : ''; };
+const TWOFA_CHALLENGE_MIN = 5;   // sign-in code lifetime
+const TWOFA_SETUP_MIN = 10;      // setup confirmation lifetime
+const TWOFA_MAX_ATTEMPTS = 6;    // wrong codes before a challenge is voided
 
 // Canonical, ABSOLUTE base URL for links we put in emails (e.g. the password
 // reset link). Must never be relative — a relative link like "/reset-password"
@@ -45,7 +72,7 @@ router.get('/public-info', async (req, res) => {
 
 // POST /api/auth/forgot-password — email a password reset link. Always responds 200
 // so the form can't be used to discover which emails have accounts.
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotLimiter, async (req, res) => {
   try {
     const email = (req.body.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'Please enter your email address' });
@@ -147,18 +174,97 @@ router.post('/login', async (req, res) => {
     const email = (req.body.email || '').trim().toLowerCase();
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
+    // Block if this account/IP has too many recent failed attempts.
+    const gate = loginGuard.check(req, email);
+    if (gate.blocked) {
+      const mins = Math.ceil(gate.retryAfterSec / 60);
+      res.set('Retry-After', String(gate.retryAfterSec));
+      return res.status(429).json({ error: `Too many sign-in attempts. Please try again in about ${mins} minute${mins === 1 ? '' : 's'}, or reset your password.`, retryAfter: gate.retryAfterSec });
+    }
+
     const user = await findOne('users', 'email', email);
     if (!user || !bcrypt.compareSync(password, user.password)) {
+      loginGuard.fail(req, email);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    const token = jwt.sign(
-      { id: user.id, name: user.name, email: user.email, role: user.role },
-      JWT_SECRET, { expiresIn: '7d' }
-    );
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone, also_technician: !!user.also_technician, must_change_password: !!user.must_change_password } });
+    loginGuard.clear(req, email);
+
+    // Two-step verification: password is correct, but this account requires a
+    // second factor. Start a challenge and DO NOT issue a token yet.
+    if (user.twofa && user.twofa.enabled) {
+      const method = user.twofa.method;
+      const challengeId = uuid();
+      let code_hash = null;
+      if (method === 'email' || method === 'sms') {
+        const code = twofa.generateCode();
+        code_hash = twofa.hashCode(code);
+        try {
+          if (method === 'email') {
+            const { subject, html } = await render('twofa_code', { name: user.name, code });
+            await sendMail({ type: 'twofa_code', to: user.email, toName: user.name, subject, html, sentBy: 'Automated' });
+          } else {
+            const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+            await sendSms(user.phone, `${biz}: your sign-in code is ${code}. It expires in ${TWOFA_CHALLENGE_MIN} minutes.`);
+          }
+        } catch (err) { console.error('[2fa] code delivery failed:', err.message); }
+      }
+      await create('twofa_challenges', challengeId, {
+        user_id: user.id, method, code_hash,
+        expires_at: new Date(Date.now() + TWOFA_CHALLENGE_MIN * 60 * 1000).toISOString(),
+        attempts: 0, created_at: new Date().toISOString(),
+      });
+      const hint = method === 'email' ? maskEmail(user.email) : method === 'sms' ? maskPhone(user.phone) : 'your authenticator app';
+      return res.json({ twofa: true, challenge_id: challengeId, method, hint });
+    }
+
+    res.json(issueToken(user));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// POST /api/auth/login/verify — complete a 2FA challenge and issue the token.
+router.post('/login/verify', async (req, res) => {
+  try {
+    const { challenge_id, code } = req.body || {};
+    const input = String(code || '').trim();
+    if (!challenge_id || !input) return res.status(400).json({ error: 'Code required' });
+    const ch = await getById('twofa_challenges', challenge_id);
+    if (!ch) return res.status(400).json({ error: 'This sign-in request expired. Please sign in again.' });
+    if (new Date(ch.expires_at).getTime() < Date.now()) {
+      await remove('twofa_challenges', challenge_id);
+      return res.status(400).json({ error: 'Your code expired. Please sign in again.' });
+    }
+    if ((ch.attempts || 0) >= TWOFA_MAX_ATTEMPTS) {
+      await remove('twofa_challenges', challenge_id);
+      return res.status(429).json({ error: 'Too many incorrect codes. Please sign in again.' });
+    }
+    const user = await getById('users', ch.user_id);
+    if (!user || !user.twofa) { await remove('twofa_challenges', challenge_id); return res.status(400).json({ error: 'Please sign in again.' }); }
+
+    let ok = false;
+    // A one-time backup code always works and is then consumed.
+    const backup = Array.isArray(user.twofa.backup_codes) ? user.twofa.backup_codes : [];
+    const inputHash = twofa.hashCode(input.toLowerCase());
+    if (backup.includes(inputHash)) {
+      ok = true;
+      await update('users', user.id, { twofa: { ...user.twofa, backup_codes: backup.filter(h => h !== inputHash) } });
+    } else if (ch.method === 'totp') {
+      ok = twofa.verifyTOTP(user.twofa.totp_secret, input);
+    } else {
+      ok = !!ch.code_hash && twofa.hashCode(input) === ch.code_hash;
+    }
+
+    if (!ok) {
+      await update('twofa_challenges', challenge_id, { attempts: (ch.attempts || 0) + 1 });
+      return res.status(401).json({ error: 'That code is not correct. Please try again.' });
+    }
+    await remove('twofa_challenges', challenge_id);
+    res.json(issueToken(user));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Could not verify the code' });
   }
 });
 
@@ -177,6 +283,103 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Could not change password' });
   }
+});
+
+/* ---------------- Two-step verification (2FA) management ---------------- */
+
+// GET /api/auth/2fa/status — is 2FA on, and which methods are available.
+router.get('/2fa/status', authMiddleware, async (req, res) => {
+  try {
+    const u = await getById('users', req.user.id);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      enabled: !!(u.twofa && u.twofa.enabled),
+      method: u.twofa?.method || null,
+      backup_remaining: Array.isArray(u.twofa?.backup_codes) ? u.twofa.backup_codes.length : 0,
+      has_phone: !!u.phone,
+      sms_available: smsConfigured(),
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Could not load status' }); }
+});
+
+// POST /api/auth/2fa/setup { method } — begin enabling a method (sends a test code
+// for email/sms, or returns a secret to scan for totp). Does NOT enable yet.
+router.post('/2fa/setup', authMiddleware, async (req, res) => {
+  try {
+    const method = String(req.body.method || '').toLowerCase();
+    if (!['email', 'sms', 'totp'].includes(method)) return res.status(400).json({ error: 'Choose email, text message, or an authenticator app.' });
+    const u = await getById('users', req.user.id);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+
+    const pending = { method, expires_at: new Date(Date.now() + TWOFA_SETUP_MIN * 60 * 1000).toISOString() };
+    const out = { method };
+
+    if (method === 'email') {
+      const code = twofa.generateCode();
+      pending.code_hash = twofa.hashCode(code);
+      const { subject, html } = await render('twofa_code', { name: u.name, code });
+      await sendMail({ type: 'twofa_code', to: u.email, toName: u.name, subject, html, sentBy: 'Automated' });
+      out.sent_to = maskEmail(u.email);
+    } else if (method === 'sms') {
+      if (!u.phone) return res.status(422).json({ error: 'Add a mobile number to your account first.' });
+      if (!smsConfigured()) return res.status(503).json({ error: 'Text messaging isn’t set up. Try email or an authenticator app.' });
+      const code = twofa.generateCode();
+      pending.code_hash = twofa.hashCode(code);
+      const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
+      await sendSms(u.phone, `${biz}: your verification code is ${code}.`);
+      out.sent_to = maskPhone(u.phone);
+    } else { // totp
+      const secret = twofa.generateSecret();
+      pending.totp_secret = secret;
+      out.secret = secret;
+      out.otpauth = twofa.otpauthURL({ secret, label: u.email, issuer: (await settings.get('business_name')) || 'Clarke Mechanical' });
+    }
+
+    await update('users', u.id, { twofa_pending: pending });
+    res.json(out);
+  } catch (e) { console.error('[2fa] setup failed:', e.message); res.status(500).json({ error: 'Could not start setup' }); }
+});
+
+// POST /api/auth/2fa/confirm { code } — verify the setup code and turn 2FA on.
+router.post('/2fa/confirm', authMiddleware, async (req, res) => {
+  try {
+    const input = String(req.body.code || '').trim();
+    if (!input) return res.status(400).json({ error: 'Enter the code to confirm.' });
+    const u = await getById('users', req.user.id);
+    const pending = u?.twofa_pending;
+    if (!pending) return res.status(400).json({ error: 'Start setup again — nothing pending.' });
+    if (new Date(pending.expires_at).getTime() < Date.now()) {
+      await update('users', u.id, { twofa_pending: null });
+      return res.status(400).json({ error: 'Setup timed out. Please start again.' });
+    }
+    const ok = pending.method === 'totp'
+      ? twofa.verifyTOTP(pending.totp_secret, input)
+      : (!!pending.code_hash && twofa.hashCode(input) === pending.code_hash);
+    if (!ok) return res.status(401).json({ error: 'That code is not correct. Please try again.' });
+
+    const backupPlain = twofa.generateBackupCodes(8);
+    const twofaRecord = {
+      enabled: true, method: pending.method,
+      totp_secret: pending.method === 'totp' ? pending.totp_secret : null,
+      backup_codes: backupPlain.map(c => twofa.hashCode(c)),
+      enabled_at: new Date().toISOString(),
+    };
+    await update('users', u.id, { twofa: twofaRecord, twofa_pending: null });
+    res.json({ enabled: true, method: pending.method, backup_codes: backupPlain });
+  } catch (e) { console.error('[2fa] confirm failed:', e.message); res.status(500).json({ error: 'Could not confirm' }); }
+});
+
+// POST /api/auth/2fa/disable { password } — turn 2FA off (requires the password).
+router.post('/2fa/disable', authMiddleware, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password) return res.status(400).json({ error: 'Enter your password to turn this off.' });
+    const u = await getById('users', req.user.id);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    if (!bcrypt.compareSync(password, u.password)) return res.status(401).json({ error: 'Password is incorrect' });
+    await update('users', u.id, { twofa: null, twofa_pending: null });
+    res.json({ enabled: false });
+  } catch (e) { console.error('[2fa] disable failed:', e.message); res.status(500).json({ error: 'Could not turn off' }); }
 });
 
 // GET /api/auth/me — the current user's own account info (works for every role).
