@@ -12,6 +12,24 @@ const settings = require('../lib/settings');
 const router = express.Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Canonical, ABSOLUTE base URL for links we put in emails (e.g. the password
+// reset link). Must never be relative — a relative link like "/reset-password"
+// makes Safari say "the address is invalid". Prefer an explicit APP_URL env var,
+// then the request Origin (only if it's a real https site and not the API host),
+// and finally fall back to the production website.
+const DEFAULT_APP_URL = 'https://clarkemechanicalinc.org';
+function resetBaseUrl(req) {
+  const clean = (u) => String(u || '').trim().replace(/\/+$/, '');
+  const env = clean(process.env.APP_URL);
+  if (/^https?:\/\/.+/i.test(env)) return env;
+  const origin = clean(req.headers.origin);
+  // Accept the browser's origin only if it's an https page and not the Render API host.
+  if (/^https:\/\/.+/i.test(origin) && !/onrender\.com$/i.test(origin) && !/^https:\/\/localhost/i.test(origin)) {
+    return origin;
+  }
+  return DEFAULT_APP_URL;
+}
+
 // GET /api/auth/public-info — unauthenticated business info for the login screen.
 router.get('/public-info', async (req, res) => {
   try {
@@ -36,8 +54,7 @@ router.post('/forgot-password', async (req, res) => {
       const token = uuid() + uuid().replace(/-/g, '');
       const expires_at = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
       await create('password_resets', token, { user_id: user.id, email, expires_at, used: false });
-      const origin = req.headers.origin || process.env.APP_URL || '';
-      const link = `${origin}/reset-password?token=${token}`;
+      const link = `${resetBaseUrl(req)}/reset-password?token=${token}`;
       try {
         const { subject, html } = await render('password_reset', { name: user.name, link });
         await sendMail({ type: 'password_reset', to: email, toName: user.name, subject, html, customerId: null, sentBy: 'Automated' });
