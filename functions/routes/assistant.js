@@ -3,6 +3,7 @@ const { v4: uuid } = require('uuid');
 const { list, create } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const settings = require('../lib/settings');
+const { buildServiceAgreementBody } = require('../lib/serviceAgreement');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
@@ -23,6 +24,13 @@ async function nextNumber(collection, prefix) {
   let max = 4199; // documents start at 4200
   items.forEach(it => { const m = String(it[field] || '').match(/(\d+)/); if (m) max = Math.max(max, Number(m[1])); });
   return `${prefix}-${max + 1}`;
+}
+// Proposals use a zero-padded PROP-#### sequence (matches routes/proposals.js).
+async function nextProposalNumber() {
+  const all = await list('proposals');
+  let max = 4199; // documents start at 4200
+  all.forEach(p => { const m = String(p.proposal_number || '').match(/^[A-Za-z]+-(\d+)$/); if (m) max = Math.max(max, Number(m[1])); });
+  return `PROP-${String(max + 1).padStart(4, '0')}`;
 }
 
 // Pulls current business data relevant to the question so the assistant can
@@ -117,6 +125,39 @@ async function runAction(action) {
     await create('invoices', id, { invoice_number: number, customer_id: cust.id, job_id: null, status: 'draft', issue_date: t, due_date: action.due_date || null, subtotal, tax_rate: rate, tax_amount, total, notes: action.notes || null, items });
     return { type: 'invoice', id, label: number, to: `/invoices/${id}`, customer: cust.name };
   }
+  if (action.type === 'create_service_agreement') {
+    const cust = await resolveCustomer(action.customer_name || action.owner);
+    // The contract price is one line item; Clarke's clauses are added by the builder.
+    const price = Number(action.contract_price) || 0;
+    const items = withItemTotals([{ description: action.title || 'Full Burner Service Agreement', quantity: 1, unit_price: price }]);
+    const { subtotal, tax_amount, total } = calcTotals(items, rate);
+    const body = buildServiceAgreementBody({
+      owner: action.owner || cust.name,
+      equipment: action.equipment,
+      service_type: action.service_type,
+      service_address: action.service_address,
+      period_from: action.period_from,
+      period_to: action.period_to,
+      term_label: action.term_label,
+      response_window: action.response_window,
+      max_response: action.max_response,
+      annual_visits: action.annual_visits,
+      included: action.included,
+      not_covered: action.not_covered,
+      contract_price: price,
+      package_note: action.package_note,
+    });
+    const number = await nextProposalNumber();
+    const id = uuid();
+    await create('proposals', id, {
+      proposal_number: number, customer_id: cust.id, title: action.title || 'Full Burner Service Agreement',
+      status: 'draft', issue_date: t, expiry_date: action.expiry_date || null,
+      prepared_by: action.prepared_by || null, service_address: action.service_address || null,
+      body, items, subtotal, discount: 0, tax_rate: rate, tax_amount, total, milestones: [], deposit: 0,
+      created_at: now,
+    });
+    return { type: 'service agreement', id, label: number, to: '/proposals', customer: cust.name };
+  }
   return null;
 }
 
@@ -137,7 +178,11 @@ router.post('/', async (req, res) => {
     '{"type":"create_quote","customer_name":"","items":[{"description":"","quantity":1,"unit_price":0}],"notes":""}',
     '{"type":"create_invoice","customer_name":"","due_date":"YYYY-MM-DD","items":[{"description":"","quantity":1,"unit_price":0}],"notes":""}',
     '{"type":"create_customer","name":"","email":"","phone":""}',
-    'Only emit ACTION once you have the essentials: a job needs a title; a quote or invoice needs a customer and at least one item. If key details are missing, ask one short follow-up question instead of emitting ACTION.',
+    '{"type":"create_service_agreement","customer_name":"","owner":"","equipment":"","service_type":"","service_address":"","period_from":"","period_to":"","term_label":"","contract_price":0,"annual_visits":4,"included":[],"not_covered":[],"expiry_date":"YYYY-MM-DD","package_note":""}',
+    'Use create_service_agreement when the user asks to draft a service agreement, service contract, maintenance agreement, or burner/boiler contract. This creates a Proposal draft they can review, price, e-sign and send.',
+    'IMPORTANT for service agreements: DO NOT write the legal terms yourself. Clarke Mechanical has standard, vetted clauses (limitation of liability, act of God, asbestos exclusion, parts & payment, terms, etc.) that the system adds automatically and verbatim. Your job is only to capture the variables: owner/customer name, the equipment (e.g. "GAS FIRED CONDENSING BOILERS"), what service is rendered (e.g. "oil burner service"), the premises/service address, the coverage period (period_from and period_to as readable dates like "October 1st, 2024"), the term_label (e.g. "TWELVE (12) months"), and the contract_price. Leave included/not_covered empty unless the user gives a custom scope — the system fills in Clarke\'s standard lists.',
+    'A service agreement needs at minimum: a customer/owner and a contract_price. If the premises address, coverage period, or equipment are missing, you may still emit ACTION (the draft leaves blanks the office can fill), but prefer to ask one short follow-up if the customer or price is missing.',
+    'Only emit ACTION once you have the essentials: a job needs a title; a quote or invoice needs a customer and at least one item; a service agreement needs a customer and a price. If key details are missing, ask one short follow-up question instead of emitting ACTION.',
     'Interpret relative dates (e.g. "next Tuesday") into YYYY-MM-DD. Never invent prices — if a unit price is unknown, use 0 and note the office can fill it in.',
     'Keep replies short and friendly.',
   ].join(' ');
