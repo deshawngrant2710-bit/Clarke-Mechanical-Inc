@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove, findWhere } = require('../lib/db');
 const { authMiddleware, requireStaff } = require('../middleware/auth');
+const { sendSms, smsConfigured } = require('../lib/sms');
 
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
@@ -77,6 +78,25 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   await remove('customers', req.params.id);
   res.json({ success: true });
+});
+
+// POST /api/customers/:id/text — send the customer a text from the business Quo
+// number (staff only). The message threads in Quo like any other conversation.
+router.post('/:id/text', async (req, res) => {
+  try {
+    const body = String(req.body?.message || '').trim();
+    if (!body) return res.status(400).json({ error: 'Type a message to send.' });
+    if (body.length > 1600) return res.status(400).json({ error: 'Message is too long.' });
+    if (!smsConfigured()) return res.status(503).json({ error: 'Texting isn’t set up yet. Add your Quo API key and number.' });
+    const c = await getById('customers', req.params.id);
+    if (!c) return res.status(404).json({ error: 'Customer not found' });
+    if (!c.phone) return res.status(422).json({ error: 'This customer has no phone number on file.' });
+    await sendSms(c.phone, body);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[customers] text failed:', e.message);
+    res.status(502).json({ error: 'Could not send the text. Please try again.' });
+  }
 });
 
 module.exports = router;
