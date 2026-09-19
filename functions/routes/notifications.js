@@ -3,9 +3,25 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { sendPush, pushConfigured } = require('../lib/push');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
+
+// POST /api/notifications/test — send a push to MY registered device(s), so you
+// can confirm end-to-end delivery on the iOS app without waiting on a real event.
+router.post('/test', async (req, res) => {
+  try {
+    if (!pushConfigured()) return res.status(503).json({ error: 'Push isn’t set up on the server yet — add the APNs keys on Render first.' });
+    const tokens = (await list('device_tokens')).filter(d => d.user_id === req.user.id).map(d => d.token);
+    if (!tokens.length) return res.status(422).json({ error: 'No device registered yet. Open the iOS app, sign in, and allow notifications — then try again.' });
+    const result = await sendPush(tokens, { title: 'Test notification', body: 'Push notifications are working. You’re all set.', link: '/', badge: 1 });
+    res.json({ ok: true, devices: tokens.length, result: result || null });
+  } catch (e) {
+    console.error('[push] test failed:', e.message);
+    res.status(502).json({ error: 'Could not send the test push. Check the server logs for APNs errors.' });
+  }
+});
 
 // POST /api/notifications/register-device — save an APNs device token for push.
 router.post('/register-device', async (req, res) => {

@@ -45,6 +45,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [capsOn, setCapsOn] = useState(false);
   const [biz, setBiz] = useState(null);
+  const [twofaStep, setTwofaStep] = useState(null); // { challenge_id, method, hint }
+  const [twofaCode, setTwofaCode] = useState('');
+  const [backupMode, setBackupMode] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -105,6 +108,13 @@ export default function Login() {
         login(data.token, data.user);
       } else {
         const { data } = await api.post('/auth/login', { email: form.email.trim().toLowerCase(), password: form.password });
+        // Account has 2-step verification: move to the code step instead of signing in.
+        if (data.twofa) {
+          setTwofaStep({ challenge_id: data.challenge_id, method: data.method, hint: data.hint });
+          setTwofaCode(''); setBackupMode(false);
+          setLoading(false);
+          return;
+        }
         login(data.token, data.user);
       }
       navigate('/');
@@ -113,6 +123,24 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function verifyTwofa(e) {
+    e.preventDefault();
+    setError('');
+    if (!twofaCode.trim()) return setError('Enter your verification code');
+    setLoading(true);
+    try {
+      const { data } = await api.post('/auth/login/verify', { challenge_id: twofaStep.challenge_id, code: twofaCode.trim() });
+      login(data.token, data.user);
+      navigate('/');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not verify the code');
+    } finally { setLoading(false); }
+  }
+
+  function cancelTwofa() {
+    setTwofaStep(null); setTwofaCode(''); setBackupMode(false); setError('');
   }
 
   return (
@@ -129,6 +157,48 @@ export default function Login() {
             <div className="bg-white rounded-2xl shadow-lg px-6 py-4"><Logo variant="full" height={48} /></div>
           </div>
 
+          {twofaStep ? (
+            <div className="animate-fade-in">
+              <h2 className="text-2xl font-bold text-slate-900">Enter your code</h2>
+              <p className="text-sm text-slate-500 mt-1 mb-6">
+                {twofaStep.method === 'totp'
+                  ? 'Open your authenticator app and enter the 6-digit code for Clarke Mechanical.'
+                  : `We sent a 6-digit code to ${twofaStep.hint}. Enter it below to finish signing in.`}
+              </p>
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2 animate-slide-down">
+                  <AlertCircle size={16} className="shrink-0" /> {error}
+                </div>
+              )}
+              <form onSubmit={verifyTwofa} className="space-y-4" noValidate>
+                {backupMode ? (
+                  <input value={twofaCode} onChange={e => setTwofaCode(e.target.value)} autoFocus
+                    autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="xxxx-xxxx"
+                    className="w-full text-center tracking-widest text-lg font-semibold py-3 border border-slate-300 rounded-lg outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                ) : (
+                  <input value={twofaCode} onChange={e => setTwofaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric" autoFocus maxLength={6} placeholder="000000"
+                    className="w-full text-center tracking-[0.5em] text-2xl font-bold py-3 border border-slate-300 rounded-lg outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                )}
+                <button type="submit" disabled={loading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-semibold py-2.5 rounded-lg text-sm transition-all shadow-sm disabled:opacity-50">
+                  {loading ? 'Verifying…' : 'Verify & sign in'}
+                </button>
+              </form>
+              <div className="text-center mt-4">
+                <button type="button" onClick={() => { setBackupMode(v => !v); setTwofaCode(''); setError(''); }}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700">
+                  {backupMode ? 'Use a 6-digit code' : 'Use a backup code instead'}
+                </button>
+              </div>
+              <p className="text-sm text-slate-500 text-center mt-6">
+                <button type="button" onClick={cancelTwofa} className="font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
+                  <ArrowLeft size={14} /> Back to sign in
+                </button>
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Mode toggle */}
           {!isForgot && (
             <div className="flex p-1 mb-8 bg-slate-100 rounded-xl">
@@ -246,6 +316,8 @@ export default function Login() {
           <p className="text-[11px] text-slate-400 text-center mt-3">
             <a href="/privacy" className="hover:text-slate-600">Privacy Policy</a>
           </p>
+          </>
+          )}
 
         </div>
       </div>

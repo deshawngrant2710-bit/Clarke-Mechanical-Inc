@@ -8,6 +8,7 @@ import { Sparkles, Send, ExternalLink } from 'lucide-react';
 const SUGGESTIONS = [
   'Create a job for Jane Doe — AC not cooling — next Tuesday',
   'Draft an estimate for a new furnace install',
+  'Draft a service agreement for 3602 Mermaid Ave — gas fired boilers, 12 months, $1,400',
   'Add a new customer named Rivera Plumbing',
 ];
 
@@ -35,7 +36,7 @@ export default function AdminAssistant() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Assistant" subtitle="Ask me to create jobs, estimates, invoices, and more" icon={<Sparkles size={20} />} />
+      <PageHeader title="Assistant" subtitle="Ask me to create jobs, estimates, invoices, service agreements, and more" icon={<Sparkles size={20} />} />
       <Card className="overflow-hidden max-w-3xl">
         <div className="flex flex-col h-[32rem] bg-slate-50/60">
           <div className="flex-1 overflow-y-auto p-4 space-y-3">

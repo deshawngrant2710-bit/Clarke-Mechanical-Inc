@@ -49,9 +49,9 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         onClick={onClose}
         className={`fixed inset-0 z-30 bg-slate-900/50 lg:hidden transition-opacity duration-200 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       />
-      <aside className={`fixed lg:sticky inset-y-0 left-0 top-0 z-40 flex flex-col w-64 h-dvh bg-gradient-to-b from-slate-900 to-slate-950 text-white shrink-0 border-r border-slate-800 transform transition-transform duration-200 ease-out ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside className={`fixed lg:sticky inset-y-0 left-0 top-0 z-40 flex flex-col w-64 h-dvh bg-[#0b1730] text-white shrink-0 border-r border-[#17213c] transform transition-transform duration-200 ease-out ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-800/80">
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-[#17213c]">
           <Logo variant="icon" height={36} className="shrink-0" />
           <div className="min-w-0">
             <p className="font-bold text-sm leading-tight text-white">Clarke</p>
@@ -60,7 +60,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
           {(user?.role === 'admin' || user?.role === 'office') && (
             <div className="ml-auto"><NotificationBell variant="dark" /></div>
           )}
-          <button onClick={onClose} aria-label="Close menu" className="lg:hidden p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white">
+          <button onClick={onClose} aria-label="Close menu" className="lg:hidden p-1.5 -mr-1 rounded-lg text-slate-400 hover:bg-[#17233f] hover:text-white">
             <X size={20} />
           </button>
         </div>
@@ -68,9 +68,9 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
         {user?.role !== 'customer' && (
           <form onSubmit={doSearch} className="px-3 pt-3">
             <div className="relative">
-              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…"
-                className="w-full pl-8 pr-2 py-2 rounded-lg bg-slate-800/70 text-sm text-white placeholder:text-slate-500 outline-none focus:bg-slate-800 border border-transparent focus:border-slate-700" />
+                className="w-full pl-9 pr-2 py-2.5 rounded-xl bg-[#12213f] text-sm text-white placeholder:text-slate-500 outline-none focus:bg-[#17233f] border border-transparent focus:border-[#25315a] transition-colors" />
             </div>
           </form>
         )}
@@ -79,7 +79,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       <nav className="flex-1 min-h-0 px-3 pt-4 pb-6 overflow-y-auto overscroll-contain app-nav">
         {navGroups.map(group => (
           <div key={group.label} className="mb-5">
-            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">{group.label}</p>
+            <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{group.label}</p>
             <div className="space-y-0.5">
               {group.items.map(({ to, icon: Icon, label }) => (
                 <NavLink
@@ -88,20 +88,19 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
                   end={to === '/'}
                   onClick={onClose}
                   className={({ isActive }) =>
-                    `group relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                    `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors duration-150 ${
                       isActive
-                        ? 'bg-blue-600 text-white shadow-[0_4px_14px_-4px_rgb(37_99_235_/_0.6)]'
-                        : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'
+                        ? 'bg-[#0b2265] text-white font-semibold'
+                        : 'text-slate-400 font-medium hover:bg-[#17233f] hover:text-white'
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      {isActive && <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-blue-400" />}
                       <Icon size={18} className="shrink-0" />
                       {label}
                       {to === '/support' && waitingChats > 0 && (
-                        <span className="ml-auto min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-bold">{waitingChats}</span>
+                        <span className={`ml-auto min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full text-[11px] font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>{waitingChats}</span>
                       )}
                     </>
                   )}
@@ -113,23 +112,25 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
       </nav>
 
       {/* User (hidden in the native app — replaced by the bottom bar + My Account panel) */}
-      <div className="px-4 py-4 border-t border-slate-800/80 safe-bottom sidebar-user">
+      <div className="px-3 py-3 border-t border-[#17213c] safe-bottom sidebar-user">
         {/* Display only — not a link. Account is reached via the "My Account" nav item. */}
-        <div className="flex items-center gap-3 mb-3 px-1 py-1">
-          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-xs font-bold uppercase shadow-md shrink-0">
+        <div className="flex items-center gap-3 px-2 py-1.5 rounded-xl">
+          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-[#22315a] text-[#cdd8f2] text-xs font-bold uppercase shrink-0">
             {user?.name?.[0] || 'U'}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold truncate">{user?.name}</p>
-            <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold truncate leading-tight">{user?.name}</p>
+            <p className="text-xs text-slate-400 capitalize leading-tight">{user?.role}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            aria-label="Sign out"
+            className="p-2 -mr-1 rounded-lg text-slate-400 hover:bg-[#17233f] hover:text-white transition-colors shrink-0"
+          >
+            <LogOut size={17} />
+          </button>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-        >
-          <LogOut size={16} /> Sign out
-        </button>
       </div>
       </aside>
     </>

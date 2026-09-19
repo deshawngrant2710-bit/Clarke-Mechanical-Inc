@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import toast from 'react-hot-toast';
 import { User, Mail, Phone, Lock, LogOut, Trash2, ShieldCheck, Save, ChevronDown, CheckCircle, AlertCircle } from 'lucide-react';
+import TwoFactorSettings from '../components/TwoFactorSettings';
 
 const roleLabel = { admin: 'Administrator', office: 'Office', technician: 'Technician', customer: 'Customer' };
 
@@ -204,6 +205,11 @@ export default function Account() {
         )}
       </div>
       )}
+
+      {/* Two-step verification — available to every role */}
+      <div className="mb-5">
+        <TwoFactorSettings />
+      </div>
 
       {/* Danger zone — customers can delete their own account (App Store requirement) */}
       {user?.role === 'customer' && (

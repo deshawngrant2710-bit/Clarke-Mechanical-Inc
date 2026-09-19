@@ -95,6 +95,17 @@ export default function Settings() {
     finally { setBusy(''); }
   }
 
+  // Fires a push to your own registered device(s) so you can confirm iOS push works.
+  async function sendTestPush() {
+    setBusy('push');
+    const tId = toast.loading('Sending test notification…');
+    try {
+      const { data } = await api.post('/notifications/test');
+      toast.success(`Sent to ${data.devices} device${data.devices === 1 ? '' : 's'} — check your phone.`, { id: tId, duration: 6000 });
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not send the test notification', { id: tId, duration: 7000 }); }
+    finally { setBusy(''); }
+  }
+
   async function runReminders() {
     setBusy('reminders');
     const tId = toast.loading('Running reminders…');
@@ -174,6 +185,17 @@ export default function Settings() {
                 <Receipt size={15} /> Test Receipt
               </Btn>
             </div>
+          </div>
+
+          <div className="px-5 pb-5 pt-4 border-t border-slate-100">
+            <p className="text-sm font-semibold text-slate-700 mb-1">Test push notifications</p>
+            <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+              Sends a push to your own phone to confirm iOS notifications work. Open the app on your iPhone,
+              sign in as this user and allow notifications first, then tap below.
+            </p>
+            <Btn variant="outline" onClick={sendTestPush} loading={busy === 'push'}>
+              <BellRing size={15} /> Send test notification
+            </Btn>
           </div>
         </Card>
 

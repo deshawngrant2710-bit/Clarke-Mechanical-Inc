@@ -605,36 +605,80 @@ async function buildPdfBlob(opts) {
   return pdf.output('blob');
 }
 
-// Shares the document as a real PDF. On phones/tablets this opens the native
-// share sheet (WhatsApp, Mail, Messages…); everywhere else it downloads the file.
-// Returns { shared, method }.
-export async function sharePdf(opts) {
-  const { pdfFilename } = await import('./pdfDoc');
-  const filename = pdfFilename(opts);
-  const blob = await buildPdfBlob(opts);
-  const file = new File([blob], filename, { type: 'application/pdf' });
-
-  let canShareFiles = false;
-  try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch { canShareFiles = false; }
-
-  if (canShareFiles) {
-    try {
-      await navigator.share({ files: [file], title: filename.replace(/\.pdf$/, '') });
-      return { shared: true, method: 'share' };
-    } catch (e) {
-      if (e && e.name === 'AbortError') return { shared: false, method: 'cancel' };
-      // fall through to a download
-    }
-  }
-  downloadBlob(blob, filename);
-  return { shared: false, method: 'download' };
+// True on the native app or a phone/tablet, where a hidden-link download does
+// NOT work (WKWebView/mobile Safari) — we must share or open a print preview.
+function isMobileOrNative() {
+  try {
+    if (window.Capacitor?.isNativePlatform?.()) return true;
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+  } catch { return false; }
 }
 
-// Downloads the document as a PDF (no share sheet).
+// Shares the document as a real PDF. On phones/tablets this opens the native
+// share sheet (WhatsApp, Mail, Messages…); everywhere else it downloads the file.
+// If the vector PDF can't be built (old cached bundle, blocked chunk, etc.) we
+// fall back to the branded print preview so the user can still Save/AirPrint.
+// Returns { shared, method }.
+export async function sharePdf(opts) {
+  try {
+    const { pdfFilename } = await import('./pdfDoc');
+    const filename = pdfFilename(opts);
+    const blob = await buildPdfBlob(opts);
+    const file = new File([blob], filename, { type: 'application/pdf' });
+
+    let canShareFiles = false;
+    try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch { canShareFiles = false; }
+
+    if (canShareFiles) {
+      try {
+        await navigator.share({ files: [file], title: filename.replace(/\.pdf$/, '') });
+        return { shared: true, method: 'share' };
+      } catch (e) {
+        if (e && e.name === 'AbortError') return { shared: false, method: 'cancel' };
+        // fall through
+      }
+    }
+    // Can't share files: on desktop download the file; on mobile/native, where a
+    // hidden-link download is unreliable, open the print preview instead.
+    if (isMobileOrNative()) { printDocument(opts); return { shared: false, method: 'print' }; }
+    downloadBlob(blob, filename);
+    return { shared: false, method: 'download' };
+  } catch (e) {
+    console.error('[pdf] share failed, falling back to print preview:', e);
+    printDocument(opts);
+    return { shared: false, method: 'print-fallback' };
+  }
+}
+
+// Downloads the document as a PDF. On desktop this saves the file directly; on
+// the app / a phone it opens the native share sheet or the print preview
+// (AirPrint / “Save to Files”), since a silent file download isn't supported
+// there. Any failure falls back to the branded print preview.
 export async function downloadPdf(opts) {
-  const { pdfFilename } = await import('./pdfDoc');
-  downloadBlob(await buildPdfBlob(opts), pdfFilename(opts));
-  return { method: 'download' };
+  try {
+    const { pdfFilename } = await import('./pdfDoc');
+    const filename = pdfFilename(opts);
+    const blob = await buildPdfBlob(opts);
+
+    if (isMobileOrNative()) {
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      let canShareFiles = false;
+      try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch { canShareFiles = false; }
+      if (canShareFiles) {
+        try { await navigator.share({ files: [file], title: filename.replace(/\.pdf$/, '') }); return { method: 'share' }; }
+        catch (e) { if (e && e.name === 'AbortError') return { method: 'cancel' }; /* fall through */ }
+      }
+      printDocument(opts);
+      return { method: 'print' };
+    }
+
+    downloadBlob(blob, filename);
+    return { method: 'download' };
+  } catch (e) {
+    console.error('[pdf] download failed, falling back to print preview:', e);
+    printDocument(opts);
+    return { method: 'print-fallback' };
+  }
 }
 
 function downloadBlob(blob, filename) {

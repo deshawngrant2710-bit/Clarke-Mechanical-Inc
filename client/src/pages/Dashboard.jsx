@@ -17,7 +17,6 @@ import {
   ChevronDown, Plus, X,
 } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
-import Logo from '../components/Logo';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 
@@ -144,17 +143,34 @@ export default function Dashboard() {
   const techs = data.technicians || [];
   const availableTechs = techs.filter(t => !(t.active_jobs > 0)).length;
 
+  // Time-aware greeting + a live "at a glance" line built from today's numbers.
+  const firstName = user?.name?.trim()?.split(' ')[0] || 'User';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const money0 = (v) => `$${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  const glance = [
+    (data.todayJobs || 0) > 0 && `${data.todayJobs} ${data.todayJobs === 1 ? 'job' : 'jobs'} today`,
+    (data.emergencyJobs || 0) > 0 && `${data.emergencyJobs} emergency`,
+    (na.unassignedJobs || 0) > 0 && `${na.unassignedJobs} unassigned`,
+    (data.outstandingAmount || 0) > 0 && `${money0(data.outstandingAmount)} outstanding`,
+  ].filter(Boolean).join('  ·  ');
+
   return (
     <div className="animate-fade-in">
       {/* Hero */}
-      <div className="flex items-center justify-between mb-6 bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-sm)] px-6 py-5 relative overflow-hidden">
-        <div className="absolute -right-10 -top-16 w-64 h-64 rounded-full bg-gradient-to-br from-blue-500/5 to-transparent blur-2xl" />
-        <div className="flex items-center gap-4 relative">
-          <Logo variant="full" height={50} />
-        </div>
-        <div className="text-right relative">
-          <p className="text-sm font-semibold text-slate-700">Command Center</p>
-          <p className="text-xs text-slate-400">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+      <div className="mb-6 bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-sm)] px-6 py-5 relative overflow-hidden">
+        <div className="absolute -right-16 -top-20 w-72 h-72 rounded-full bg-gradient-to-br from-blue-500/10 to-transparent blur-2xl" />
+        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-400">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900">{greeting}, {firstName}</h1>
+            <p className="mt-1 text-sm text-slate-500">{glance || 'All clear — nothing urgent right now.'}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Btn onClick={() => navigate('/jobs?new=1')}><Plus size={16} /> New job</Btn>
+            <Btn variant="outline" onClick={() => navigate('/quotes?new=1')}><FilePlus size={16} /> New estimate</Btn>
+            <Btn variant="outline" onClick={() => navigate('/invoices?new=1')}><Receipt size={16} /> New invoice</Btn>
+          </div>
         </div>
       </div>
 

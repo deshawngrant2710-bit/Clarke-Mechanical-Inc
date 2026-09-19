@@ -49,8 +49,31 @@ export default function CustomerDetail() {
   const [saving, setSaving] = useState(false);
   const [tempData, setTempData] = useState(null);
   const [resettingPw, setResettingPw] = useState(false);
+  const [textModal, setTextModal] = useState(false);
+  const [textBody, setTextBody] = useState('');
+  const [texting, setTexting] = useState(false);
   const { user: authUser } = useAuth();
   const isAdmin = authUser?.role === 'admin';
+
+  // Call: copy the number and open Quo so staff dial from the business line.
+  async function callViaQuo() {
+    const num = (customer?.phone || '').replace(/[^\d+]/g, '');
+    try { await navigator.clipboard?.writeText(num); toast.success('Number copied — paste into Quo to dial'); }
+    catch { toast('Opening Quo — dial ' + num); }
+    window.open('https://my.quo.com', '_blank', 'noopener');
+  }
+
+  // Text: send from the business Quo number via our backend.
+  async function sendText() {
+    if (!textBody.trim()) return toast.error('Type a message');
+    setTexting(true);
+    try {
+      await api.post(`/customers/${id}/text`, { message: textBody.trim() });
+      toast.success('Text sent from Quo');
+      setTextModal(false); setTextBody('');
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not send the text'); }
+    finally { setTexting(false); }
+  }
 
   function load() {
     api.get(`/customers/${id}`).then(r => { setCustomer(r.data); setForm(r.data); });
@@ -156,8 +179,8 @@ export default function CustomerDetail() {
               {!customer.phone && !customer.email && !location && <p className="text-slate-400">No contact info on file</p>}
               {(customer.phone || customer.email || location) && (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {customer.phone && <a href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"><Phone size={12} /> Call</a>}
-                  {customer.phone && <a href={`sms:${customer.phone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><MessageSquare size={12} /> Text</a>}
+                  {customer.phone && <button type="button" onClick={callViaQuo} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"><Phone size={12} /> Call</button>}
+                  {customer.phone && <button type="button" onClick={() => { setTextBody(''); setTextModal(true); }} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><MessageSquare size={12} /> Text</button>}
                   {customer.email && <a href={`mailto:${customer.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"><Mail size={12} /> Email</a>}
                   {location && <a href={directionsLink(location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Navigation size={12} /> Directions</a>}
                 </div>
@@ -259,6 +282,15 @@ export default function CustomerDetail() {
       </Modal>
 
       <TempPasswordModal open={!!tempData} data={tempData} onClose={() => setTempData(null)} />
+
+      <Modal open={textModal} onClose={() => setTextModal(false)} title={`Text ${customer?.name || 'customer'}`}>
+        <p className="text-xs text-slate-500 mb-3">Sends from your Quo business number{customer?.phone ? ` to ${customer.phone}` : ''}. The reply threads in Quo.</p>
+        <Textarea label="Message" value={textBody} onChange={e => setTextBody(e.target.value)} rows={4} placeholder="Type your message…" />
+        <div className="flex justify-end gap-2 mt-4">
+          <Btn variant="outline" onClick={() => setTextModal(false)}>Cancel</Btn>
+          <Btn onClick={sendText} loading={texting} disabled={!textBody.trim()}><Send size={15} /> Send text</Btn>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -15,6 +15,7 @@ export const EQUIPMENT_TYPES = [
   { id: 'heat_pump', label: 'Heat Pump' },
   { id: 'furnace', label: 'Furnace' },
   { id: 'boiler', label: 'Boiler' },
+  { id: 'burner_tuneup', label: 'Boiler / Burner Tune-Up' },
   { id: 'mini_split', label: 'Mini-Split' },
   { id: 'pm', label: 'Preventive Maintenance' },
   { id: 'install_startup', label: 'Installation Startup' },
@@ -66,6 +67,43 @@ export const CHECKLIST_SECTIONS = [
       { key: 'boil_circulator', label: 'Circulator pump(s) operate quietly' },
       { key: 'boil_lwco', label: 'Low-water cutoff functions' },
       { key: 'boil_corrosion', label: 'No significant corrosion, scale, or soot' },
+    ],
+  },
+  {
+    id: 'burner_tuneup',
+    title: 'Boiler Burner Tune-Up',
+    scope: { equipment: ['burner_tuneup'] },
+    items: [
+      // Pre-check & safety
+      { key: 'bt_history', label: 'Reviewed service history / customer complaints' },
+      { key: 'bt_room', label: 'Boiler room clear; adequate combustion air; CO detector present' },
+      { key: 'bt_shutoff', label: 'Emergency shutoff switch present and operational' },
+      // Burner & fuel
+      { key: 'bt_blower', label: 'Burner motor & blower wheel cleaned; runs smooth, no noise' },
+      { key: 'bt_nozzle', label: 'Oil nozzle replaced (size/angle to spec) or gas orifice checked' },
+      { key: 'bt_electrodes', label: 'Electrodes cleaned, set and gapped to spec' },
+      { key: 'bt_fuel_pressure', label: 'Oil pump pressure set to spec / gas manifold pressure to spec' },
+      { key: 'bt_filter', label: 'Oil filter & pump strainer replaced / cleaned' },
+      { key: 'bt_fuel_lines', label: 'Fuel lines, valves & fittings leak-free' },
+      { key: 'bt_ignition', label: 'Ignition transformer / igniter output verified' },
+      { key: 'bt_flame_sensor', label: 'Cad cell / flame scanner cleaned; resistance within spec' },
+      // Air & combustion
+      { key: 'bt_air', label: 'Air bands / dampers adjusted for clean combustion' },
+      { key: 'bt_combustion', label: 'Combustion test performed (CO / CO₂ / O₂, stack temp, efficiency)' },
+      { key: 'bt_smoke', label: 'Smoke test (oil) — No. 1 or less (Bacharach scale)' },
+      { key: 'bt_draft', label: 'Draft over fire & at breech within spec' },
+      { key: 'bt_heatex', label: 'Heat exchanger / flueways / chamber inspected & cleaned of soot / scale' },
+      // Controls & safety
+      { key: 'bt_primary', label: 'Flame-safeguard / primary control safety timing tested' },
+      { key: 'bt_lwco', label: 'Low-water cutoff tested / blown down' },
+      { key: 'bt_relief', label: 'Pressure / temperature relief valve verified' },
+      { key: 'bt_controls', label: 'Aquastat / operating & limit controls tested and set' },
+      { key: 'bt_circulators', label: 'Circulator(s) / zone valves operate correctly' },
+      { key: 'bt_flue', label: 'Flue / venting clear, sealed, and properly pitched' },
+      // Finish
+      { key: 'bt_cycle', label: 'Boiler cycled through full firing sequence — verified' },
+      { key: 'bt_leaks', label: 'No water / oil / gas leaks; all gauges read correctly' },
+      { key: 'bt_review', label: 'Findings reviewed with customer' },
     ],
   },
   {
@@ -269,13 +307,27 @@ export const READINGS_SECTIONS = [
   {
     id: 'combustion',
     title: 'Readings — Combustion / Heating',
-    scope: { equipment: ['furnace', 'boiler', 'water_heater', 'pm', 'install_startup'] },
+    scope: { equipment: ['furnace', 'boiler', 'burner_tuneup', 'water_heater', 'pm', 'install_startup'] },
     items: [
       { key: 'rd_gas', label: 'Manifold / gas pressure', unit: 'in WC' },
       { key: 'rd_stack', label: 'Stack / flue temp', unit: '°F' },
       { key: 'rd_co', label: 'CO', unit: 'ppm' },
       { key: 'rd_co2', label: 'CO₂', unit: '%' },
       { key: 'rd_rise', label: 'Temperature rise', unit: '°F' },
+    ],
+  },
+  {
+    id: 'burner_eff',
+    title: 'Readings — Burner Efficiency',
+    scope: { equipment: ['burner_tuneup', 'boiler'] },
+    items: [
+      { key: 'rd_o2', label: 'Oxygen (O₂)', unit: '%' },
+      { key: 'rd_eff', label: 'Combustion efficiency', unit: '%' },
+      { key: 'rd_smoke', label: 'Smoke number (oil)', unit: '0–9' },
+      { key: 'rd_draft_fire', label: 'Draft over fire', unit: 'in WC' },
+      { key: 'rd_draft_breech', label: 'Draft at breech', unit: 'in WC' },
+      { key: 'rd_oil_pump', label: 'Oil pump pressure', unit: 'psi' },
+      { key: 'rd_ambient', label: 'Ambient / room temp', unit: '°F' },
     ],
   },
 ];
