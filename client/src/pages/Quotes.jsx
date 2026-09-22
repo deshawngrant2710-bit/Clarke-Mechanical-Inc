@@ -16,7 +16,7 @@ import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
 const emptyItem = () => ({ description: '', note: '', quantity: 1, unit_price: 0 });
-const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
+const emptyForm = () => ({ customer_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), expiry_date: '', items: [emptyItem()], tax_rate: 0.08875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const DRAFT_KEY = 'clarke_draft_estimate';
 const draftHasContent = (f) => !!(f && (f.customer_id
@@ -38,15 +38,15 @@ export default function Quotes() {
   const [saving, setSaving] = useState(false);
   const [emailTarget, setEmailTarget] = useState(null);
   const [emailing, setEmailing] = useState(false);
-  const [taxInput, setTaxInput] = useState('8.75');
-  const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
+  const [taxInput, setTaxInput] = useState('8.875');
+  const [defaultTaxPct, setDefaultTaxPct] = useState('8.875');
   const [priceBook, setPriceBook] = useState([]);
 
   function load() {
     Promise.all([api.get('/billing/quotes'), api.get('/customers'), api.get('/billing/config')])
       .then(([q, c, cfg]) => {
         setQuotes(q.data); setCustomers(c.data);
-        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.0875) * 10000) / 100));
+        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.08875) * 10000) / 100));
         setLoading(false);
       });
     api.get('/pricebook').then(r => setPriceBook(r.data)).catch(() => {});
@@ -73,7 +73,7 @@ export default function Quotes() {
         description: it.description || '', note: it.note || '',
         quantity: Number(it.quantity) || 1, unit_price: Number(it.unit_price) || 0,
       })),
-      tax_rate: Number(q.tax_rate) || 0.0875,
+      tax_rate: Number(q.tax_rate) || 0.08875,
       discount_pct: pct,
       deposit: Number(q.deposit) || 0,
       notes: q.notes || '',

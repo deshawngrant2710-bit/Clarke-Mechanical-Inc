@@ -17,7 +17,7 @@ import SheetSelect from '../components/SheetSelect';
 import RichTextInput from '../components/RichTextInput';
 
 const emptyItem = () => ({ description: '', note: '', quantity: 1, unit_price: 0 });
-const emptyForm = () => ({ customer_id: '', job_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', items: [emptyItem()], tax_rate: 0.0875, discount_pct: 0, deposit: 0, notes: '' });
+const emptyForm = () => ({ customer_id: '', job_id: '', status: 'draft', issue_date: new Date().toISOString().slice(0, 10), due_date: '', items: [emptyItem()], tax_rate: 0.08875, discount_pct: 0, deposit: 0, notes: '' });
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const DRAFT_KEY = 'clarke_draft_invoice';
 const draftHasContent = (f) => !!(f && (f.customer_id
@@ -35,8 +35,8 @@ export default function Invoices() {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [reminding, setReminding] = useState(false);
-  const [taxInput, setTaxInput] = useState('8.75');
-  const [defaultTaxPct, setDefaultTaxPct] = useState('8.75');
+  const [taxInput, setTaxInput] = useState('8.875');
+  const [defaultTaxPct, setDefaultTaxPct] = useState('8.875');
   const [priceBook, setPriceBook] = useState([]);
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,7 +46,7 @@ export default function Invoices() {
       .then(([inv, cust, cfg]) => {
         setInvoices(inv.data); setCustomers(cust.data);
         cacheSet('/billing/invoices', inv.data); cacheSet('/customers', cust.data);
-        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.0875) * 10000) / 100));
+        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.08875) * 10000) / 100));
         setLoading(false);
       });
     api.get('/pricebook').then(r => setPriceBook(r.data)).catch(() => {});

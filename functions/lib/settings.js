@@ -10,7 +10,7 @@ const DEFAULTS = {
   business_hours: 'Mon–Fri · 8:00 AM – 6:00 PM',
   business_website: '',
   business_tagline: 'Mechanical Expertise You Can Trust.',
-  default_tax_rate: '0.0875',
+  default_tax_rate: '0.08875',
   smtp_host: process.env.SMTP_HOST || '',
   smtp_port: process.env.SMTP_PORT || '587',
   smtp_user: process.env.SMTP_USER || '',
