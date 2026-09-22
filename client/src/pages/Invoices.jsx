@@ -46,7 +46,7 @@ export default function Invoices() {
       .then(([inv, cust, cfg]) => {
         setInvoices(inv.data); setCustomers(cust.data);
         cacheSet('/billing/invoices', inv.data); cacheSet('/customers', cust.data);
-        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.08875) * 10000) / 100));
+        setDefaultTaxPct(String(Math.round((Number(cfg.data.default_tax_rate) || 0.08875) * 100000) / 1000));
         setLoading(false);
       });
     api.get('/pricebook').then(r => setPriceBook(r.data)).catch(() => {});
@@ -363,9 +363,9 @@ export default function Invoices() {
             <div className="flex justify-between items-center text-slate-600">
               <span className="flex items-center gap-2">Tax
                 <span className="inline-flex items-center gap-1">
-                  <input type="number" min="0" step="0.01" value={taxInput}
+                  <input type="number" min="0" step="0.001" value={taxInput}
                     onChange={e => { setTaxInput(e.target.value); setForm(f => ({ ...f, tax_rate: (parseFloat(e.target.value) || 0) / 100 })); }}
-                    className="w-16 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+                    className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm text-right focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
                   <span className="text-slate-400">%</span>
                 </span>
               </span>
