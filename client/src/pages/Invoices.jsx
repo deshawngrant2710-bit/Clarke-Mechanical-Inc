@@ -11,6 +11,7 @@ import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, Al
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { sharePdf } from '../lib/printDoc';
+import { CalculatorButton } from '../components/Calculator';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
 import RichTextInput from '../components/RichTextInput';
@@ -290,6 +291,9 @@ export default function Invoices() {
           </div>
         }>
         <div className="space-y-3">
+          <div className="flex justify-end">
+            <CalculatorButton />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <SheetSelect label="Customer" title="Select customer" searchable placeholder="Select customer"
               value={form.customer_id}

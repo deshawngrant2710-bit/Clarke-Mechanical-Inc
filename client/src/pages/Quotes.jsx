@@ -11,6 +11,7 @@ import {
 } from '../components/UI';
 import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer, Share2 } from 'lucide-react';
 import { printDocument, sharePdf } from '../lib/printDoc';
+import { CalculatorButton } from '../components/Calculator';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 
@@ -299,6 +300,9 @@ export default function Quotes() {
 
       <Modal open={modal} onClose={closeModal} title={editingId ? 'Edit Quote' : 'New Quote'} subtitle={editingId ? 'Update this estimate' : 'Build a professional estimate'} size="xl">
         <div className="space-y-3">
+          <div className="flex justify-end">
+            <CalculatorButton />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Select label="Customer" value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}>
               <option value="">Select customer</option>
