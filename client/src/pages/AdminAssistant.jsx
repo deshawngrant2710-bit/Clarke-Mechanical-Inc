@@ -4,12 +4,13 @@ import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card } from '../components/UI';
 import { Sparkles, Send, ExternalLink } from 'lucide-react';
+import AiPartPricer from '../components/AiPartPricer';
 
 const SUGGESTIONS = [
   'Create a job for Jane Doe — AC not cooling — next Tuesday',
   'Draft an estimate for a new furnace install',
+  'What should I charge for a new circulator pump, installed?',
   'Draft a service agreement for 3602 Mermaid Ave — gas fired boilers, 12 months, $1,400',
-  'Add a new customer named Rivera Plumbing',
 ];
 
 export default function AdminAssistant() {
@@ -36,7 +37,7 @@ export default function AdminAssistant() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Assistant" subtitle="Ask me to create jobs, estimates, invoices, service agreements, and more" icon={<Sparkles size={20} />} />
+      <PageHeader title="Assistant" subtitle="Ask about pricing, snap a part photo to price it, or create jobs, estimates, invoices, and more" icon={<Sparkles size={20} />} />
       <Card className="overflow-hidden max-w-3xl">
         <div className="flex flex-col h-[32rem] bg-slate-50/60">
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -83,7 +84,10 @@ export default function AdminAssistant() {
             <div ref={endRef} />
           </div>
           <div className="border-t border-slate-100 bg-white p-3">
-            <div className="flex items-center gap-2 bg-slate-100 rounded-full pl-4 pr-1.5 py-1 focus-within:ring-2 focus-within:ring-blue-500/30">
+            <div className="flex items-center gap-2 bg-slate-100 rounded-full pl-1.5 pr-1.5 py-1 focus-within:ring-2 focus-within:ring-blue-500/30">
+              <AiPartPricer iconOnly
+                onApply={({ description, unit_price }) => setMessages(m => [...m, { role: 'assistant', text: `🔧 ${description} — estimated $${(Number(unit_price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (AI estimate — confirm before quoting).` }])}
+                triggerClassName="flex items-center justify-center w-9 h-9 rounded-full bg-white text-blue-600 border border-slate-200 hover:bg-blue-50 shrink-0" />
               <input value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
                 placeholder="e.g. Create an invoice for Jane Doe: 2 hours labor at $110"

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import AiPartPricer from './AiPartPricer';
 
 // Description input with a searchable price-book dropdown.
 // - Type freely for a custom line, or pick an item to auto-fill its price.
@@ -25,17 +26,24 @@ export default function PriceItemInput({ value, onChange, onPick, items = [], pl
 
   return (
     <div ref={ref} className={`relative ${className}`}>
-      <input value={value} placeholder={placeholder}
-        onChange={e => { onChange(e.target.value); setOpen(true); setActive(0); }}
-        onFocus={() => items.length && setOpen(true)}
-        onKeyDown={e => {
-          if (!open || !matches.length) return;
-          if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, matches.length - 1)); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
-          else if (e.key === 'Enter') { e.preventDefault(); pick(matches[active]); }
-          else if (e.key === 'Escape') { setOpen(false); }
-        }}
-        className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+      <div className="flex items-stretch gap-1.5">
+        <input value={value} placeholder={placeholder}
+          onChange={e => { onChange(e.target.value); setOpen(true); setActive(0); }}
+          onFocus={() => items.length && setOpen(true)}
+          onKeyDown={e => {
+            if (!open || !matches.length) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, matches.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
+            else if (e.key === 'Enter') { e.preventDefault(); pick(matches[active]); }
+            else if (e.key === 'Escape') { setOpen(false); }
+          }}
+          className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/15 focus:border-blue-500" />
+        {onPick && (
+          <AiPartPricer iconOnly initialDescription={value}
+            onApply={({ description, unit_price }) => { onPick({ name: description, unit_price }); setOpen(false); }}
+            triggerClassName="shrink-0 inline-flex items-center justify-center px-2.5 rounded-lg border border-slate-200 bg-white text-blue-600 hover:border-blue-300 hover:bg-blue-50" />
+        )}
+      </div>
       {open && matches.length > 0 && (
         <div className="absolute z-40 mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
           {matches.map((it, i) => (

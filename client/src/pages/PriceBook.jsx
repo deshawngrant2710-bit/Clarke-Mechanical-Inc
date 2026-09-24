@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AiPartPricer from '../components/AiPartPricer';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import {
@@ -159,6 +160,11 @@ export default function PriceBook() {
 
       <Modal open={modal} onClose={() => setModal(false)} title={editId ? 'Edit Item' : 'New Price Book Item'}>
         <div className="space-y-3">
+          <div className="flex justify-end">
+            <AiPartPricer label="Identify a part from a photo"
+              initialDescription={form.name}
+              onApply={({ description, unit_price }) => setForm(f => ({ ...f, name: description, unit_price }))} />
+          </div>
           <Input label="Item / service name *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Rooftop unit annual maintenance" />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Category" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="e.g. Maintenance" />

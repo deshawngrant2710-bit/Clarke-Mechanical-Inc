@@ -37,6 +37,7 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/assistant', require('./routes/assistant'));
+app.use('/api/ai', require('./routes/ai'));
 app.use('/api/cron', require('./routes/cron'));
 app.use('/api/quo', require('./routes/quo'));
 app.use('/api/leads', require('./routes/leads'));
