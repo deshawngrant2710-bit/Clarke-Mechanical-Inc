@@ -5,7 +5,7 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Empty, SkeletonPage, Badge,
   Table, Row, Cell,
 } from '../components/UI';
-import { ShoppingCart, Plus, PlusCircle, Trash2, Mail, Printer, PackageCheck, Building2 } from 'lucide-react';
+import { ShoppingCart, Plus, PlusCircle, Trash2, Mail, Printer, PackageCheck, Building2, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { printHtml } from '../lib/printDoc';
 
@@ -176,44 +176,79 @@ export default function Purchasing() {
   );
 }
 
-function VendorsModal({ open, onClose, vendors, onDone }) {
-  const [form, setForm] = useState({ name: '', email: '', phone: '' });
-  const [saving, setSaving] = useState(false);
+const emptyVendor = () => ({ name: '', email: '', phone: '', address: '', contact_name: '', contact_phone: '', notes: '' });
 
-  async function add() {
+function VendorsModal({ open, onClose, vendors, onDone }) {
+  const [form, setForm] = useState(emptyVendor());
+  const [editId, setEditId] = useState(null);   // null = adding a new vendor
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  function startEdit(v) {
+    setEditId(v.id);
+    setForm({
+      name: v.name || '', email: v.email || '', phone: v.phone || '', address: v.address || '',
+      contact_name: v.contact_name || '', contact_phone: v.contact_phone || '', notes: v.notes || '',
+    });
+  }
+  function cancelEdit() { setEditId(null); setForm(emptyVendor()); }
+
+  async function save() {
     if (!form.name.trim()) return toast.error('Vendor name is required');
     setSaving(true);
-    try { await api.post('/purchasing/vendors', form); toast.success('Vendor added'); setForm({ name: '', email: '', phone: '' }); onDone(); }
-    catch (e) { toast.error(e.response?.data?.error || 'Could not add'); }
+    try {
+      if (editId) { await api.put(`/purchasing/vendors/${editId}`, form); toast.success('Vendor updated'); }
+      else { await api.post('/purchasing/vendors', form); toast.success('Vendor added'); }
+      cancelEdit(); onDone();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not save'); }
     finally { setSaving(false); }
   }
   async function del(v) {
     if (!window.confirm(`Delete vendor "${v.name}"?`)) return;
-    try { await api.delete(`/purchasing/vendors/${v.id}`); toast.success('Deleted'); onDone(); }
+    try { await api.delete(`/purchasing/vendors/${v.id}`); toast.success('Deleted'); if (editId === v.id) cancelEdit(); onDone(); }
     catch { toast.error('Could not delete'); }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Vendors" subtitle="Suppliers you order from" size="md">
+    <Modal open={open} onClose={onClose} title="Vendors" subtitle="Suppliers you order from — add, edit, or remove" size="md">
       <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <Input label="Name *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. H & B Supply" />
-          <Input label="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="orders@vendor.com" />
-          <Input label="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(555) 000-0000" />
+        <div className="rounded-xl border border-slate-200 p-3 space-y-2.5">
+          <p className="text-xs font-semibold text-slate-500">{editId ? 'Edit vendor' : 'Add a vendor'}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Input label="Name *" value={form.name} onChange={set('name')} placeholder="e.g. AMAF Supply" />
+            <Input label="Phone" value={form.phone} onChange={set('phone')} placeholder="(555) 000-0000" />
+          </div>
+          <Input label="Address" value={form.address} onChange={set('address')} placeholder="Street, city, state ZIP" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Input label="Contact name" value={form.contact_name} onChange={set('contact_name')} placeholder="e.g. Matt Lupardo" />
+            <Input label="Contact number" value={form.contact_phone} onChange={set('contact_phone')} placeholder="Direct / cell" />
+          </div>
+          <Input label="Email" value={form.email} onChange={set('email')} placeholder="orders@vendor.com" />
+          <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Account #, delivery info, etc." />
+          <div className="flex justify-end gap-2">
+            {editId && <Btn size="sm" variant="outline" onClick={cancelEdit}>Cancel</Btn>}
+            <Btn size="sm" onClick={save} loading={saving}>{editId ? <><Building2 size={14} /> Save changes</> : <><Plus size={14} /> Add vendor</>}</Btn>
+          </div>
         </div>
-        <div className="flex justify-end"><Btn size="sm" onClick={add} loading={saving}><Plus size={14} /> Add vendor</Btn></div>
+
         <div className="border-t border-slate-100 pt-3">
           {vendors.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-2">No vendors yet.</p>
           ) : (
             <div className="divide-y divide-slate-100">
               {vendors.map(v => (
-                <div key={v.id} className="flex items-center justify-between py-2">
+                <div key={v.id} className={`flex items-start justify-between gap-2 py-2 px-1 rounded-lg ${editId === v.id ? 'bg-blue-50/60' : ''}`}>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800">{v.name}</p>
-                    <p className="text-xs text-slate-400 truncate">{[v.email, v.phone].filter(Boolean).join(' · ') || '—'}</p>
+                    <p className="text-xs text-slate-400 truncate">{[v.phone, v.email, v.address].filter(Boolean).join(' · ') || '—'}</p>
+                    {(v.contact_name || v.contact_phone) && (
+                      <p className="text-xs text-slate-500 truncate">Contact: {[v.contact_name, v.contact_phone].filter(Boolean).join(' · ')}</p>
+                    )}
                   </div>
-                  <button onClick={() => del(v)} className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => startEdit(v)} title="Edit" className="p-1.5 text-slate-400 hover:text-blue-600"><Pencil size={14} /></button>
+                    <button onClick={() => del(v)} title="Delete" className="p-1.5 text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
                 </div>
               ))}
             </div>

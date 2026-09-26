@@ -10,7 +10,10 @@ router.use(authMiddleware, requireRole('admin', 'office'));
 /* ------------------------------ Vendors ------------------------------ */
 const cleanVendor = (b) => ({
   name: (b.name || '').trim(), email: b.email || null, phone: b.phone || null,
-  address: b.address || null, notes: b.notes || null,
+  address: b.address || null,
+  contact_name: b.contact_name || null,   // external contact person
+  contact_phone: b.contact_phone || null, // their direct / cell number
+  notes: b.notes || null,
 });
 
 router.get('/vendors', async (req, res) => {
