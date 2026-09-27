@@ -27,16 +27,16 @@ function fmtDate(d) {
  * @param opts { kind, doc, business, customer, receipt, logo }  logo = dataURL (optional)
  */
 function renderPdf(jsPDFCtor, opts) {
-  if (opts.kind === 'proposal') return renderProposal(jsPDFCtor, opts);
   const { kind, doc = {}, business = {}, customer = {}, receipt = null, logo = null } = opts;
   const pdf = new jsPDFCtor({ unit: 'pt', format: 'letter', compress: true });
   const isReceipt = kind === 'receipt';
   const isQuote = kind === 'quote';
-  const isInvoice = !isReceipt && !isQuote;
+  const isProposal = kind === 'proposal';
+  const isInvoice = kind === 'invoice';
 
-  const title = isReceipt ? 'RECEIPT' : isQuote ? 'SERVICE ESTIMATE' : 'INVOICE';
+  const title = isReceipt ? 'RECEIPT' : isQuote ? 'SERVICE ESTIMATE' : isProposal ? 'PROPOSAL' : 'INVOICE';
   const bizName = business.name || 'Clarke Mechanical Inc.';
-  const number = receipt ? receipt.receipt_number : (isQuote ? doc.quote_number : doc.invoice_number);
+  const number = receipt ? receipt.receipt_number : (isQuote ? doc.quote_number : isProposal ? doc.proposal_number : doc.invoice_number);
 
   const payments = doc.payments || [];
   const total = Number(doc.total) || 0;
@@ -81,11 +81,11 @@ function renderPdf(jsPDFCtor, opts) {
 
   /* ---------------- Meta (right column) ---------------- */
   const metaRows = [
-    [`${isReceipt ? 'Receipt' : isQuote ? 'Estimate' : 'Invoice'} #`, number || ''],
+    [`${isReceipt ? 'Receipt' : isQuote ? 'Estimate' : isProposal ? 'Proposal' : 'Invoice'} #`, number || ''],
     ...(receipt ? [['For invoice', receipt.invoice_number || doc.invoice_number || '']] : []),
     ['Date', fmtDate(doc.issue_date)],
     isReceipt ? ['Payment date', fmtDate(receipt ? receipt.paid_at : (payments.length ? payments[payments.length - 1].paid_at : null))]
-      : isQuote ? ['Valid until', fmtDate(doc.expiry_date)]
+      : (isQuote || isProposal) ? ['Valid until', fmtDate(doc.expiry_date)]
       : ['Due date', fmtDate(doc.due_date)],
   ];
 
@@ -190,11 +190,11 @@ function renderPdf(jsPDFCtor, opts) {
   // Grand total bar
   box(tx - 12, y - 12, R - tx + 12, 26, NAVY);
   setFont(11, 'bold', [255, 255, 255]);
-  pdf.text(isQuote ? 'ESTIMATED TOTAL' : 'TOTAL', tx, y + 5);
+  pdf.text((isQuote || isProposal) ? 'ESTIMATED TOTAL' : 'TOTAL', tx, y + 5);
   pdf.text(money(total), R - 8, y + 5, { align: 'right' });
   y += 32;
 
-  if (!isQuote && paid > 0) {
+  if (isInvoice && paid > 0) {
     totRow('Amount paid', `-${money(paid)}`, { color: GREEN });
     const barColor = balance > 0 ? RED : GREEN;
     box(tx - 12, y - 12, R - tx + 12, 26, barColor);
@@ -202,22 +202,54 @@ function renderPdf(jsPDFCtor, opts) {
     pdf.text('BALANCE DUE', tx, y + 5);
     pdf.text(money(balance), R - 8, y + 5, { align: 'right' });
     y += 34;
-  } else if (isQuote && doc.deposit) {
+  } else if ((isQuote || isProposal) && doc.deposit) {
     totRow('Deposit requested', money(doc.deposit));
   }
 
-  /* ---------------- Notes ---------------- */
-  const notes = plain(doc.notes);
-  if (notes) {
+  /* ---------------- Details / Notes ---------------- */
+  if (isProposal && (doc.body || doc.notes)) {
     if (y > PAGE.h - 160) newPage();
     y += 8;
-    setFont(8.5, 'bold', MUTED);
-    pdf.text(isQuote ? 'SCOPE OF WORK / NOTES' : 'NOTES', L, y);
-    y += 13;
-    setFont(9, 'normal', INK);
-    const nl = pdf.splitTextToSize(notes, R - L);
-    pdf.text(nl, L, y);
-    y += nl.length * 12 + 6;
+    setFont(8.5, 'bold', MUTED); pdf.text('DETAILS', L, y); y += 14;
+    for (const b of htmlToBlocks(doc.body || doc.notes)) {
+      if (b.spacer) { y += 5; continue; }
+      const size = b.heading ? 11 : 9;
+      setFont(size, b.bold ? 'bold' : 'normal', b.heading ? NAVY : INK);
+      const indent = b.bullet ? 12 : 0;
+      const lines = pdf.splitTextToSize((b.bullet ? '•  ' : '') + b.text, R - L - indent);
+      if (y + lines.length * (size + 3) > PAGE.h - 90) newPage();
+      if (b.heading) y += 3;
+      pdf.text(lines, L + indent, y);
+      y += lines.length * (size + 3) + (b.heading ? 3 : 2);
+    }
+  } else {
+    const notes = plain(doc.notes);
+    if (notes) {
+      if (y > PAGE.h - 160) newPage();
+      y += 8;
+      setFont(8.5, 'bold', MUTED);
+      pdf.text(isQuote ? 'SCOPE OF WORK / NOTES' : 'NOTES', L, y);
+      y += 13;
+      setFont(9, 'normal', INK);
+      const nl = pdf.splitTextToSize(notes, R - L);
+      pdf.text(nl, L, y);
+      y += nl.length * 12 + 6;
+    }
+  }
+
+  /* ---------------- Payment schedule (proposals) ---------------- */
+  const milestones = isProposal ? (doc.milestones || []) : [];
+  if (milestones.length) {
+    if (y > PAGE.h - 130) newPage();
+    y += 8;
+    setFont(8.5, 'bold', MUTED); pdf.text('PAYMENT SCHEDULE', L, y); y += 14;
+    milestones.forEach((m) => {
+      setFont(9, 'normal', INK);
+      pdf.text('•  ' + plain(m.label) + (m.due ? `  (${fmtDate(m.due)})` : ''), L + 2, y);
+      setFont(9, 'bold', INK);
+      pdf.text(`${m.percent != null && m.percent !== '' ? m.percent + '%  ' : ''}${money(m.amount)}`, R, y, { align: 'right' });
+      y += 14;
+    });
   }
 
   /* ---------------- How to pay (invoices) ---------------- */

@@ -46,6 +46,7 @@ export function buildDocumentHtml(opts, printOpts = {}) {
   // receipts have their own (payment-focused) layout.
   if (opts.kind === 'quote') return buildEstimateHtml(opts, printOpts);
   if (opts.kind === 'invoice') return buildEstimateHtml({ ...opts, variant: 'invoice' }, printOpts);
+  if (opts.kind === 'proposal') return buildEstimateHtml({ ...opts, variant: 'proposal' }, printOpts);
   return buildPaymentDocHtml(opts, printOpts);
 }
 
@@ -273,8 +274,9 @@ const FOOT_CONTACT = {
 
 function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote' }, { autoPrint = false } = {}) {
   const isInv = variant === 'invoice';
+  const isProp = variant === 'proposal';
   const bizName = business.name || 'Clarke Mechanical Inc.';
-  const number = (isInv ? doc.invoice_number : doc.quote_number) || '';
+  const number = (isProp ? doc.proposal_number : isInv ? doc.invoice_number : doc.quote_number) || '';
 
   // Invoice-only figures.
   const payments = doc.payments || [];
@@ -399,10 +401,10 @@ function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote
 
       <div class="brand"><img src="${LOGO_URL}" alt="${esc(bizName)}" /></div>
 
-      <div class="title-wrap"><span class="rule"></span><h1 class="title">${isInv ? 'INVOICE' : 'SERVICE ESTIMATE'}</h1><span class="rule"></span></div>
+      <div class="title-wrap"><span class="rule"></span><h1 class="title">${isInv ? 'INVOICE' : isProp ? 'PROPOSAL' : 'SERVICE ESTIMATE'}</h1><span class="rule"></span></div>
 
       <div class="meta">
-        <div class="mrow"><span class="mlabel">${isInv ? 'Invoice' : 'Estimate'} #:</span><span class="mval">${esc(number)}</span></div>
+        <div class="mrow"><span class="mlabel">${isInv ? 'Invoice' : isProp ? 'Proposal' : 'Estimate'} #:</span><span class="mval">${esc(number)}</span></div>
         <div class="mrow"><span class="mlabel">Date:</span><span class="mval">${fmtDate(doc.issue_date)}</span></div>
         <div class="mrow"><span class="mlabel">${isInv ? 'Due Date:' : 'Valid Until:'}</span><span class="mval">${isInv ? (doc.due_date ? fmtDate(doc.due_date) : '') : (doc.expiry_date ? fmtDate(doc.expiry_date) : '')}</span></div>
       </div>
@@ -433,8 +435,8 @@ function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote
 
       <div class="mid">
         <div class="scope">
-          <h3>${isInv ? 'NOTES:' : 'SCOPE OF WORK / NOTES:'}</h3>
-          <div class="scope-box">${doc.notes ? sanitizeRich(doc.notes) : ''}</div>
+          <h3>${isInv ? 'NOTES:' : isProp ? 'DETAILS:' : 'SCOPE OF WORK / NOTES:'}</h3>
+          <div class="scope-box">${isProp ? sanitizeRich(doc.body || doc.notes || '') : (doc.notes ? sanitizeRich(doc.notes) : '')}</div>
         </div>
         <div class="tot">
           <div class="trow"><span class="tlabel">SUBTOTAL</span><span class="tdollar">$</span><span class="tval">${money(doc.subtotal).replace('$', '')}</span></div>
@@ -446,6 +448,12 @@ function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote
           ${!isInv && doc.deposit ? `<div class="trow" style="margin-top:12px"><span class="tlabel">DEPOSIT REQUESTED</span><span class="tdollar">$</span><span class="tval">${money(doc.deposit).replace('$', '')}</span></div>` : ''}
         </div>
       </div>
+
+      ${isProp && (doc.milestones || []).length ? `
+      <div style="margin:0 0 18px;">
+        <h3 style="margin:0 0 8px;font-size:12.5px;font-weight:800;color:#0b2265;">PAYMENT SCHEDULE:</h3>
+        ${doc.milestones.map(m => `<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #e5e7eb;padding:5px 0;font-size:12px;"><span>${esc(m.label || '')}${m.due ? ` &middot; ${fmtDate(m.due)}` : ''}</span><span style="font-weight:600;white-space:nowrap;">${m.percent != null && m.percent !== '' ? `${m.percent}%&nbsp;&nbsp;` : ''}${money(m.amount)}</span></div>`).join('')}
+      </div>` : ''}
 
       <div class="band">
         <div class="bcol">
