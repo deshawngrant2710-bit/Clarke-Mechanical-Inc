@@ -212,13 +212,35 @@ export default function Quotes() {
     const email = customers.find(c => c.id === q.customer_id)?.email || '';
     setEmailTarget({ id: q.id, email, number: q.quote_number });
   }
+  function bizPayload(b) {
+    return { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website };
+  }
   function docPayload(q, b) {
     const c = customers.find(x => x.id === q.customer_id) || {};
     return {
       kind: 'quote', doc: q,
-      business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
-      customer: { name: q.customer_name || c.name, email: c.email, phone: c.phone, address: c.address },
+      business: bizPayload(b),
+      // Pass the full customer record so name, address, city/state/zip, phone and email all print.
+      customer: { ...c, name: q.customer_name || c.name },
     };
+  }
+  // Print exactly what's typed in the editor right now (including unsaved edits).
+  async function printCurrent() {
+    if (!form.items.some(i => (i.description || '').trim())) return toast.error('Add at least one line item to print');
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults */ }
+    const c = customers.find(x => x.id === form.customer_id) || {};
+    const items = form.items.map(it => {
+      const quantity = Number(it.quantity) || 0, unit_price = Number(it.unit_price) || 0;
+      return { description: it.description || '', note: it.note || '', quantity, unit_price, total: Math.round(quantity * unit_price * 100) / 100 };
+    });
+    const doc = {
+      quote_number: editingId ? (quotes.find(q => q.id === editingId)?.quote_number || '') : 'DRAFT',
+      issue_date: form.issue_date, expiry_date: form.expiry_date,
+      items, subtotal, discount, tax_rate: form.tax_rate, tax_amount: tax, total,
+      deposit: Number(form.deposit) || 0, notes: form.notes,
+    };
+    printDocument({ kind: 'quote', doc, business: bizPayload(b), customer: { ...c } });
   }
   async function printQuote(e, q) {
     e.stopPropagation();
@@ -397,8 +419,11 @@ export default function Quotes() {
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes</label>
             <RichTextInput placeholder="Notes shown on the estimate — bold/underline supported" value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))} />
           </div>
-          <div className="flex justify-between gap-2 pt-2">
-            <Btn variant="outline" onClick={previewQuote} loading={previewing}><Mail size={15} /> Preview as customer</Btn>
+          <div className="flex flex-wrap justify-between gap-2 pt-2">
+            <div className="flex gap-2">
+              <Btn variant="outline" onClick={previewQuote} loading={previewing}><Mail size={15} /> Preview as customer</Btn>
+              <Btn variant="outline" onClick={printCurrent}><Printer size={15} /> Print / Save PDF</Btn>
+            </div>
             <div className="flex gap-2">
               {!editingId && <Btn variant="ghost" onClick={discardDraft}>Discard draft</Btn>}
               <Btn variant="outline" onClick={closeModal}>Cancel</Btn>

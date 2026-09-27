@@ -7,10 +7,10 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy, Share2 } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy, Share2, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
-import { sharePdf } from '../lib/printDoc';
+import { sharePdf, printDocument } from '../lib/printDoc';
 import { CalculatorButton } from '../components/Calculator';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import SheetSelect from '../components/SheetSelect';
@@ -199,18 +199,39 @@ export default function Invoices() {
     await api.delete(`/billing/invoices/${id}`);
     toast.success('Deleted'); load();
   }
+  const bizPayload = (b) => ({ name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website });
   async function shareInvoicePdf(e, inv) {
     e.stopPropagation();
     let b = {};
     try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults are fine */ }
+    // Full customer record so name, address, city/state/zip, phone and email all appear.
+    const c = customers.find(x => x.id === inv.customer_id) || {};
     try {
       const res = await sharePdf({
         kind: 'invoice', doc: inv,
-        business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
-        customer: { name: inv.customer_name, email: inv.customer_email, phone: inv.customer_phone, address: inv.customer_address },
+        business: bizPayload(b),
+        customer: { ...c, name: inv.customer_name || c.name },
       });
       if (res.method === 'download') toast.success('PDF saved to your downloads');
     } catch { toast.error('Could not create the PDF'); }
+  }
+  // Print exactly what's typed in the editor right now (including unsaved edits).
+  async function printCurrent() {
+    if (!form.items.some(i => (i.description || '').trim())) return toast.error('Add at least one line item to print');
+    let b = {};
+    try { b = (await api.get('/auth/public-info')).data || {}; } catch { /* defaults */ }
+    const c = customers.find(x => x.id === form.customer_id) || {};
+    const items = form.items.map(it => {
+      const quantity = Number(it.quantity) || 0, unit_price = Number(it.unit_price) || 0;
+      return { description: it.description || '', note: it.note || '', quantity, unit_price, total: Math.round(quantity * unit_price * 100) / 100 };
+    });
+    const doc = {
+      invoice_number: editingId ? (invoices.find(i => i.id === editingId)?.invoice_number || '') : 'DRAFT',
+      issue_date: form.issue_date, due_date: form.due_date,
+      items, subtotal, discount, tax_rate: form.tax_rate, tax_amount: tax, total,
+      deposit: Number(form.deposit) || 0, notes: form.notes,
+    };
+    printDocument({ kind: 'invoice', doc, business: bizPayload(b), customer: { ...c } });
   }
   async function handleEmail(e, id) {
     e.stopPropagation();
@@ -282,8 +303,11 @@ export default function Invoices() {
 
       <Modal open={modal} onClose={closeModal} title={editingId ? 'Edit Invoice' : 'New Invoice'} subtitle={editingId ? 'Fix any mistakes and save' : 'Build and send a professional invoice'} size="xl"
         footer={
-          <div className="flex justify-between gap-2">
-            <div>{!editingId && <Btn variant="ghost" onClick={discardDraft}>Discard draft</Btn>}</div>
+          <div className="flex flex-wrap justify-between gap-2">
+            <div className="flex gap-2">
+              {!editingId && <Btn variant="ghost" onClick={discardDraft}>Discard draft</Btn>}
+              <Btn variant="outline" onClick={printCurrent}><Printer size={15} /> Print / Save PDF</Btn>
+            </div>
             <div className="flex gap-2">
               <Btn variant="outline" onClick={closeModal}>Cancel</Btn>
               <Btn onClick={handleSave} loading={saving}>{saving ? 'Saving…' : (editingId ? 'Save Changes' : 'Create Invoice')}</Btn>
