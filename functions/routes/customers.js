@@ -80,6 +80,18 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/customers/bulk-delete { ids: [] } — delete several customers at once.
+router.post('/bulk-delete', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+  if (!ids.length) return res.status(400).json({ error: 'No customers selected' });
+  let deleted = 0;
+  for (const id of ids) {
+    try { await remove('customers', id); deleted++; }
+    catch (e) { console.error('[customers] bulk-delete failed for', id, e.message); }
+  }
+  res.json({ success: true, deleted });
+});
+
 // POST /api/customers/:id/text — send the customer a text from the business Quo
 // number (staff only). The message threads in Quo like any other conversation.
 router.post('/:id/text', async (req, res) => {

@@ -6,7 +6,7 @@ import {
   Card, Btn, Modal, Input, Textarea, Empty, SkeletonPage, StatCard,
   SearchInput, Table, Row, Cell, Avatar,
 } from '../components/UI';
-import { Plus, Search, Phone, Mail, MapPin, Users, UserPlus, CalendarPlus, DollarSign, ChevronRight } from 'lucide-react';
+import { Plus, Search, Phone, Mail, MapPin, Users, UserPlus, CalendarPlus, DollarSign, ChevronRight, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import toast from 'react-hot-toast';
@@ -29,10 +29,33 @@ export default function Customers() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   function load() {
     api.get('/customers').then(r => { setCustomers(r.data); cacheSet('/customers', r.data); setLoading(false); });
+  }
+
+  function toggle(id) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function exitSelect() { setSelectMode(false); setSelected(new Set()); }
+  function rowClick(c) { if (selectMode) toggle(c.id); else navigate(`/customers/${c.id}`); }
+
+  async function bulkDelete() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} customer${ids.length === 1 ? '' : 's'}? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      const { data } = await api.post('/customers/bulk-delete', { ids });
+      toast.success(`Deleted ${data.deleted} customer${data.deleted === 1 ? '' : 's'}`);
+      exitSelect();
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not delete'); }
+    finally { setDeleting(false); }
   }
   useEffect(load, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setModal(true); }, []);
@@ -88,8 +111,28 @@ export default function Customers() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Customers" subtitle={`${customers.length} total accounts`} icon={<Users size={20} />}>
-        <Btn onClick={() => setModal(true)}><Plus size={16} /> Add Customer</Btn>
+        {selectMode ? (
+          <Btn variant="outline" onClick={exitSelect}>Done</Btn>
+        ) : (
+          <>
+            <Btn variant="outline" onClick={() => setSelectMode(true)}><CheckSquare size={16} /> Select</Btn>
+            <Btn onClick={() => setModal(true)}><Plus size={16} /> Add Customer</Btn>
+          </>
+        )}
       </PageHeader>
+
+      {selectMode && (
+        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
+          <span className="text-sm font-semibold text-blue-800">{selected.size} selected</span>
+          <button onClick={() => setSelected(new Set(filtered.map(c => c.id)))} className="text-sm font-medium text-blue-600 hover:text-blue-700">Select all ({filtered.length})</button>
+          {selected.size > 0 && <button onClick={() => setSelected(new Set())} className="text-sm font-medium text-slate-500 hover:text-slate-700">Clear</button>}
+          <div className="ml-auto">
+            <Btn variant="danger" size="sm" onClick={bulkDelete} loading={deleting} disabled={!selected.size}>
+              <Trash2 size={15} /> Delete{selected.size ? ` (${selected.size})` : ''}
+            </Btn>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Customers" value={stats.total} icon={<Users size={18} />} color="blue" />
@@ -129,9 +172,14 @@ export default function Customers() {
             { label: 'Balance', align: 'right' }, { label: '' },
           ]}>
             {filtered.map(c => (
-              <Row key={c.id} onClick={() => navigate(`/customers/${c.id}`)}>
+              <Row key={c.id} onClick={() => rowClick(c)}>
                 <Cell>
                   <div className="flex items-center gap-3">
+                    {selectMode && (
+                      selected.has(c.id)
+                        ? <CheckSquare size={20} className="text-blue-600 shrink-0" />
+                        : <Square size={20} className="text-slate-300 shrink-0" />
+                    )}
                     <Avatar name={c.name} className="w-9 h-9 text-xs" />
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-800 truncate">{c.name}</p>
@@ -174,7 +222,14 @@ export default function Customers() {
           {/* Mobile: cards (fixes squeezed email/contact fields) */}
           <div className="lg:hidden divide-y divide-slate-100">
             {filtered.map(c => (
-              <button key={c.id} onClick={() => navigate(`/customers/${c.id}`)} className="w-full text-left p-4 flex gap-3 active:bg-slate-50">
+              <button key={c.id} onClick={() => rowClick(c)} className="w-full text-left p-4 flex gap-3 active:bg-slate-50">
+                {selectMode && (
+                  <span className="shrink-0 self-center">
+                    {selected.has(c.id)
+                      ? <CheckSquare size={22} className="text-blue-600" />
+                      : <Square size={22} className="text-slate-300" />}
+                  </span>
+                )}
                 <Avatar name={c.name} className="w-10 h-10 text-sm shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
