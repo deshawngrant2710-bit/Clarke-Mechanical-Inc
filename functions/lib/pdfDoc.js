@@ -34,7 +34,7 @@ function renderPdf(jsPDFCtor, opts) {
   const isProposal = kind === 'proposal';
   const isInvoice = kind === 'invoice';
 
-  const title = isReceipt ? 'RECEIPT' : isQuote ? 'SERVICE ESTIMATE' : isProposal ? 'PROPOSAL' : 'INVOICE';
+  const title = isReceipt ? 'RECEIPT' : isQuote ? 'SERVICE ESTIMATE' : isProposal ? (doc.doc_title || 'PROPOSAL') : 'INVOICE';
   const bizName = business.name || 'Clarke Mechanical Inc.';
   const number = receipt ? receipt.receipt_number : (isQuote ? doc.quote_number : isProposal ? doc.proposal_number : doc.invoice_number);
 

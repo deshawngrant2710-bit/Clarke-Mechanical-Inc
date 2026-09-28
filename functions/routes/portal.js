@@ -190,6 +190,26 @@ router.get('/proposals/:id', async (req, res) => {
   res.json(p);
 });
 
+// Commercial boiler service contracts the customer holds (read-only view).
+router.get('/contracts', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  if (!ids.length) return res.json([]);
+  const nested = await Promise.all(ids.map(id => findWhere('boiler_contracts', 'customer_id', id)));
+  const rows = nested.flat().map(c => ({
+    id: c.id, contract_number: c.contract_number, property_name: c.property_name, property_address: c.property_address,
+    package: c.package, annual_price: c.annual_price, status: c.status, start_date: c.start_date, expiry_date: c.expiry_date,
+    service_frequency: c.service_frequency, boilers: c.boilers || [], created_at: c.created_at,
+  })).sort(byCreated);
+  res.json(rows);
+});
+
+router.get('/contracts/:id', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const c = await getById('boiler_contracts', req.params.id);
+  if (!c || !ids.includes(c.customer_id)) return res.status(404).json({ error: 'Not found' });
+  res.json(c);
+});
+
 // Accept a proposal with a typed name + drawn signature image.
 router.post('/proposals/:id/accept', async (req, res) => {
   const { ids } = await myCustomerIds(req);

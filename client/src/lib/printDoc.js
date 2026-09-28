@@ -401,7 +401,7 @@ function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote
 
       <div class="brand"><img src="${LOGO_URL}" alt="${esc(bizName)}" /></div>
 
-      <div class="title-wrap"><span class="rule"></span><h1 class="title">${isInv ? 'INVOICE' : isProp ? 'PROPOSAL' : 'SERVICE ESTIMATE'}</h1><span class="rule"></span></div>
+      <div class="title-wrap"><span class="rule"></span><h1 class="title">${isInv ? 'INVOICE' : isProp ? (doc.doc_title || 'PROPOSAL') : 'SERVICE ESTIMATE'}</h1><span class="rule"></span></div>
 
       <div class="meta">
         <div class="mrow"><span class="mlabel">${isInv ? 'Invoice' : isProp ? 'Proposal' : 'Estimate'} #:</span><span class="mval">${esc(number)}</span></div>

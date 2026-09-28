@@ -19,6 +19,13 @@ const DEFAULTS = {
   reminders_overdue_enabled: '1',
   receipts_autosend_enabled: '1', // email a receipt automatically when a payment is recorded
   booking_slot_capacity: '2', // max jobs bookable per online arrival window
+  // Commercial boiler service-contract default annual prices (admin-editable; overridable per contract).
+  boiler_price_essential: '2500',
+  boiler_price_professional: '4500',
+  boiler_price_premium: '7500',
+  boiler_emergency_rate: '250',
+  boiler_after_hours_rate: '375',
+  boiler_min_charge: '350',
 };
 
 const REF = () => db.collection('settings').doc('app');

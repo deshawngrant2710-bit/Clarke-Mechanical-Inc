@@ -1,4 +1,4 @@
-const { db, list, nameMap } = require('./db');
+const { db, list, nameMap, update } = require('./db');
 const { render, sendMail } = require('./email');
 
 const iso = (d) => d.toISOString();
@@ -51,6 +51,25 @@ async function runReminders() {
       summary.overdueNotices++;
     }
   }
+
+  // Boiler service-contract expiry reminders for the office (in-app), at 60/30/7 days.
+  try {
+    const { notify } = require('./notify');
+    const contracts = await list('boiler_contracts');
+    for (const c of contracts) {
+      if (!['active', 'expiring_soon'].includes(c.status) || !c.expiry_date) continue;
+      const days = Math.ceil((new Date(c.expiry_date).getTime() - Date.now()) / 86400000);
+      let bucket = null;
+      if (days >= 0 && days <= 7) bucket = '7';
+      else if (days > 7 && days <= 30) bucket = '30';
+      else if (days > 30 && days <= 60) bucket = '60';
+      if (!bucket) continue;
+      if (c.reminder_bucket === bucket) { summary.skipped++; continue; }
+      notify({ type: 'contract', title: 'Boiler contract expiring', body: `${customers[c.customer_id] || 'Contract'} ${c.contract_number} expires in ${days} day${days === 1 ? '' : 's'}`, link: '/boiler-contracts' });
+      await update('boiler_contracts', c.id, { reminder_bucket: bucket });
+      summary.contractReminders = (summary.contractReminders || 0) + 1;
+    }
+  } catch (e) { console.error('[reminders] contract expiry failed:', e.message); }
 
   return summary;
 }
