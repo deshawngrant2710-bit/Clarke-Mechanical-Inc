@@ -225,11 +225,11 @@ export default function Proposals() {
             ))}
           </div>
 
-          {/* Body */}
+          {/* Body — blank contract sheet */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Scope of work, terms &amp; stipulations</label>
-            <p className="text-[11px] text-slate-400 mb-2">Write the full contract here. Bold your section titles — they carry through to the PDF. This can be as long as you need.</p>
-            <RichTextInput value={editing.body} onChange={v => setField('body', v)} placeholder="1. Scope of Work…  2. Terms & Conditions…  3. Stipulations…" className="min-h-[220px]" />
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Contract body</label>
+            <p className="text-[11px] text-slate-400 mb-2">Your blank contract sheet — type or paste anything and change the wording however you like. Bold your section titles; they carry through to the PDF. It can be as long as you need.</p>
+            <RichTextInput value={editing.body} onChange={v => setField('body', v)} placeholder="Start typing your contract here — scope of work, terms, code path, stipulations, anything…" className="min-h-[460px]" />
           </div>
 
           {/* Line items */}
