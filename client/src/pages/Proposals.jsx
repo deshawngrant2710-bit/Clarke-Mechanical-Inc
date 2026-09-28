@@ -9,7 +9,7 @@ import {
 } from '../components/UI';
 import {
   FileSignature, Plus, Search, Trash2, PlusCircle, MinusCircle, Send, Printer, Share2, Download,
-  FileText, Save, BookMarked, ArrowLeft, CheckCircle2, Eye,
+  FileText, Save, BookMarked, ArrowLeft, CheckCircle2, Eye, Briefcase,
 } from 'lucide-react';
 import { printDocument, sharePdf, downloadPdf, buildDocumentHtml } from '../lib/printDoc';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
@@ -173,6 +173,14 @@ export default function Proposals() {
     try { const { data } = await api.post(`/proposals/${r.id}/convert-to-invoice`); toast.success('Invoice created'); navigate(`/invoices/${data.id}`); }
     catch (err) { toast.error(err.response?.data?.error || 'Could not convert'); }
   }
+  async function convertToJob(e, r) {
+    e.stopPropagation();
+    try {
+      const { data } = await api.post(`/proposals/${r.id}/convert-to-job`);
+      toast.success(data.already ? 'Opening the linked job' : 'Job created from proposal');
+      navigate(`/jobs/${data.job_id || data.id}`);
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not convert to job'); }
+  }
 
   if (!rows) return <SkeletonPage stats={4} />;
 
@@ -278,6 +286,7 @@ export default function Proposals() {
             <Btn variant="outline" onClick={() => save({ send: true })} loading={busy === 'save'}><Send size={15} /> Save &amp; Send</Btn>
             <div className="flex-1" />
             <Btn variant="ghost" onClick={saveAsTemplate}><BookMarked size={15} /> Save as template</Btn>
+            {editId && <Btn variant="outline" onClick={(e) => convertToJob(e, { id: editId })}><Briefcase size={15} /> Convert to job</Btn>}
             <Btn variant="outline" onClick={previewAsCustomer}><Eye size={15} /> Preview as customer</Btn>
             <Btn variant="outline" onClick={doShare}><Share2 size={15} /> Send as PDF</Btn>
             <Btn variant="outline" onClick={doDownload}><Download size={15} /> PDF</Btn>
@@ -325,6 +334,7 @@ export default function Proposals() {
                 <Cell align="right"><Badge status={r.status} /></Cell>
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1">
+                    <button onClick={e => convertToJob(e, r)} title="Convert to job" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg"><Briefcase size={15} /></button>
                     {r.status === 'accepted' && <button onClick={e => convert(e, r)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg"><FileText size={15} /></button>}
                     <button onClick={e => del(e, r)} title="Delete" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
                   </div>

@@ -469,7 +469,7 @@ function buildEstimateHtml({ doc, business = {}, customer = {}, variant = 'quote
                   : '<li>Please contact our office for payment details.</li>')
               : `<li>This estimate is based on the information provided and on-site conditions at the time of inspection.</li>
                  <li>Prices are valid for the period stated above.</li>
-                 <li>Additional work may be required if unforeseen conditions are discovered.</li>
+                 <li>Additional work may be required if unforeseen conditions are discovered.${isProp ? ' (Proposal to be sent separately)' : ''}</li>
                  <li>This is an estimate only and not a guarantee of the final cost.</li>`}
           </ul>
         </div>

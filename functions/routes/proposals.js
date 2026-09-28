@@ -158,6 +158,39 @@ router.post('/:id/convert-to-invoice', async (req, res) => {
   res.status(201).json(saved);
 });
 
+// Turn a proposal into a job (scheduling/dispatch workflow), linked back to it.
+router.post('/:id/convert-to-job', async (req, res) => {
+  const p = await getById('proposals', req.params.id);
+  if (!p) return res.status(404).json({ error: 'Proposal not found' });
+  if (p.converted_job_id) return res.json({ job_id: p.converted_job_id, already: true });
+  const customer = p.customer_id ? await getById('customers', p.customer_id) : null;
+  const custAddr = customer ? [customer.address, customer.city, customer.state, customer.zip].filter(Boolean).join(', ') : '';
+  const address = p.service_address || custAddr || null;
+  const title = (p.title && p.title.trim()) || p.items?.[0]?.description || `Job from proposal ${p.proposal_number}`;
+  const job = await create('jobs', uuid(), {
+    title,
+    description: `Created from proposal ${p.proposal_number}.`,
+    customer_id: p.customer_id || null,
+    technician_id: null,
+    additional_technician_ids: [],
+    status: 'pending',
+    priority: 'normal',
+    job_type: null,
+    scheduled_date: null,
+    scheduled_time: null,
+    completed_date: null,
+    address,
+    notes: null,
+    // links back to the proposal
+    proposal_id: p.id,
+    proposal_number: p.proposal_number,
+    proposal_total: p.total || 0,
+    created_at: new Date().toISOString(),
+  });
+  await update('proposals', p.id, { converted_job_id: job.id });
+  res.status(201).json(job);
+});
+
 /* ---------------- Templates (reusable terms) ---------------- */
 router.get('/templates/all', async (req, res) => {
   const rows = (await list('proposal_templates')).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
