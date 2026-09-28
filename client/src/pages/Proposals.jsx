@@ -9,9 +9,9 @@ import {
 } from '../components/UI';
 import {
   FileSignature, Plus, Search, Trash2, PlusCircle, MinusCircle, Send, Printer, Share2, Download,
-  FileText, Save, BookMarked, ArrowLeft, CheckCircle2,
+  FileText, Save, BookMarked, ArrowLeft, CheckCircle2, Eye,
 } from 'lucide-react';
-import { printDocument, sharePdf, downloadPdf } from '../lib/printDoc';
+import { printDocument, sharePdf, downloadPdf, buildDocumentHtml } from '../lib/printDoc';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
 import toast from 'react-hot-toast';
 
@@ -45,6 +45,7 @@ export default function Proposals() {
   const [editId, setEditId] = useState(null);
   const [busy, setBusy] = useState('');
   const [tplModal, setTplModal] = useState(false);
+  const [custPreview, setCustPreview] = useState(null); // branded HTML shown in the "Preview as customer" modal
 
   function load() {
     Promise.all([api.get('/proposals'), api.get('/customers'), api.get('/proposals/templates/all')])
@@ -153,6 +154,11 @@ export default function Proposals() {
     };
   }
   async function doPrint() { printDocument(await docPayload()); }
+  // Show the customer-facing proposal document (exactly what they'll see) in a modal.
+  async function previewAsCustomer() {
+    try { setCustPreview(buildDocumentHtml(await docPayload(), { autoPrint: false })); }
+    catch { toast.error('Could not build the preview'); }
+  }
   async function doShare() { const r = await sharePdf(await docPayload()); if (r.method === 'download') toast.success('PDF saved to downloads'); }
   async function doDownload() { await downloadPdf(await docPayload()); toast.success('PDF saved to downloads'); }
 
@@ -271,11 +277,16 @@ export default function Proposals() {
             <Btn variant="outline" onClick={() => save({ send: true })} loading={busy === 'save'}><Send size={15} /> Save &amp; Send</Btn>
             <div className="flex-1" />
             <Btn variant="ghost" onClick={saveAsTemplate}><BookMarked size={15} /> Save as template</Btn>
+            <Btn variant="outline" onClick={previewAsCustomer}><Eye size={15} /> Preview as customer</Btn>
             <Btn variant="outline" onClick={doShare}><Share2 size={15} /> Send as PDF</Btn>
             <Btn variant="outline" onClick={doDownload}><Download size={15} /> PDF</Btn>
             <Btn variant="outline" onClick={doPrint}><Printer size={15} /> Print</Btn>
           </div>
         </Card>
+
+        <Modal open={!!custPreview} onClose={() => setCustPreview(null)} title="Preview as customer" subtitle="Exactly what the customer sees on this proposal" size="xl">
+          <iframe title="proposal preview" srcDoc={custPreview || ''} className="w-full h-[70vh] rounded-lg border border-slate-200 bg-white" />
+        </Modal>
       </div>
     );
   }
