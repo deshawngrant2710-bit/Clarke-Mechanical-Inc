@@ -229,7 +229,8 @@ export default function Proposals() {
             <div className="space-y-2">
               {editing.items.map((item, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <PriceItemInput className="col-span-12 sm:col-span-6" value={item.description} items={[]} onChange={v => setItem(i, 'description', v)} onPick={() => {}} />
+                  <PriceItemInput className="col-span-12 sm:col-span-6" value={item.description} items={[]} onChange={v => setItem(i, 'description', v)}
+                    onPick={(it) => setEditing(e => { const items = [...e.items]; items[i] = { ...items[i], description: it.name || '', unit_price: Number(it.unit_price) || 0 }; return { ...e, items }; })} />
                   <input placeholder="Qty" type="number" min="0" value={item.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} className="col-span-4 sm:col-span-2 px-2.5 py-2 border border-slate-300 rounded-lg text-sm text-right" />
                   <div className="col-span-4 sm:col-span-2 relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
