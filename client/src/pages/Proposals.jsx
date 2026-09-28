@@ -12,6 +12,7 @@ import {
   FileText, Save, BookMarked, ArrowLeft, CheckCircle2, Eye, Briefcase,
 } from 'lucide-react';
 import { printDocument, sharePdf, downloadPdf, buildDocumentHtml } from '../lib/printDoc';
+import { BUILTIN_PROPOSAL_TEMPLATES } from '../lib/contractTemplates';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
 import toast from 'react-hot-toast';
 
@@ -128,6 +129,7 @@ export default function Proposals() {
     if (!t) return;
     setEditing(e => ({
       ...e,
+      title: (e.title && e.title.trim()) ? e.title : (t.name || e.title),
       body: t.body || e.body,
       items: (t.items && t.items.length) ? t.items.map(i => ({ description: i.description || '', note: i.note || '', quantity: i.quantity ?? 1, unit_price: i.unit_price ?? 0 })) : e.items,
       milestones: (t.milestones && t.milestones.length) ? t.milestones.map(m => ({ label: m.label || '', percent: m.percent ?? '', amount: m.amount ?? '', due: m.due || '' })) : e.milestones,
@@ -211,15 +213,17 @@ export default function Proposals() {
             <Input label="Service address" value={editing.service_address} onChange={e => setField('service_address', e.target.value)} placeholder="If different from customer" />
           </div>
 
-          {/* Templates */}
-          {templates.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap text-sm">
-              <span className="text-slate-500 flex items-center gap-1"><BookMarked size={14} /> Start from template:</span>
-              {templates.map(t => (
-                <button key={t.id} onClick={() => applyTemplate(t)} className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700">{t.name}</button>
-              ))}
-            </div>
-          )}
+          {/* Templates (built-in contracts + any the office has saved) */}
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            <span className="text-slate-500 flex items-center gap-1"><BookMarked size={14} /> Start from template:</span>
+            {BUILTIN_PROPOSAL_TEMPLATES.map(t => (
+              <button key={t.id} onClick={() => applyTemplate(t)} title="Built-in contract template"
+                className="px-2.5 py-1 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">{t.name}</button>
+            ))}
+            {templates.map(t => (
+              <button key={t.id} onClick={() => applyTemplate(t)} className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700">{t.name}</button>
+            ))}
+          </div>
 
           {/* Body */}
           <div>

@@ -252,6 +252,26 @@ function renderPdf(jsPDFCtor, opts) {
     });
   }
 
+  /* ---------------- Important information (proposals) ---------------- */
+  if (isProposal) {
+    const info = [
+      'This estimate is based on the information provided and on-site conditions at the time of inspection.',
+      'Prices are valid for the period stated above.',
+      'Additional work may be required if unforeseen conditions are discovered. (Proposal to be sent separately)',
+      'This is an estimate only and not a guarantee of the final cost.',
+    ];
+    if (y > PAGE.h - 130) newPage();
+    y += 8;
+    setFont(8.5, 'bold', MUTED); pdf.text('IMPORTANT INFORMATION', L, y); y += 14;
+    setFont(9, 'normal', INK);
+    info.forEach((t) => {
+      const lines = pdf.splitTextToSize('•  ' + t, R - L);
+      if (y + lines.length * 12 > PAGE.h - 90) newPage();
+      pdf.text(lines, L, y);
+      y += lines.length * 12 + 2;
+    });
+  }
+
   /* ---------------- How to pay (invoices) ---------------- */
   if (isInvoice && Array.isArray(business.paymentLines) && business.paymentLines.length) {
     if (y > PAGE.h - 150) newPage();
