@@ -178,6 +178,7 @@ router.post('/quotes', async (req, res) => {
 router.put('/quotes/:id', async (req, res) => {
   const existing = await getById('quotes', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Quote not found' });
+  if (existing.status === 'void') return res.status(409).json({ error: 'This estimate is void and can no longer be edited.' });
   const { customer_id, status, issue_date, expiry_date, items = [], tax_rate = 0.08875, notes, discount, deposit } = req.body;
   const lineItems = withItemTotals(items);
   const { subtotal, discount_amount, tax_amount, total } = calcTotals(lineItems, tax_rate, discount);
@@ -193,6 +194,26 @@ router.put('/quotes/:id', async (req, res) => {
 router.delete('/quotes/:id', async (req, res) => {
   await remove('quotes', req.params.id);
   res.json({ success: true });
+});
+
+// POST /billing/quotes/:id/void — void an estimate. Requires a written reason
+// and a hand-drawn e-signature (audit trail). Voiding is one-way and locks it.
+router.post('/quotes/:id/void', async (req, res) => {
+  const quote = await getById('quotes', req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  if (quote.status === 'void') return res.status(409).json({ error: 'This estimate is already void' });
+  const reason = String(req.body?.reason || '').trim();
+  const signature = String(req.body?.signature || '');
+  if (reason.length < 10) return res.status(422).json({ error: 'Please give a clear reason for voiding (at least 10 characters).' });
+  if (!/^data:image\/\w+;base64,/.test(signature)) return res.status(422).json({ error: 'A signature is required to void.' });
+  const saved = await update('quotes', req.params.id, {
+    status: 'void',
+    void_reason: reason,
+    void_signature: signature,
+    voided_by: req.user?.name || req.user?.email || 'Staff',
+    voided_at: new Date().toISOString(),
+  });
+  res.json(saved);
 });
 
 // POST /billing/quotes/:id/convert-to-job — turn an (approved) estimate into a job

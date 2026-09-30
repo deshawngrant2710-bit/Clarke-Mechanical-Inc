@@ -27,6 +27,7 @@ export const STATUS_COLORS = {
   declined:   'bg-red-100 text-red-700 ring-red-600/20',
   // Proposals
   expired:    'bg-slate-100 text-slate-600 ring-slate-500/20',
+  void:       'bg-rose-100 text-rose-700 ring-rose-600/20',
   // Priority
   low:        'bg-slate-100 text-slate-600 ring-slate-500/20',
   normal:     'bg-blue-100 text-blue-800 ring-blue-600/20',
@@ -216,7 +217,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
     <div className="fixed inset-0 z-50 flex lg:items-start lg:justify-center lg:p-6">
       <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       {/* Full-screen sheet on phones; centered card on desktop. */}
-      <div className={`relative bg-white shadow-2xl w-full flex flex-col h-full lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-2xl animate-fade-in-scale ${sizes[size]}`}>
+      <div className={`modal-surface relative bg-white shadow-2xl w-full flex flex-col h-full lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-2xl animate-fade-in-scale ${sizes[size]}`}>
         {/* Sticky header */}
         <div className="shrink-0 flex items-start justify-between gap-3 px-4 lg:px-6 py-4 border-b border-slate-100"
           style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>

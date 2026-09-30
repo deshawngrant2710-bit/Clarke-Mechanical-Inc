@@ -8,10 +8,11 @@ import {
   Card, Btn, Badge, Input, Select, Empty, SkeletonPage, StatCard, SearchInput, Table, Row, Cell, Modal,
 } from '../components/UI';
 import {
-  FileSignature, Plus, Search, Trash2, PlusCircle, MinusCircle, Send, Printer, Share2, Download,
-  FileText, Save, BookMarked, ArrowLeft, CheckCircle2, Eye, Briefcase,
+  FileSignature, Plus, Search, Trash2, PlusCircle, MinusCircle, Send, Printer, Mail, Download,
+  FileText, Save, BookMarked, ArrowLeft, CheckCircle2, Eye, Briefcase, X, Ban,
 } from 'lucide-react';
-import { printDocument, sharePdf, downloadPdf, buildDocumentHtml } from '../lib/printDoc';
+import { printDocument, downloadPdf, buildDocumentHtml } from '../lib/printDoc';
+import VoidDialog from '../components/VoidDialog';
 import { BUILTIN_PROPOSAL_TEMPLATES } from '../lib/contractTemplates';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
 import toast from 'react-hot-toast';
@@ -47,6 +48,11 @@ export default function Proposals() {
   const [busy, setBusy] = useState('');
   const [tplModal, setTplModal] = useState(false);
   const [custPreview, setCustPreview] = useState(null); // branded HTML shown in the "Preview as customer" modal
+  const [sendModal, setSendModal] = useState(false);     // "Send as PDF" email dialog
+  const [extraEmails, setExtraEmails] = useState([]);    // additional recipients (CC'd)
+  const [emailDraft, setEmailDraft] = useState('');
+  const [voidOpen, setVoidOpen] = useState(false);       // void-with-signature dialog
+  const [voidRow, setVoidRow] = useState(null);          // list-row target when voiding from the list
 
   function load() {
     Promise.all([api.get('/proposals'), api.get('/customers'), api.get('/proposals/templates/all')])
@@ -72,6 +78,8 @@ export default function Proposals() {
   async function openEdit(r) {
     setBusy('open');
     try { const { data } = await api.get(`/proposals/${r.id}`); setEditId(r.id); setEditing({
+      proposal_number: data.proposal_number || '',
+      void_reason: data.void_reason || '', void_signature: data.void_signature || '', voided_by: data.voided_by || '', voided_at: data.voided_at || '',
       customer_id: data.customer_id || '', title: data.title || '', status: data.status || 'draft',
       issue_date: data.issue_date || today(), expiry_date: data.expiry_date || '', prepared_by: data.prepared_by || '',
       service_address: data.service_address || '', body: data.body || '',
@@ -95,18 +103,19 @@ export default function Proposals() {
   function setItem(i, k, v) { setEditing(e => { const items = [...e.items]; items[i] = { ...items[i], [k]: (k === 'description' || k === 'note') ? v : Number(v) }; return { ...e, items }; }); }
   function setMs(i, k, v) { setEditing(e => { const milestones = [...e.milestones]; milestones[i] = { ...milestones[i], [k]: v }; return { ...e, milestones }; }); }
 
-  async function save({ send } = {}) {
+  async function save({ send, recipients } = {}) {
     if (!editing.customer_id) return toast.error('Choose a customer');
     if (!editing.title.trim()) return toast.error('Give the proposal a title');
-    setBusy('save');
+    setBusy(send ? 'send' : 'save');
     try {
       const payload = { ...editing };
       let id = editId;
       if (id) { await api.put(`/proposals/${id}`, payload); }
       else { const { data } = await api.post('/proposals', payload); id = data.id; setEditId(id); }
       if (send) {
-        await api.post(`/proposals/${id}/send`);
-        toast.success('Proposal sent to the customer');
+        const extra = (recipients || []).filter(Boolean);
+        await api.post(`/proposals/${id}/send`, { recipients: extra });
+        toast.success(extra.length ? `Proposal sent to the customer + ${extra.length} more` : 'Proposal sent to the customer');
       } else {
         toast.success('Proposal saved');
       }
@@ -161,8 +170,37 @@ export default function Proposals() {
     try { setCustPreview(buildDocumentHtml(await docPayload(), { autoPrint: false })); }
     catch { toast.error('Could not build the preview'); }
   }
-  async function doShare() { const r = await sharePdf(await docPayload()); if (r.method === 'download') toast.success('PDF saved to downloads'); }
   async function doDownload() { await downloadPdf(await docPayload()); toast.success('PDF saved to downloads'); }
+
+  // "Send as PDF" — email the proposal (PDF attached) to the customer, with an
+  // optional list of extra recipients the office can add before sending.
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const currentCustomer = customers.find(c => c.id === editing?.customer_id) || {};
+  function openSendModal() {
+    if (!editing?.customer_id) return toast.error('Choose a customer first');
+    if (!currentCustomer.email) return toast.error('This customer has no email address on file');
+    setExtraEmails([]); setEmailDraft(''); setSendModal(true);
+  }
+  function addEmail() {
+    const e = emailDraft.trim();
+    if (!e) return;
+    if (!EMAIL_RE.test(e)) return toast.error('Enter a valid email address');
+    const dupe = e.toLowerCase() === String(currentCustomer.email || '').toLowerCase()
+      || extraEmails.some(x => x.toLowerCase() === e.toLowerCase());
+    if (dupe) { setEmailDraft(''); return; }
+    setExtraEmails(list => [...list, e]); setEmailDraft('');
+  }
+  function removeEmail(e) { setExtraEmails(list => list.filter(x => x !== e)); }
+  async function confirmSend() {
+    // Fold any half-typed address into the list before sending.
+    const pending = emailDraft.trim();
+    let recipients = extraEmails;
+    if (pending && EMAIL_RE.test(pending) && !recipients.some(x => x.toLowerCase() === pending.toLowerCase())) {
+      recipients = [...recipients, pending];
+    }
+    await save({ send: true, recipients });
+    setSendModal(false);
+  }
 
   async function del(e, r) {
     e.stopPropagation();
@@ -183,12 +221,24 @@ export default function Proposals() {
       navigate(`/jobs/${data.job_id || data.id}`);
     } catch (err) { toast.error(err.response?.data?.error || 'Could not convert to job'); }
   }
+  // Void requires the reason + signature collected by VoidDialog. `target` is the
+  // proposal being voided (the row from the list, or the one open in the editor).
+  async function submitVoid({ reason, signature }) {
+    const id = voidRow ? voidRow.id : editId;
+    await api.post(`/proposals/${id}/void`, { reason, signature });
+    toast.success('Proposal voided');
+    setVoidOpen(false); setVoidRow(null);
+    if (!voidRow && editing) setEditing(e => ({ ...e, status: 'void' }));
+    load();
+  }
+  function openVoidFromList(e, r) { e.stopPropagation(); setVoidRow(r); setVoidOpen(true); }
 
   if (!rows) return <SkeletonPage stats={4} />;
 
   /* ---------------- Editor ---------------- */
   if (editing) {
     const signed = editing.signature;
+    const isVoided = editing.status === 'void';
     return (
       <div className="animate-fade-in max-w-4xl">
         <button onClick={closeEditor} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-4">
@@ -198,8 +248,24 @@ export default function Proposals() {
         <Card className="p-6 space-y-5">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-bold text-slate-900">{editId ? 'Edit Proposal' : 'New Proposal'}</h2>
-            {signed && <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full"><CheckCircle2 size={15} /> Signed by {signed.name}</span>}
+            {isVoided
+              ? <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-700 bg-rose-50 px-3 py-1 rounded-full"><Ban size={15} /> Voided</span>
+              : signed && <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full"><CheckCircle2 size={15} /> Signed by {signed.name}</span>}
           </div>
+
+          {isVoided && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+              <p className="text-sm font-semibold text-rose-800 flex items-center gap-1.5"><Ban size={15} /> This proposal has been voided and is locked.</p>
+              {editing.void_reason && <p className="text-sm text-rose-700 mt-1"><span className="font-medium">Reason:</span> {editing.void_reason}</p>}
+              {(editing.voided_by || editing.voided_at) && (
+                <p className="text-xs text-rose-600/90 mt-1">
+                  {editing.voided_by ? `By ${editing.voided_by}` : ''}{editing.voided_by && editing.voided_at ? ' · ' : ''}
+                  {editing.voided_at ? new Date(editing.voided_at).toLocaleString() : ''}
+                </p>
+              )}
+              {editing.void_signature && <img src={editing.void_signature} alt="Void signature" className="mt-2 h-16 bg-white rounded border border-rose-200" />}
+            </div>
+          )}
 
           <div className="grid sm:grid-cols-2 gap-3">
             <Select label="Customer" value={editing.customer_id} onChange={e => setField('customer_id', e.target.value)}>
@@ -286,20 +352,72 @@ export default function Proposals() {
 
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
-            <Btn onClick={() => save()} loading={busy === 'save'}><Save size={15} /> Save</Btn>
-            <Btn variant="outline" onClick={() => save({ send: true })} loading={busy === 'save'}><Send size={15} /> Save &amp; Send</Btn>
+            {!isVoided && <Btn onClick={() => save()} loading={busy === 'save'}><Save size={15} /> Save</Btn>}
+            {!isVoided && <Btn variant="outline" onClick={() => save({ send: true })} loading={busy === 'save'}><Send size={15} /> Save &amp; Send</Btn>}
             <div className="flex-1" />
-            <Btn variant="ghost" onClick={saveAsTemplate}><BookMarked size={15} /> Save as template</Btn>
-            {editId && <Btn variant="outline" onClick={(e) => convertToJob(e, { id: editId })}><Briefcase size={15} /> Convert to job</Btn>}
+            {!isVoided && <Btn variant="ghost" onClick={saveAsTemplate}><BookMarked size={15} /> Save as template</Btn>}
+            {editId && !isVoided && <Btn variant="outline" onClick={(e) => convertToJob(e, { id: editId })}><Briefcase size={15} /> Convert to job</Btn>}
             <Btn variant="outline" onClick={previewAsCustomer}><Eye size={15} /> Preview as customer</Btn>
-            <Btn variant="outline" onClick={doShare}><Share2 size={15} /> Send as PDF</Btn>
+            {!isVoided && <Btn variant="outline" onClick={openSendModal}><Mail size={15} /> Send as PDF</Btn>}
             <Btn variant="outline" onClick={doDownload}><Download size={15} /> PDF</Btn>
             <Btn variant="outline" onClick={doPrint}><Printer size={15} /> Print</Btn>
+            {editId && !isVoided && <Btn variant="danger" onClick={() => { setVoidRow(null); setVoidOpen(true); }}><Ban size={15} /> Void</Btn>}
           </div>
         </Card>
 
+        <VoidDialog
+          open={voidOpen}
+          onClose={() => { setVoidOpen(false); setVoidRow(null); }}
+          docLabel={`proposal ${voidRow?.proposal_number || editing.proposal_number || ''}`.trim()}
+          onConfirm={submitVoid}
+        />
+
         <Modal open={!!custPreview} onClose={() => setCustPreview(null)} title="Preview as customer" subtitle="Exactly what the customer sees on this proposal" size="xl">
           <iframe title="proposal preview" srcDoc={custPreview || ''} className="w-full h-[70vh] rounded-lg border border-slate-200 bg-white" />
+        </Modal>
+
+        <Modal open={sendModal} onClose={() => setSendModal(false)} title="Send proposal as PDF" subtitle="The branded PDF is attached to the email." size="md">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Goes to the customer</label>
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <Mail size={15} className="text-slate-400 shrink-0" />
+                <span className="text-sm font-medium text-slate-800 truncate">{currentCustomer.name || 'Customer'}</span>
+                <span className="text-sm text-slate-500 truncate">&lt;{currentCustomer.email}&gt;</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Also send to (optional)</label>
+              {extraEmails.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {extraEmails.map(e => (
+                    <span key={e} className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium pl-2.5 pr-1 py-1">
+                      {e}
+                      <button type="button" onClick={() => removeEmail(e)} className="rounded-full hover:bg-blue-100 p-0.5"><X size={12} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="name@example.com"
+                  value={emailDraft}
+                  onChange={e => setEmailDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addEmail(); } }}
+                  className="flex-1"
+                />
+                <Btn variant="outline" type="button" onClick={addEmail}><Plus size={15} /> Add</Btn>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5">Press Enter to add each address. They're copied on the same email.</p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Btn variant="ghost" type="button" onClick={() => setSendModal(false)}>Cancel</Btn>
+              <Btn onClick={confirmSend} loading={busy === 'send'}><Send size={15} /> Send</Btn>
+            </div>
+          </div>
         </Modal>
       </div>
     );
@@ -340,6 +458,7 @@ export default function Proposals() {
                   <div className="flex items-center justify-end gap-1">
                     <button onClick={e => convertToJob(e, r)} title="Convert to job" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg"><Briefcase size={15} /></button>
                     {r.status === 'accepted' && <button onClick={e => convert(e, r)} title="Convert to invoice" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg"><FileText size={15} /></button>}
+                    {r.status !== 'void' && <button onClick={e => openVoidFromList(e, r)} title="Void (reason + signature required)" className="text-slate-400 hover:text-rose-600 p-1.5 hover:bg-rose-50 rounded-lg"><Ban size={15} /></button>}
                     <button onClick={e => del(e, r)} title="Delete" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
                   </div>
                 </Cell>
@@ -348,6 +467,13 @@ export default function Proposals() {
           </Table>
         )}
       </Card>
+
+      <VoidDialog
+        open={voidOpen && !!voidRow}
+        onClose={() => { setVoidOpen(false); setVoidRow(null); }}
+        docLabel={`proposal ${voidRow?.proposal_number || ''}`.trim()}
+        onConfirm={submitVoid}
+      />
 
       <TemplatesModal open={tplModal} onClose={() => setTplModal(false)} templates={templates} refresh={load} />
     </div>

@@ -31,15 +31,95 @@
 
 * { box-sizing: border-box; }
 
-html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+/* Crisp text everywhere (web + iOS app): grayscale smoothing renders Inter
+   sharper and more even than the browser default, on Mac and in WKWebView. */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;                 /* use real Inter weights, never faux-bold */
+}
 
 body {
   margin: 0;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background-color: var(--surface-sunk);
-  color: #0f172a;
+  color: #0b1220;                        /* deeper ink = higher contrast, less strain */
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
+
+/* ------------------------------------------------------------------ */
+/*  Readability pass — sharper, higher-contrast, subtly "raised" type. */
+/*  Covers .app-content (every page body, staff + customer, web + iOS) */
+/*  AND .modal-surface (dialogs like New Invoice / Add Customer, which */
+/*  render to <body> outside .app-content). The dark sidebar / top bar */
+/*  live outside both, so they stay untouched.                         */
+/* ------------------------------------------------------------------ */
+.app-content,
+.modal-surface {
+  color: #0a0f1a;                        /* near-black ink = strong contrast */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.002em;               /* a hair of tracking sharpens dense text */
+}
+
+/* Lift the faint helper greys so small labels/hints stop straining the eye.
+   The :not(:hover) guard means any `hover:text-*` colour change still wins on
+   hover — icon buttons keep their hover feedback untouched. */
+.app-content .text-slate-300:not(:hover), .modal-surface .text-slate-300:not(:hover) { color: #64748b; }  /* was #cbd5e1 */
+.app-content .text-slate-400:not(:hover), .modal-surface .text-slate-400:not(:hover) { color: #4b5563; }  /* was #94a3b8 */
+.app-content .text-slate-500:not(:hover), .modal-surface .text-slate-500:not(:hover) { color: #374151; }  /* was #64748b */
+.app-content .text-slate-600:not(:hover), .modal-surface .text-slate-600:not(:hover) { color: #263041; }  /* was #475569 */
+.app-content .text-slate-700:not(:hover), .modal-surface .text-slate-700:not(:hover) { color: #1f2733; }  /* form labels */
+
+/* Crisp, embossed depth — a bright top highlight plus a soft dark drop makes
+   the text look genuinely raised off the light cards (the "3-D" pop). */
+.app-content h1, .app-content h2, .app-content h3, .app-content h4,
+.app-content .text-page-title, .app-content .text-section-title, .app-content .text-card-title,
+.modal-surface h1, .modal-surface h2, .modal-surface h3, .modal-surface h4 {
+  text-shadow: 0 1px 0 #ffffff, 0 2px 3px rgba(15, 23, 42, 0.16);
+}
+
+/* Heavier, tighter headings so they read sharp and stand out. */
+.app-content h1, .app-content h2, .app-content h3,
+.app-content .text-page-title, .app-content .text-section-title,
+.modal-surface h1, .modal-surface h2, .modal-surface h3 {
+  font-weight: 800;
+  letter-spacing: -0.018em;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Form fields — what you TYPE must be big, dark and crisp.           */
+/*  Every input/textarea/select + rich-text note field, on web and in  */
+/*  the iOS app, in both page bodies AND dialogs (New Invoice, etc.).   */
+/* ------------------------------------------------------------------ */
+.app-content input, .app-content textarea, .app-content select, .app-content .rich-input,
+.modal-surface input, .modal-surface textarea, .modal-surface select, .modal-surface .rich-input {
+  color: #0a0f1a;              /* near-black typed text */
+  font-size: 15px;             /* up from 14px */
+  font-weight: 500;            /* a touch heavier = crisper */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Placeholders were near-invisible; darken them to a readable grey. */
+.app-content input::placeholder, .app-content textarea::placeholder, .app-content .rich-input:empty:before,
+.modal-surface input::placeholder, .modal-surface textarea::placeholder, .modal-surface .rich-input:empty:before {
+  color: #6b7280;
+  opacity: 1;                  /* Firefox dims placeholders by default */
+}
+
+/* On phones / the iOS app, 16px keeps text legible AND stops Safari/WKWebView
+   from auto-zooming (and visually shrinking) the field when it's focused. */
+@media (max-width: 1023px) {
+  .app-content input, .app-content textarea, .app-content select, .app-content .rich-input,
+  .modal-surface input, .modal-surface textarea, .modal-surface select, .modal-surface .rich-input { font-size: 16px; }
+}
+html.native-app .app-content input, html.native-app .app-content textarea,
+html.native-app .app-content select, html.native-app .app-content .rich-input,
+html.native-app .modal-surface input, html.native-app .modal-surface textarea,
+html.native-app .modal-surface select, html.native-app .modal-surface .rich-input { font-size: 16px; }
+
 
 /* ------------------------------------------------------------------ */
 /*  Native mobile app only (class added at runtime in main.jsx).       */

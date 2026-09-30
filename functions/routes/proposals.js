@@ -99,6 +99,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const existing = await getById('proposals', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Proposal not found' });
+  if (existing.status === 'void') return res.status(409).json({ error: 'This proposal is void and can no longer be edited.' });
   const data = shape(req.body);
   delete data.proposal_number; // never renumber
   const saved = await update('proposals', req.params.id, data);
@@ -110,6 +111,26 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /proposals/:id/void — void a proposal. Requires a written reason and a
+// hand-drawn e-signature (audit trail). Voiding is one-way and locks it.
+router.post('/:id/void', async (req, res) => {
+  const p = await getById('proposals', req.params.id);
+  if (!p) return res.status(404).json({ error: 'Proposal not found' });
+  if (p.status === 'void') return res.status(409).json({ error: 'This proposal is already void' });
+  const reason = String(req.body?.reason || '').trim();
+  const signature = String(req.body?.signature || '');
+  if (reason.length < 10) return res.status(422).json({ error: 'Please give a clear reason for voiding (at least 10 characters).' });
+  if (!/^data:image\/\w+;base64,/.test(signature)) return res.status(422).json({ error: 'A signature is required to void.' });
+  const saved = await update('proposals', req.params.id, {
+    status: 'void',
+    void_reason: reason,
+    void_signature: signature,
+    voided_by: req.user?.name || req.user?.email || 'Staff',
+    voided_at: new Date().toISOString(),
+  });
+  res.json(saved);
+});
+
 // Email the proposal to the customer (with the branded PDF attached) + SMS notice.
 router.post('/:id/send', async (req, res) => {
   const p = await getById('proposals', req.params.id);
@@ -117,11 +138,19 @@ router.post('/:id/send', async (req, res) => {
   const customer = p.customer_id ? await getById('customers', p.customer_id) : null;
   if (!customer?.email) return res.status(422).json({ error: 'This customer has no email address on file' });
 
+  // Optional extra recipients (CC'd on the same email, PDF included). Deduped and
+  // stripped of the customer's own address so it never appears twice.
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const cc = [...new Set((Array.isArray(req.body?.recipients) ? req.body.recipients : [])
+    .map(e => String(e || '').trim())
+    .filter(e => emailRe.test(e))
+    .filter(e => e.toLowerCase() !== String(customer.email).toLowerCase()))];
+
   const entity = { ...p, customer_name: customer.name };
   const { subject, html } = await render('proposal', entity);
   const attachments = await buildAttachment('proposal', entity);
   const result = await sendMail({
-    type: 'proposal', to: customer.email, toName: customer.name, subject, html,
+    type: 'proposal', to: customer.email, toName: customer.name, subject, html, cc,
     relatedId: p.id, customerId: p.customer_id, sentBy: req.user?.name, attachments,
   });
   if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Email failed to send' });
@@ -131,7 +160,7 @@ router.post('/:id/send', async (req, res) => {
     const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
     await notifyCustomerBySms(customer, `${biz}: your proposal ${p.proposal_number} (${money(p.total)}) is ready to review and sign in your account. Reply STOP to opt out.`);
   } catch (e) { console.error('[proposals] sms failed:', e.message); }
-  res.json({ ...result, to: customer.email });
+  res.json({ ...result, to: customer.email, cc });
 });
 
 // Turn an accepted proposal into an invoice.

@@ -9,8 +9,9 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer, Share2 } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer, Share2, Ban } from 'lucide-react';
 import { printDocument, sharePdf } from '../lib/printDoc';
+import VoidDialog from '../components/VoidDialog';
 import { CalculatorButton } from '../components/Calculator';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -38,6 +39,7 @@ export default function Quotes() {
   const [saving, setSaving] = useState(false);
   const [emailTarget, setEmailTarget] = useState(null);
   const [emailing, setEmailing] = useState(false);
+  const [voidTarget, setVoidTarget] = useState(null);   // estimate being voided (needs reason + signature)
   const [taxInput, setTaxInput] = useState('8.875');
   const [defaultTaxPct, setDefaultTaxPct] = useState('8.875');
   const [priceBook, setPriceBook] = useState([]);
@@ -207,6 +209,14 @@ export default function Quotes() {
     await api.delete(`/billing/quotes/${id}`);
     toast.success('Deleted'); load();
   }
+  function openVoid(e, q) { if (e) e.stopPropagation(); setVoidTarget(q); }
+  async function submitVoid({ reason, signature }) {
+    await api.post(`/billing/quotes/${voidTarget.id}/void`, { reason, signature });
+    toast.success('Estimate voided');
+    setVoidTarget(null);
+    if (editingId === voidTarget.id) { setModal(false); setEditingId(null); }
+    load();
+  }
   function handleEmail(e, q) {
     e.stopPropagation();
     const email = customers.find(c => c.id === q.customer_id)?.email || '';
@@ -311,6 +321,7 @@ export default function Quotes() {
                     <button onClick={e => shareQuotePdf(e, q)} title="Send as PDF (WhatsApp, etc.)" className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors"><Share2 size={15} /></button>
                     <button onClick={e => printQuote(e, q)} title="Print / Download PDF" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Printer size={15} /></button>
                     <button onClick={e => handleEmail(e, q)} title="Email estimate to customer" className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors"><Mail size={15} /></button>
+                    {q.status !== 'void' && <button onClick={e => openVoid(e, q)} title="Void (reason + signature required)" className="text-slate-400 hover:text-rose-600 p-1.5 hover:bg-rose-50 rounded-lg transition-colors"><Ban size={15} /></button>}
                     <button onClick={e => handleDelete(e, q.id)} title="Delete quote" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                   </div>
                 </Cell>
@@ -322,6 +333,12 @@ export default function Quotes() {
 
       <Modal open={modal} onClose={closeModal} title={editingId ? 'Edit Quote' : 'New Quote'} subtitle={editingId ? 'Update this estimate' : 'Build a professional estimate'} size="xl">
         <div className="space-y-3">
+          {form.status === 'void' && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+              <p className="text-sm font-semibold text-rose-800 flex items-center gap-1.5"><Ban size={15} /> This estimate has been voided and is locked.</p>
+              <p className="text-xs text-rose-600/90 mt-1">A voided estimate can't be edited or sent. The reason and signature are saved for your records.</p>
+            </div>
+          )}
           <div className="flex justify-end">
             <CalculatorButton />
           </div>
@@ -423,11 +440,14 @@ export default function Quotes() {
             <div className="flex gap-2">
               <Btn variant="outline" onClick={previewQuote} loading={previewing}><Mail size={15} /> Preview as customer</Btn>
               <Btn variant="outline" onClick={printCurrent}><Printer size={15} /> Print / Save PDF</Btn>
+              {editingId && form.status !== 'void' && (
+                <Btn variant="danger" onClick={() => openVoid(null, { id: editingId, quote_number: quotes.find(q => q.id === editingId)?.quote_number })}><Ban size={15} /> Void</Btn>
+              )}
             </div>
             <div className="flex gap-2">
               {!editingId && <Btn variant="ghost" onClick={discardDraft}>Discard draft</Btn>}
               <Btn variant="outline" onClick={closeModal}>Cancel</Btn>
-              <Btn onClick={handleSave} loading={saving}>{saving ? (editingId ? 'Saving…' : 'Creating…') : (editingId ? 'Save Changes' : 'Create Quote')}</Btn>
+              {form.status !== 'void' && <Btn onClick={handleSave} loading={saving}>{saving ? (editingId ? 'Saving…' : 'Creating…') : (editingId ? 'Save Changes' : 'Create Quote')}</Btn>}
             </div>
           </div>
         </div>
@@ -440,6 +460,9 @@ export default function Quotes() {
 
       <EmailRecipientsModal open={!!emailTarget} onClose={() => setEmailTarget(null)} to={emailTarget?.email}
         title={`Email estimate ${emailTarget?.number || ''}`} sending={emailing} onSend={(cc) => sendQuoteEmail(cc)} />
+
+      <VoidDialog open={!!voidTarget} onClose={() => setVoidTarget(null)}
+        docLabel={`estimate ${voidTarget?.quote_number || ''}`.trim()} onConfirm={submitVoid} />
     </div>
   );
 }
