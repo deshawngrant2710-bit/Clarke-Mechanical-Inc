@@ -8,7 +8,7 @@ const { genTempPassword } = require('../lib/passwords');
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
 
-const ROLES = ['customer', 'technician', 'office', 'admin'];
+const ROLES = ['customer', 'technician', 'office', 'admin', 'leads'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const strip = (u) => u && {
   id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at,

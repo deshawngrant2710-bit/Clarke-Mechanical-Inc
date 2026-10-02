@@ -10,14 +10,16 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const empty = { name: '', email: '', role: 'technician', phone: '' };
-const ROLES = ['customer', 'technician', 'office', 'admin'];
+const ROLES = ['customer', 'technician', 'office', 'admin', 'leads'];
 const ROLE_STYLE = {
   customer: 'bg-slate-100 text-slate-600',
   technician: 'bg-blue-100 text-blue-700',
   office: 'bg-emerald-100 text-emerald-700',
   admin: 'bg-violet-100 text-violet-700',
+  leads: 'bg-orange-100 text-orange-700',
 };
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const ROLE_LABEL = { leads: 'Leads Caller Agent' };
+const cap = (s) => ROLE_LABEL[s] || (s.charAt(0).toUpperCase() + s.slice(1));
 
 export default function Employees() {
   const [users, setUsers] = useState([]);
@@ -153,7 +155,7 @@ export default function Employees() {
                     <Avatar name={u.name} className="w-12 h-12 text-sm" />
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-800 truncate">{u.name}{isSelf && <span className="text-xs text-slate-400 font-normal"> (you)</span>}</p>
-                      <span className={`inline-block mt-0.5 text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${ROLE_STYLE[u.role] || 'bg-slate-100 text-slate-600'}`}>{u.role}</span>
+                      <span className={`inline-block mt-0.5 text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_STYLE[u.role] || 'bg-slate-100 text-slate-600'}`}>{cap(u.role)}</span>
                     </div>
                   </div>
                   {isAdmin && !isSelf && (

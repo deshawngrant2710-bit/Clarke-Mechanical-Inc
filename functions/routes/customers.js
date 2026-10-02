@@ -1,11 +1,14 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove, findWhere } = require('../lib/db');
-const { authMiddleware, requireStaff } = require('../middleware/auth');
+const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
 const { sendSms, smsConfigured } = require('../lib/sms');
 
 const router = express.Router();
-router.use(authMiddleware, requireStaff);
+// Staff (admin/office/technician) and Leads Caller Agents can VIEW customers;
+// only staff may create/edit/delete (guarded per-route below).
+router.use(authMiddleware, requireRole('admin', 'office', 'technician', 'leads'));
+const staffOnly = requireRole('admin', 'office', 'technician');
 
 // List customers with computed rollups (open jobs, lifetime revenue, balance, last service).
 router.get('/', async (req, res) => {
@@ -59,14 +62,14 @@ function customerFields(b) {
   };
 }
 
-router.post('/', async (req, res) => {
+router.post('/', staffOnly, async (req, res) => {
   const fields = customerFields(req.body);
   if (!fields.name) return res.status(400).json({ error: 'A business name or contact name is required' });
   const saved = await create('customers', uuid(), fields);
   res.status(201).json(saved);
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', staffOnly, async (req, res) => {
   const existing = await getById('customers', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Customer not found' });
   const fields = customerFields(req.body);
@@ -75,13 +78,13 @@ router.put('/:id', async (req, res) => {
   res.json(saved);
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', staffOnly, async (req, res) => {
   await remove('customers', req.params.id);
   res.json({ success: true });
 });
 
 // POST /api/customers/bulk-delete { ids: [] } — delete several customers at once.
-router.post('/bulk-delete', async (req, res) => {
+router.post('/bulk-delete', staffOnly, async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
   if (!ids.length) return res.status(400).json({ error: 'No customers selected' });
   let deleted = 0;
@@ -94,7 +97,7 @@ router.post('/bulk-delete', async (req, res) => {
 
 // POST /api/customers/:id/text — send the customer a text from the business Quo
 // number (staff only). The message threads in Quo like any other conversation.
-router.post('/:id/text', async (req, res) => {
+router.post('/:id/text', staffOnly, async (req, res) => {
   try {
     const body = String(req.body?.message || '').trim();
     if (!body) return res.status(400).json({ error: 'Type a message to send.' });

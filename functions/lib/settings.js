@@ -26,6 +26,8 @@ const DEFAULTS = {
   boiler_emergency_rate: '250',
   boiler_after_hours_rate: '375',
   boiler_min_charge: '350',
+  // Leads-caller points → pay conversion ($ per point). 0/blank = not set yet.
+  points_dollar_value: '',
 };
 
 const REF = () => db.collection('settings').doc('app');

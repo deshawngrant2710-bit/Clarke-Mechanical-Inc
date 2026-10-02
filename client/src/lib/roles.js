@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -25,8 +25,9 @@ export const NAV_GROUPS = [
   {
     label: 'Operations',
     items: [
-      { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'office'] },
-      { to: '/pipeline', label: 'Pipeline', icon: Filter, roles: ['admin', 'office'] },
+      { to: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'office', 'leads'] },
+      { to: '/pipeline', label: 'Pipeline', icon: Filter, roles: ['admin', 'office', 'leads'] },
+      { to: '/points', label: 'Points', icon: Award, roles: ['admin', 'office', 'leads'] },
       { to: '/support', label: 'Support', icon: MessagesSquare, roles: ['admin', 'office'] },
       { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: STAFF },
       { to: '/dispatch', label: 'Dispatch', icon: Columns3, roles: ['admin', 'office'] },
@@ -83,7 +84,7 @@ export function navGroupsForRole(role) {
 
 // The landing route for a role. Customers land on their portal home (not the
 // shared "My Account" page, which happens to be the first nav item they can see).
-const HOME_BY_ROLE = { customer: '/portal', technician: '/field' };
+const HOME_BY_ROLE = { customer: '/portal', technician: '/field', leads: '/pipeline' };
 export function homeForRole(role) {
   if (HOME_BY_ROLE[role]) return HOME_BY_ROLE[role];
   const first = ALL_ITEMS.find(i => i.roles.includes(role));
@@ -96,6 +97,7 @@ const BOTTOM_PRIMARY = {
   admin:      ['/', '/jobs', '/schedule', '/invoices'],
   office:     ['/', '/jobs', '/schedule', '/invoices'],
   technician: ['/field', '/jobs', '/schedule', '/time-clock'],
+  leads:      ['/pipeline', '/customers', '/points'],
   customer:   ['/portal'],
 };
 // Returns the item objects (to/label/icon) for a role's bottom bar, access-checked.

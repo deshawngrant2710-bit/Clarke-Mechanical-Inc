@@ -42,6 +42,7 @@ app.use('/api/ai', require('./routes/ai'));
 app.use('/api/cron', require('./routes/cron'));
 app.use('/api/quo', require('./routes/quo'));
 app.use('/api/leads', require('./routes/leads'));
+app.use('/api/points', require('./routes/points'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/places', require('./routes/places'));
 app.use('/api/pay', require('./routes/pay'));

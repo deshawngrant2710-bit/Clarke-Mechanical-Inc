@@ -57,6 +57,20 @@ async function maybeAutoInvoice(job, prevStatus) {
   }
 }
 
+// When a job is completed, credit "Job Successfully Closed" (30) to the leads
+// agent who originally generated this customer (if any). Deduped per job.
+async function maybeAwardLeadPoints(job, prevStatus) {
+  try {
+    if (!job || job.status !== 'completed' || prevStatus === 'completed' || !job.customer_id) return;
+    const customer = await getById('customers', job.customer_id);
+    if (!customer?.source_agent_id) return;
+    const { awardPoints } = require('../lib/points');
+    await awardPoints({ agentId: customer.source_agent_id, agentName: customer.source_agent_name || null,
+      type: 'job_closed', customerId: customer.id, customerName: customer.name,
+      source: 'auto', relatedId: job.id, createdBy: 'System' });
+  } catch (e) { console.error('[points] job-closed award failed:', e.message); }
+}
+
 // Auto-email the customer when a job crosses into "scheduled" or "completed".
 async function notifyOnStatusChange(job, prevStatus) {
   try {
@@ -221,6 +235,7 @@ router.put('/:id', async (req, res) => {
   res.json(saved);
   notifyOnStatusChange(saved, existing.status); // best-effort, after response
   maybeAutoInvoice(saved, existing.status);     // auto-draft invoice when completed
+  maybeAwardLeadPoints(saved, existing.status); // credit the leads agent on close
 });
 
 // POST /jobs/:id/confirm-booking — office confirms a customer's held appointment:

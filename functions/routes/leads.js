@@ -6,7 +6,7 @@ const { list, getById, create, update, remove } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authMiddleware, requireRole('admin', 'office'));
+router.use(authMiddleware, requireRole('admin', 'office', 'leads'));
 
 const STAGES = ['new', 'contacted', 'quoted', 'won', 'lost'];
 const clampStage = (s) => (STAGES.includes(s) ? s : 'new');
@@ -39,6 +39,7 @@ router.post('/', async (req, res) => {
       call_log: [],
       customer_id: null,
       created_by: req.user.name,
+      created_by_id: req.user.id,
       created_at: new Date().toISOString(),
     });
     res.status(201).json(lead);
@@ -91,11 +92,23 @@ router.post('/:id/convert', async (req, res) => {
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
     if (lead.customer_id) return res.status(400).json({ error: 'This lead is already converted.' });
 
+    // Credit the agent who generated this lead (so a later completed job can
+    // also credit them). Falls back to the converting user if they're a caller.
+    const sourceAgentId = lead.created_by_id || (req.user.role === 'leads' ? req.user.id : null);
+
     const customer = await create('customers', uuid(), {
       name: lead.name, email: lead.email || null, phone: lead.phone || null,
       address: lead.address || null, city: null, state: null, zip: null,
       notes: `Converted from a sales lead (source: ${lead.source || 'Manual'}).`,
+      source_agent_id: sourceAgentId, source_agent_name: lead.created_by || null,
     });
+
+    // Award "New Customer Secured" (20) to the lead's agent.
+    try {
+      const { awardPoints } = require('../lib/points');
+      await awardPoints({ agentId: sourceAgentId, agentName: lead.created_by || null, type: 'new_customer',
+        customerId: customer.id, customerName: customer.name, source: 'auto', relatedId: lead.id, createdBy: req.user.name });
+    } catch (e) { console.error('[points] convert award failed:', e.message); }
 
     let job = null;
     if (req.body?.createJob) {

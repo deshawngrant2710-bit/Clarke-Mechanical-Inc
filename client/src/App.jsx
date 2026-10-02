@@ -45,6 +45,7 @@ import Support from './pages/Support';
 import Reports from './pages/Reports';
 import Dispatch from './pages/Dispatch';
 import Pipeline from './pages/Pipeline';
+import Points from './pages/Points';
 import RouteMap from './pages/RouteMap';
 import Payments from './pages/Payments';
 import Receipts from './pages/Receipts';
@@ -227,6 +228,7 @@ export default function App() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/dispatch" element={<Dispatch />} />
             <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/points" element={<Points />} />
             <Route path="/route" element={<RouteMap />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/receipts" element={<Receipts />} />
