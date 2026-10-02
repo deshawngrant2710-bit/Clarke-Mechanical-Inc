@@ -67,7 +67,7 @@ export const NAV_GROUPS = [
   {
     label: 'My Account',
     items: [
-      { to: '/account', label: 'My Account', icon: UserCircle, roles: [...STAFF, 'customer'] },
+      { to: '/account', label: 'My Account', icon: UserCircle, roles: [...STAFF, 'customer', 'leads'] },
       { to: '/portal', label: 'My Portal', icon: LayoutList, roles: ['customer'] },
     ],
   },

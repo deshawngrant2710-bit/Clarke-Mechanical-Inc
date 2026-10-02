@@ -120,7 +120,7 @@ export default function Sidebar({ open = false, onClose = () => {} }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold truncate leading-tight">{user?.name}</p>
-            <p className="text-xs text-slate-400 capitalize leading-tight">{user?.role}</p>
+            <p className="text-xs text-slate-400 capitalize leading-tight">{user?.role === 'leads' ? 'Agent' : user?.role}</p>
           </div>
           <button
             onClick={handleLogout}

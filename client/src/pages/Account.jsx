@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { User, Mail, Phone, Lock, LogOut, Trash2, ShieldCheck, Save, ChevronDown, CheckCircle, AlertCircle } from 'lucide-react';
 import TwoFactorSettings from '../components/TwoFactorSettings';
 
-const roleLabel = { admin: 'Administrator', office: 'Office', technician: 'Technician', customer: 'Customer' };
+const roleLabel = { admin: 'Administrator', office: 'Office', technician: 'Technician', customer: 'Customer', leads: 'Agent' };
 
 export default function Account() {
   const { user, logout, updateUser } = useAuth();
