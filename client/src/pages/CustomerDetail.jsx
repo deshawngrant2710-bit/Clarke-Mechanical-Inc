@@ -54,6 +54,7 @@ export default function CustomerDetail() {
   const [texting, setTexting] = useState(false);
   const { user: authUser } = useAuth();
   const isAdmin = authUser?.role === 'admin';
+  const isLeads = authUser?.role === 'leads'; // contact-only view, no financials/edits
 
   // Call: copy the number and open Quo so staff dial from the business line.
   async function callViaQuo() {
@@ -154,11 +155,11 @@ export default function CustomerDetail() {
           </div>
           {/* Mobile: 2-column grid (equal-width, no overflow). Desktop: inline row (unchanged). */}
           <div className="grid grid-cols-2 gap-2 w-full max-w-full lg:flex lg:w-auto lg:items-center">
-            <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={printStatement}><FileText size={15} /> Statement</Btn>
-            <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>
-            <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>
+            {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={printStatement}><FileText size={15} /> Statement</Btn>}
+            {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>}
+            {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>}
             {isAdmin && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" loading={resettingPw} onClick={resetCustomerPassword}><KeyRound size={15} /> One-time password</Btn>}
-            <Btn variant="danger" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>
+            {!isLeads && <Btn variant="danger" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-100">

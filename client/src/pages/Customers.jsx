@@ -9,6 +9,7 @@ import {
 import { Plus, Search, Phone, Mail, MapPin, Users, UserPlus, CalendarPlus, DollarSign, ChevronRight, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { cacheGet, cacheHas, cacheSet } from '../lib/queryCache';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const empty = { business_name: '', first_name: '', last_name: '', email: '', phone: '', address: '', city: '', state: '', zip: '', notes: '' };
@@ -22,6 +23,8 @@ function isThisMonth(dateStr) {
 }
 
 export default function Customers() {
+  const { user } = useAuth();
+  const hideMoney = user?.role === 'leads'; // Leads Caller Agents: no financials
   const [customers, setCustomers] = useState(() => cacheGet('/customers') || []);
   const [loading, setLoading] = useState(() => !cacheHas('/customers'));
   const [search, setSearch] = useState('');
@@ -104,7 +107,7 @@ export default function Customers() {
   const filters = [
     { id: 'all', label: 'All' },
     { id: 'active', label: 'Active Jobs' },
-    { id: 'balance', label: 'Has Balance' },
+    ...(hideMoney ? [] : [{ id: 'balance', label: 'Has Balance' }]),
     { id: 'new', label: 'New This Month' },
   ];
 
@@ -138,7 +141,7 @@ export default function Customers() {
         <StatCard label="Total Customers" value={stats.total} icon={<Users size={18} />} color="blue" />
         <StatCard label="New This Month" value={stats.newMonth} icon={<UserPlus size={18} />} color="green" />
         <StatCard label="With Active Jobs" value={stats.active} icon={<CalendarPlus size={18} />} color="purple" />
-        <StatCard label="Outstanding Balance" value={stats.outstanding} prefix="$" decimals={0} icon={<DollarSign size={18} />} color="orange" />
+        {!hideMoney && <StatCard label="Outstanding Balance" value={stats.outstanding} prefix="$" decimals={0} icon={<DollarSign size={18} />} color="orange" />}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -168,8 +171,9 @@ export default function Customers() {
           <div className="hidden lg:block">
           <Table head={[
             { label: 'Customer' }, { label: 'Contact' }, { label: 'Location' },
-            { label: 'Open Jobs', align: 'right' }, { label: 'Lifetime', align: 'right' },
-            { label: 'Balance', align: 'right' }, { label: '' },
+            { label: 'Open Jobs', align: 'right' },
+            ...(hideMoney ? [] : [{ label: 'Lifetime', align: 'right' }, { label: 'Balance', align: 'right' }]),
+            { label: '' },
           ]}>
             {filtered.map(c => (
               <Row key={c.id} onClick={() => rowClick(c)}>
@@ -207,12 +211,14 @@ export default function Customers() {
                     ? <span className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{c.open_jobs}</span>
                     : <span className="text-slate-400 text-sm">0</span>}
                 </Cell>
-                <Cell align="right"><span className="text-sm font-medium text-slate-700">{money(c.lifetime_revenue)}</span></Cell>
-                <Cell align="right">
-                  {c.balance_due > 0
-                    ? <span className="text-sm font-semibold text-red-600">{money(c.balance_due)}</span>
-                    : <span className="text-sm text-emerald-600">Paid</span>}
-                </Cell>
+                {!hideMoney && <Cell align="right"><span className="text-sm font-medium text-slate-700">{money(c.lifetime_revenue)}</span></Cell>}
+                {!hideMoney && (
+                  <Cell align="right">
+                    {c.balance_due > 0
+                      ? <span className="text-sm font-semibold text-red-600">{money(c.balance_due)}</span>
+                      : <span className="text-sm text-emerald-600">Paid</span>}
+                  </Cell>
+                )}
                 <Cell align="right"><ChevronRight size={16} className="text-slate-300 inline" /></Cell>
               </Row>
             ))}
@@ -234,9 +240,9 @@ export default function Customers() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-slate-800 truncate">{c.name}</p>
-                    {c.balance_due > 0
+                    {!hideMoney && (c.balance_due > 0
                       ? <span className="text-sm font-semibold text-red-600 shrink-0">{money(c.balance_due)}</span>
-                      : <span className="text-xs font-medium text-emerald-600 shrink-0 mt-0.5">Paid</span>}
+                      : <span className="text-xs font-medium text-emerald-600 shrink-0 mt-0.5">Paid</span>)}
                   </div>
                   {c.business_name && (c.first_name || c.last_name) && (
                     <p className="text-xs text-slate-500 truncate">{[c.first_name, c.last_name].filter(Boolean).join(' ')}</p>

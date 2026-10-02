@@ -23,17 +23,22 @@ router.get('/', async (req, res) => {
   const staffEmails = new Set(
     users.filter(u => u.role && u.role !== 'customer' && u.email).map(u => u.email.toLowerCase())
   );
+  // Leads Caller Agents are calling prospects — they see contact details only,
+  // never financials (outstanding balance, lifetime revenue) or internal notes.
+  const leadsView = req.user?.role === 'leads';
   const visible = customers.filter(c => !(c.email && staffEmails.has(c.email.toLowerCase())));
   const enriched = visible.map(c => {
     const cJobs = jobs.filter(j => j.customer_id === c.id);
     const cInv = invoices.filter(i => i.customer_id === c.id);
-    return {
+    const base = {
       ...c,
       open_jobs: cJobs.filter(j => !['completed', 'cancelled'].includes(j.status)).length,
       lifetime_revenue: cInv.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0),
       balance_due: cInv.filter(i => !['paid', 'cancelled'].includes(i.status)).reduce((s, i) => s + (i.total || 0), 0),
       last_service: cJobs.reduce((m, j) => (j.scheduled_date && (!m || j.scheduled_date > m) ? j.scheduled_date : m), null),
     };
+    if (leadsView) { delete base.lifetime_revenue; delete base.balance_due; delete base.notes; }
+    return base;
   });
   res.json(enriched);
 });
@@ -41,6 +46,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const customer = await getById('customers', req.params.id);
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  // Leads agents get contact info only — no job/financial history or internal notes.
+  if (req.user?.role === 'leads') {
+    const { notes, source_agent_id, source_agent_name, ...safe } = customer;
+    return res.json({ ...safe, jobs: [] });
+  }
   const jobs = (await findWhere('jobs', 'customer_id', req.params.id))
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   res.json({ ...customer, jobs });
