@@ -8,6 +8,20 @@ const { referralCode } = require('../lib/referral');
 const { smsConfigured, sendSms } = require('../lib/sms');
 const helcim = require('../lib/helcim');
 const { notify } = require('../lib/notify');
+const { PACKAGES } = require('../lib/boilerContract');
+
+// The three service tiers the customer can choose from, priced from Settings
+// (falling back to the package defaults). Returned to the portal for selection.
+async function tierOptions() {
+  const priceKey = { essential: 'boiler_price_essential', professional: 'boiler_price_professional', premium: 'boiler_price_premium' };
+  const out = [];
+  for (const id of ['essential', 'professional', 'premium']) {
+    const pkg = PACKAGES[id];
+    const price = Number(await settings.get(priceKey[id])) || pkg.default_price;
+    out.push({ id, name: pkg.name, price, frequency: pkg.frequency, visits: pkg.visits, scope: pkg.scope, labor_discount: pkg.labor_discount, parts_discount: pkg.parts_discount });
+  }
+  return out;
+}
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -207,7 +221,84 @@ router.get('/contracts/:id', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   const c = await getById('boiler_contracts', req.params.id);
   if (!c || !ids.includes(c.customer_id)) return res.status(404).json({ error: 'Not found' });
-  res.json(c);
+  // The fee invoice (if the contract was already accepted) + whether it's paid.
+  let fee_invoice = null;
+  if (c.fee_invoice_id) {
+    const inv = await getById('invoices', c.fee_invoice_id);
+    if (inv) {
+      const pays = await findWhere('payments', 'invoice_id', inv.id);
+      const paid = pays.reduce((s, p) => s + (p.amount || 0), 0);
+      fee_invoice = { id: inv.id, invoice_number: inv.invoice_number, total: inv.total, status: inv.status, balance: Math.max(0, Math.round(((inv.total || 0) - paid) * 100) / 100) };
+    }
+  }
+  const cust = c.customer_id ? await getById('customers', c.customer_id) : null;
+  res.json({ ...c, customer_name: cust?.name || null, tier_options: await tierOptions(), payments_enabled: helcim.configured(), fee_invoice });
+});
+
+// Next CL-#### invoice number (same continuous sequence billing uses).
+async function nextInvoiceNumber() {
+  const invoices = await list('invoices');
+  let max = 1000 - 1;
+  for (const inv of invoices) {
+    const m = String(inv.invoice_number || '').match(/^[A-Za-z]+-(?:\d{4}-)?(\d+)$/);
+    if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; }
+  }
+  return `CL-${String(max + 1).padStart(4, '0')}`;
+}
+
+// Accept a boiler service agreement: the customer picks one or more tiers, types
+// their name and signs. We lock in the selection + price, create the fee invoice,
+// and (if online payments are on) the portal immediately collects card payment.
+router.post('/contracts/:id/accept', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const c = await getById('boiler_contracts', req.params.id);
+  if (!c || !ids.includes(c.customer_id)) return res.status(404).json({ error: 'Not found' });
+  if (c.status === 'void') return res.status(409).json({ error: 'This agreement is no longer available.' });
+  if (c.status === 'accepted' || c.status === 'active') return res.status(409).json({ error: 'This agreement has already been accepted.' });
+
+  const name = String(req.body?.name || '').trim();
+  const image = String(req.body?.image || '');
+  const selected = Array.isArray(req.body?.selected) ? req.body.selected.filter(id => PACKAGES[id]) : [];
+  if (!name) return res.status(400).json({ error: 'Please type your full name to sign.' });
+  if (!image.startsWith('data:image')) return res.status(400).json({ error: 'Please draw your signature.' });
+  if (!selected.length) return res.status(400).json({ error: 'Please select at least one service plan.' });
+
+  const tiers = await tierOptions();
+  const chosen = tiers.filter(t => selected.includes(t.id));
+  const total = chosen.reduce((s, t) => s + t.price, 0);
+  const names = chosen.map(t => t.name).join(', ');
+
+  const signature = {
+    name, image, signed_at: new Date().toISOString(),
+    ip: (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim() || null,
+    user_agent: (req.headers['user-agent'] || '').toString().slice(0, 200),
+  };
+
+  // Fee invoice for the selected plan(s).
+  const invoice_number = await nextInvoiceNumber();
+  const items = chosen.map(t => ({ description: `Boiler Service Agreement — ${t.name} plan (${t.frequency})`, note: '', quantity: 1, unit_price: t.price, total: t.price }));
+  const inv = await create('invoices', uuid(), {
+    invoice_number, customer_id: c.customer_id, job_id: null, status: 'sent',
+    issue_date: new Date().toISOString().slice(0, 10), due_date: null,
+    subtotal: total, discount: 0, tax_rate: 0, tax_amount: 0, total, deposit: 0,
+    notes: `Boiler service agreement ${c.contract_number} — ${names}`, items,
+    from_contract: c.id,
+  });
+
+  const saved = await update('boiler_contracts', c.id, {
+    status: 'accepted', selected_packages: selected, package: selected[0], accepted_total: total,
+    annual_price: total, signature, accepted_at: signature.signed_at, fee_invoice_id: inv.id,
+  });
+
+  try {
+    await notify(['admin', 'office'], {
+      title: 'Service agreement accepted',
+      body: `${name} accepted boiler agreement ${c.contract_number} (${names}) — ${money(total)}.`,
+      link: '/boiler-contracts',
+    });
+  } catch (e) { console.error('[portal] contract notify failed:', e.message); }
+
+  res.json({ contract: saved, invoice_id: inv.id, invoice_number, total, payments_enabled: helcim.configured() });
 });
 
 // Accept a proposal with a typed name + drawn signature image.

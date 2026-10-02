@@ -28,6 +28,11 @@ export const STATUS_COLORS = {
   // Proposals
   expired:    'bg-slate-100 text-slate-600 ring-slate-500/20',
   void:       'bg-rose-100 text-rose-700 ring-rose-600/20',
+  // Service contracts
+  active:              'bg-emerald-100 text-emerald-800 ring-emerald-600/20',
+  expiring_soon:       'bg-amber-100 text-amber-800 ring-amber-600/20',
+  proposal_sent:       'bg-blue-100 text-blue-800 ring-blue-600/20',
+  awaiting_signature:  'bg-indigo-100 text-indigo-800 ring-indigo-600/20',
   // Priority
   low:        'bg-slate-100 text-slate-600 ring-slate-500/20',
   normal:     'bg-blue-100 text-blue-800 ring-blue-600/20',
@@ -35,7 +40,7 @@ export const STATUS_COLORS = {
   urgent:     'bg-red-100 text-red-700 ring-red-600/20',
 };
 
-const STATUS_LABELS = { partial: 'Partially Paid' };
+const STATUS_LABELS = { partial: 'Partially Paid', expiring_soon: 'Expiring soon', void: 'Void', proposal_sent: 'Sent', awaiting_signature: 'Awaiting signature' };
 
 export function Badge({ status, className = '' }) {
   const cls = STATUS_COLORS[status] || 'bg-slate-100 text-slate-600 ring-slate-500/20';
