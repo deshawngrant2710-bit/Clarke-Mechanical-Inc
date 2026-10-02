@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
@@ -14,8 +15,12 @@ const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'sh
 
 export default function Points() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const isManager = ['admin', 'office'].includes(user?.role);
   const isAdmin = user?.role === 'admin';
+  const firstName = user?.name?.trim()?.split(' ')[0] || 'there';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const [summary, setSummary] = useState(null);
   const [events, setEvents] = useState([]);
@@ -77,9 +82,26 @@ export default function Points() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Points" subtitle="Rewards for outbound calls & leads generated" icon={<Award size={20} />}>
-        {isManager && <Btn variant="outline" onClick={() => setLogOpen(true)}><Plus size={16} /> Manual adjust</Btn>}
-      </PageHeader>
+      {/* Welcome hero */}
+      <div className="mb-6 bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-sm)] px-6 py-5 relative overflow-hidden">
+        <div className="absolute -right-16 -top-20 w-72 h-72 rounded-full bg-gradient-to-br from-orange-500/10 to-transparent blur-2xl" />
+        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-400">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900">{greeting}, {firstName} 👋</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {myTotal > 0
+                ? `You've racked up ${myTotal} point${myTotal === 1 ? '' : 's'} so far — keep those calls coming!`
+                : "Welcome aboard! Make your first calls in the Pipeline to start earning points."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <Btn onClick={() => navigate('/pipeline')}><Phone size={16} /> Go to Pipeline</Btn>
+            <Btn variant="outline" onClick={() => navigate('/customers')}>Customers</Btn>
+            {isManager && <Btn variant="outline" onClick={() => setLogOpen(true)}><Plus size={16} /> Manual adjust</Btn>}
+          </div>
+        </div>
+      </div>
 
       {/* Personal scoreboard (everyone sees their own) */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">

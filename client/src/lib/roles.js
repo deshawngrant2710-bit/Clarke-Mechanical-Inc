@@ -84,7 +84,7 @@ export function navGroupsForRole(role) {
 
 // The landing route for a role. Customers land on their portal home (not the
 // shared "My Account" page, which happens to be the first nav item they can see).
-const HOME_BY_ROLE = { customer: '/portal', technician: '/field', leads: '/pipeline' };
+const HOME_BY_ROLE = { customer: '/portal', technician: '/field', leads: '/points' };
 export function homeForRole(role) {
   if (HOME_BY_ROLE[role]) return HOME_BY_ROLE[role];
   const first = ALL_ITEMS.find(i => i.roles.includes(role));

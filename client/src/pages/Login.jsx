@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { homeForRole } from '../lib/roles';
 import api from '../api/client';
 import { Mail, Lock, AlertCircle, User, Phone, Eye, EyeOff, CheckCircle2, ArrowLeft } from 'lucide-react';
 import Logo from '../components/Logo';
@@ -106,6 +107,7 @@ export default function Login() {
           ref: new URLSearchParams(window.location.search).get('ref') || undefined,
         });
         login(data.token, data.user);
+        navigate(homeForRole(data.user?.role), { replace: true });
       } else {
         const { data } = await api.post('/auth/login', { email: form.email.trim().toLowerCase(), password: form.password });
         // Account has 2-step verification: move to the code step instead of signing in.
@@ -116,8 +118,8 @@ export default function Login() {
           return;
         }
         login(data.token, data.user);
+        navigate(homeForRole(data.user?.role), { replace: true });
       }
-      navigate('/');
     } catch (err) {
       setError(err.response?.data?.error || (isSignup ? 'Could not create account' : 'Login failed'));
     } finally {
@@ -133,7 +135,7 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login/verify', { challenge_id: twofaStep.challenge_id, code: twofaCode.trim() });
       login(data.token, data.user);
-      navigate('/');
+      navigate(homeForRole(data.user?.role), { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || 'Could not verify the code');
     } finally { setLoading(false); }
