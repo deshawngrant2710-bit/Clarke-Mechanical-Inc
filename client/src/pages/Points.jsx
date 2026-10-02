@@ -78,7 +78,7 @@ export default function Points() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Points" subtitle="Rewards for outbound calls & leads generated" icon={<Award size={20} />}>
-        <Btn onClick={() => setLogOpen(true)}><Plus size={16} /> Log activity</Btn>
+        {isManager && <Btn variant="outline" onClick={() => setLogOpen(true)}><Plus size={16} /> Manual adjust</Btn>}
       </PageHeader>
 
       {/* Personal scoreboard (everyone sees their own) */}
@@ -90,7 +90,8 @@ export default function Points() {
 
       {/* How points are earned */}
       <Card className="p-5 mb-6">
-        <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-1.5"><Sparkles size={15} className="text-blue-500" /> How to earn points</h3>
+        <h3 className="text-sm font-bold text-slate-900 mb-1 flex items-center gap-1.5"><Sparkles size={15} className="text-blue-500" /> How to earn points</h3>
+        <p className="text-xs text-slate-500 mb-3">Points log automatically — just record the outcome when you log a call in the <span className="font-semibold text-slate-700">Pipeline</span>. New customers and completed jobs credit on their own.</p>
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
           {Object.entries(POINT_TYPES).map(([id, t]) => (
             <div key={id} className="flex items-start justify-between gap-3 py-1 border-b border-slate-50">
@@ -98,7 +99,10 @@ export default function Points() {
                 <p className="text-sm font-medium text-slate-800">{t.label}</p>
                 <p className="text-xs text-slate-500">{t.desc}</p>
               </div>
-              <span className="shrink-0 text-sm font-bold text-blue-600 whitespace-nowrap">+{t.points}{MANUAL_TYPES.includes(id) ? '' : ' • auto'}</span>
+              <div className="shrink-0 text-right whitespace-nowrap">
+                <span className="text-sm font-bold text-blue-600">+{t.points}</span>
+                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{MANUAL_TYPES.includes(id) ? 'log a call' : 'automatic'}</span>
+              </div>
             </div>
           ))}
         </div>

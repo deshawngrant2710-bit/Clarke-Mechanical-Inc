@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Textarea, Select, Empty, Spinner } from '../components/UI';
 import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { pointsFor } from '../lib/points';
 import toast from 'react-hot-toast';
 
 // Map a spreadsheet row (any header names) to lead fields, case-insensitively.
@@ -31,7 +32,19 @@ const STAGES = [
   { id: 'won', label: 'Won', dot: 'bg-emerald-500', head: 'text-emerald-600' },
   { id: 'lost', label: 'Lost', dot: 'bg-red-500', head: 'text-red-600' },
 ];
-const OUTCOMES = ['Reached — interested', 'Left voicemail', 'No answer', 'Callback scheduled', 'Not interested', 'Wrong number'];
+// Each call outcome the agent picks auto-logs the matching points. The ones that
+// earn points are listed first; the "no contact" outcomes earn nothing.
+const OUTCOMES = [
+  { v: 'Completed call — spoke with them', pt: 'completed_call' },
+  { v: 'Qualified — interested in info/estimate', pt: 'qualified_lead' },
+  { v: 'Scheduled an appointment', pt: 'scheduled_appointment' },
+  { v: 'Large project / commercial contract', pt: 'large_contract' },
+  { v: 'Left voicemail', pt: null },
+  { v: 'No answer', pt: null },
+  { v: 'Not interested', pt: null },
+  { v: 'Wrong number', pt: null },
+];
+const outcomePt = (v) => (OUTCOMES.find(o => o.v === v) || {}).pt || null;
 const tel = (p) => (p || '').replace(/[^\d+]/g, '');
 const money = (v) => (v == null || v === '' ? null : `$${Number(v).toLocaleString('en-US')}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null);
@@ -278,7 +291,7 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
   const [saving, setSaving] = useState(false);
   const [logging, setLogging] = useState(false);
   const [converting, setConverting] = useState(false);
-  const [outcome, setOutcome] = useState(OUTCOMES[0]);
+  const [outcome, setOutcome] = useState(OUTCOMES[0].v);
   const [note, setNote] = useState('');
   const [followUp, setFollowUp] = useState('');
   const [createJob, setCreateJob] = useState(true);
@@ -308,9 +321,10 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
   async function logCall() {
     setLogging(true);
     try {
-      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome, note, next_follow_up: followUp || undefined });
+      const pt = outcomePt(outcome);
+      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome, note, next_follow_up: followUp || undefined, point_type: pt });
       setForm(data); setNote(''); setFollowUp('');
-      toast.success('Call logged'); onDone();
+      toast.success(pt ? `Call logged · +${pointsFor(pt)} points` : 'Call logged'); onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not log call'); }
     finally { setLogging(false); }
   }
@@ -372,7 +386,7 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
           <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1.5"><PhoneCall size={15} /> Call log</p>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <Select label="Outcome" value={outcome} onChange={e => setOutcome(e.target.value)}>
-              {OUTCOMES.map(o => <option key={o} value={o}>{o}</option>)}
+              {OUTCOMES.map(o => <option key={o.v} value={o.v}>{o.v}{o.pt ? ` (+${pointsFor(o.pt)} pts)` : ''}</option>)}
             </Select>
             <Input label="Next follow-up" type="date" value={followUp} onChange={e => setFollowUp(e.target.value)} />
           </div>

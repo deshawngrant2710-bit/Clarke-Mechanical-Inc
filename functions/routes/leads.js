@@ -4,6 +4,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { awardPoints, POINT_TYPES } = require('../lib/points');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office', 'leads'));
@@ -81,6 +82,22 @@ router.post('/:id/log', async (req, res) => {
     if (b.stage) patch.stage = clampStage(b.stage);
     else if (lead.stage === 'new') patch.stage = 'contacted'; // first touch advances New → Contacted
     const saved = await update('leads', req.params.id, patch);
+
+    // Auto-award points for the outcome the agent recorded. A completed call can
+    // be earned on every call; qualified/appointment/large-contract count once
+    // per lead (deduped) so re-logging doesn't multiply them.
+    const pt = b.point_type;
+    if (pt && POINT_TYPES[pt]) {
+      try {
+        await awardPoints({
+          agentId: req.user.id, agentName: req.user.name, type: pt,
+          customerId: lead.customer_id || null, customerName: lead.name,
+          note: entry.note || entry.outcome, createdBy: req.user.name,
+          source: 'auto',
+          relatedId: pt === 'completed_call' ? null : lead.id, // dedupe all but completed_call
+        });
+      } catch (e) { console.error('[points] call-log award failed:', e.message); }
+    }
     res.json(saved);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not log the call' }); }
 });
