@@ -38,6 +38,15 @@ export default function Points() {
   }
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Refresh the moment the agent returns to this tab/screen (e.g. after logging a
+  // call in the Pipeline) so points + the welcome line update instantly.
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const myRow = useMemo(
     () => (summary?.leaderboard || []).find(a => a.agent_id === (summary?.me_id || user?.id)),
     [summary, user]
