@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Textarea, Select, Empty, Spinner } from '../components/UI';
-import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail } from 'lucide-react';
+import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail, CheckSquare, Square } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { pointsFor } from '../lib/points';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 // Map a spreadsheet row (any header names) to lead fields, case-insensitively.
@@ -56,12 +57,33 @@ export default function Pipeline() {
   const [importOpen, setImportOpen] = useState(false);
   const [active, setActive] = useState(null); // lead being viewed
   const [q, setQ] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
   function load() {
     return api.get('/leads').then(r => { setLeads(r.data); setLoading(false); }).catch(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
+
+  function toggleSel(id) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function exitSelect() { setSelectMode(false); setSelected(new Set()); }
+  async function bulkDelete() {
+    if (!selected.size) return;
+    if (!window.confirm(`Delete ${selected.size} lead${selected.size === 1 ? '' : 's'}? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await api.post('/leads/bulk-delete', { ids: [...selected] });
+      toast.success(`Deleted ${selected.size} lead${selected.size === 1 ? '' : 's'}`);
+      exitSelect(); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not delete'); }
+    finally { setDeleting(false); }
+  }
 
   async function moveStage(lead, stage) {
     setLeads(ls => ls.map(l => (l.id === lead.id ? { ...l, stage } : l)));
@@ -91,8 +113,18 @@ export default function Pipeline() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Pipeline" subtitle={`${open} open lead${open === 1 ? '' : 's'}${wonValue ? ` · ${money(wonValue)} won` : ''}`} icon={<Filter size={20} />}>
-        <Btn variant="outline" onClick={() => setImportOpen(true)}><Upload size={16} /> Import</Btn>
-        <Btn onClick={() => setAddOpen(true)}><Plus size={16} /> Add Lead</Btn>
+        {isAdmin && !selectMode && leads.length > 0 && <Btn variant="outline" onClick={() => setSelectMode(true)}><CheckSquare size={16} /> Select</Btn>}
+        {selectMode ? (
+          <>
+            <Btn variant="danger" onClick={bulkDelete} loading={deleting} disabled={!selected.size}><Trash2 size={16} /> Delete{selected.size ? ` (${selected.size})` : ''}</Btn>
+            <Btn variant="outline" onClick={exitSelect}>Done</Btn>
+          </>
+        ) : (
+          <>
+            <Btn variant="outline" onClick={() => setImportOpen(true)}><Upload size={16} /> Import</Btn>
+            <Btn onClick={() => setAddOpen(true)}><Plus size={16} /> Add Lead</Btn>
+          </>
+        )}
       </PageHeader>
 
       {leads.length === 0 ? (
@@ -126,10 +158,15 @@ export default function Pipeline() {
                 </div>
                 <div className="space-y-2 min-h-[60px]">
                   {items.map(lead => (
-                    <div key={lead.id} onClick={() => setActive(lead)}
-                      className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm hover:border-blue-300 hover:shadow transition-all cursor-pointer">
+                    <div key={lead.id} onClick={() => (selectMode ? toggleSel(lead.id) : setActive(lead))}
+                      className={`bg-white border rounded-xl p-3 shadow-sm transition-all cursor-pointer ${selectMode && selected.has(lead.id) ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-slate-200 hover:border-blue-300 hover:shadow'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{lead.name}</p>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {selectMode && (selected.has(lead.id)
+                            ? <CheckSquare size={16} className="text-blue-600 shrink-0" />
+                            : <Square size={16} className="text-slate-300 shrink-0" />)}
+                          <p className="text-sm font-semibold text-slate-800 truncate">{lead.name}</p>
+                        </div>
                         {money(lead.value) && <span className="text-xs font-semibold text-emerald-600 shrink-0">{money(lead.value)}</span>}
                       </div>
                       {lead.source && <p className="text-[11px] text-slate-400 mt-0.5">{lead.source}</p>}

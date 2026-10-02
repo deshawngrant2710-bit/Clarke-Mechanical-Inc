@@ -179,4 +179,16 @@ router.delete('/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not delete lead' }); }
 });
 
+// POST /api/leads/bulk-delete { ids: [] } — remove several leads at once (admin only).
+router.post('/bulk-delete', requireRole('admin'), async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+  if (!ids.length) return res.status(400).json({ error: 'No leads selected' });
+  let deleted = 0;
+  for (const id of ids) {
+    try { await remove('leads', id); deleted++; }
+    catch (e) { console.error('[leads] bulk-delete failed for', id, e.message); }
+  }
+  res.json({ ok: true, deleted });
+});
+
 module.exports = router;
