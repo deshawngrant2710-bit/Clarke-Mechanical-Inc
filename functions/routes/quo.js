@@ -65,8 +65,8 @@ router.post('/call-summary', async (req, res) => {
     if (callId) {
       const existing = (await list('jobs')).find(j => j.sona_call_id === callId);
       if (existing) return res.json({ ok: true, duplicate: true, jobId: existing.id });
-      const existingLead = (await list('leads')).find(l => l.sona_call_id === callId);
-      if (existingLead) return res.json({ ok: true, duplicate: true, leadId: existingLead.id });
+      const existingTask = (await list('tasks')).find(t => t.sona_call_id === callId);
+      if (existingTask) return res.json({ ok: true, duplicate: true, taskId: existingTask.id });
     }
 
     const fields = jobFields(summary);
@@ -106,16 +106,21 @@ router.post('/call-summary', async (req, res) => {
     const messageOnly = !hasService && (MESSAGE_ONLY.test(scanText) || !problem);
 
     if (messageOnly) {
-      // Not a service request — drop it into the sales pipeline as a lead to call back.
-      const lead = await create('leads', uuid(), {
-        name, phone: phone || null, email: email || null, address: address || null,
-        source: 'Phone (Sona)', notes: description, value: null,
-        stage: 'new', next_follow_up: null, last_contacted: null, call_log: [],
-        customer_id: null, created_by: 'Sona', created_at: new Date().toISOString(),
+      // Not a service request — just a message/callback/question. Sona does NOT
+      // create a customer or a pipeline lead for these; it drops an office To-Do
+      // so someone can follow up, and nothing clutters Customers or the Pipeline.
+      const contact = [phone, email].filter(Boolean).join(' · ');
+      const task = await create('tasks', uuid(), {
+        title: `Phone message: ${name}${phone ? ` (${phone})` : ''}`.slice(0, 140),
+        notes: [contact ? `Contact: ${contact}` : null, description].filter(Boolean).join('\n').slice(0, 4000),
+        assigned_to: null, customer_id: null, job_id: null, job_title: null, invoice_id: null,
+        due_date: new Date().toISOString().slice(0, 10), remind_at: null,
+        priority: 'normal', recurrence: 'none', comments: [],
+        status: 'open', created_by: 'Sona', created_at: new Date().toISOString(), completed_at: null,
         sona_call_id: callId,
       });
-      notify({ type: 'lead', title: 'New phone lead', body: `${name} left a message${phone ? ` (${phone})` : ''}`, link: '/pipeline' });
-      return res.json({ ok: true, lead: true, leadId: lead.id });
+      notify({ type: 'task', title: 'Phone message', body: `${name} left a message${phone ? ` (${phone})` : ''} — follow up`, link: '/tasks' });
+      return res.json({ ok: true, task: true, taskId: task.id });
     }
 
     // Match an existing customer by email or phone; otherwise create one.
