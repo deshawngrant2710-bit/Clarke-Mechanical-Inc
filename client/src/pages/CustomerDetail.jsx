@@ -54,6 +54,7 @@ export default function CustomerDetail() {
   const [texting, setTexting] = useState(false);
   const { user: authUser } = useAuth();
   const isAdmin = authUser?.role === 'admin';
+  const canManage = ['admin', 'office'].includes(authUser?.role); // may onboard customers
   const isLeads = authUser?.role === 'leads'; // contact-only view, no financials/edits
 
   // Call: copy the number and open Quo so staff dial from the business line.
@@ -95,14 +96,15 @@ export default function CustomerDetail() {
     finally { setSaving(false); }
   }
   async function resetCustomerPassword() {
-    if (!customer?.email) return toast.error('This customer has no email on file.');
-    if (!window.confirm(`Generate a one-time password for ${customer.name}? Their current login password will stop working.`)) return;
+    if (!customer?.email) return toast.error('Add an email address to this customer first — their email is their login.');
+    if (!window.confirm(`Set up a portal login for ${customer.name} and generate a one-time password? If they already have a login, their current password will stop working.`)) return;
     setResettingPw(true);
     try {
-      const { data } = await api.post('/auth/admin/reset-password', { email: customer.email });
+      const { data } = await api.post('/auth/admin/reset-password', { email: customer.email, customerId: id });
+      if (data.created) toast.success('Portal login created');
       setTempData({ tempPassword: data.tempPassword, name: data.name || customer.name, email: data.email || customer.email });
     } catch (e) {
-      toast.error(e.response?.data?.error || 'This customer hasn’t set up a login yet.');
+      toast.error(e.response?.data?.error || 'Could not generate a one-time password.');
     } finally { setResettingPw(false); }
   }
 
@@ -158,7 +160,7 @@ export default function CustomerDetail() {
             {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={printStatement}><FileText size={15} /> Statement</Btn>}
             {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>}
             {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>}
-            {isAdmin && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" loading={resettingPw} onClick={resetCustomerPassword}><KeyRound size={15} /> One-time password</Btn>}
+            {canManage && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" loading={resettingPw} onClick={resetCustomerPassword}><KeyRound size={15} /> One-time password</Btn>}
             {!isLeads && <Btn variant="danger" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>}
           </div>
         </div>

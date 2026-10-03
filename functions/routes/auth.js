@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
 const { db, list, findOne, findWhere, create, getById, update, remove } = require('../lib/db');
-const { JWT_SECRET, authMiddleware, adminOnly } = require('../middleware/auth');
+const { JWT_SECRET, authMiddleware, adminOnly, requireRole } = require('../middleware/auth');
 const { genTempPassword } = require('../lib/passwords');
 const { referralCode } = require('../lib/referral');
 const { sendMail, render } = require('../lib/email');
@@ -409,15 +409,47 @@ router.post('/set-initial-password', authMiddleware, async (req, res) => {
 
 // POST /api/auth/admin/reset-password — ADMIN issues a one-time password for any
 // user (staff or customer) who is locked out. Returns the temp password once.
-router.post('/admin/reset-password', authMiddleware, adminOnly, async (req, res) => {
+router.post('/admin/reset-password', authMiddleware, requireRole('admin', 'office'), async (req, res) => {
   try {
     const email = (req.body.email || '').trim().toLowerCase();
     const userId = req.body.userId;
-    const user = userId ? await getById('users', userId) : (email ? await findOne('users', 'email', email) : null);
-    if (!user) return res.status(404).json({ error: 'No login account exists for that person yet.' });
+    const customerId = req.body.customerId;
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    let user = userId ? await getById('users', userId) : (email ? await findOne('users', 'email', email) : null);
+
+    // No login account yet — auto-create one from the customer record so the
+    // office can onboard a customer they just added. The customer's email is
+    // their login; on first sign-in they're forced to set their own password.
+    if (!user) {
+      let customer = customerId ? await getById('customers', customerId) : null;
+      if (!customer && email) customer = await findOne('customers', 'email', email);
+      if (!customer) return res.status(404).json({ error: 'No login account or customer record found for that person.' });
+
+      const custEmail = String(customer.email || email || '').trim().toLowerCase();
+      if (!custEmail || !EMAIL_RE.test(custEmail)) {
+        return res.status(422).json({ error: 'Add a valid email address to this customer first — their email is their login.' });
+      }
+      // If that email already belongs to an account, reset that instead of duplicating.
+      const existing = await findOne('users', 'email', custEmail);
+      if (existing) { user = existing; }
+      else {
+        const id = uuid();
+        const tempPassword = genTempPassword();
+        await create('users', id, {
+          name: customer.name || custEmail, email: custEmail,
+          password: bcrypt.hashSync(tempPassword, 10),
+          role: 'customer', phone: customer.phone || null,
+          must_change_password: true, created_at: new Date().toISOString(),
+        });
+        if (!customer.email) await update('customers', customer.id, { email: custEmail });
+        return res.json({ tempPassword, name: customer.name || custEmail, email: custEmail, created: true });
+      }
+    }
+
     const tempPassword = genTempPassword();
     await update('users', user.id, { password: bcrypt.hashSync(tempPassword, 10), must_change_password: true });
-    res.json({ tempPassword, name: user.name, email: user.email });
+    res.json({ tempPassword, name: user.name, email: user.email, created: false });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not reset the password' }); }
 });
 
