@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Select, Empty, SkeletonPage, StatCard, SearchInput, Avatar } from '../components/UI';
-import { Plus, UserCog, Users, Wrench, ShieldCheck, Mail, Phone, Trash2, Search, UserRound, Clock, Coffee, Briefcase, MessageSquare, CheckCircle, KeyRound } from 'lucide-react';
+import { Plus, UserCog, Users, Wrench, ShieldCheck, Mail, Phone, Trash2, Search, UserRound, Clock, Coffee, Briefcase, MessageSquare, CheckCircle, KeyRound, ShieldOff, Shield } from 'lucide-react';
 import TempPasswordModal from '../components/TempPasswordModal';
 
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
@@ -31,6 +31,7 @@ export default function Employees() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [tempData, setTempData] = useState(null);
   const [resetting, setResetting] = useState(null);
+  const [resetting2fa, setResetting2fa] = useState(null);
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
@@ -74,6 +75,17 @@ export default function Employees() {
     } catch (e) {
       toast.error(e.response?.data?.error || 'Could not reset password');
     } finally { setResetting(null); }
+  }
+
+  async function reset2fa(u) {
+    if (!window.confirm(`Remove two-step verification for ${u.name}? Use this only when they've lost access to their phone/authenticator. This will be recorded under your name.`)) return;
+    setResetting2fa(u.id);
+    try {
+      await api.post('/auth/admin/reset-2fa', { userId: u.id });
+      toast.success(`Two-step removed for ${u.name} — they can sign in with their password`);
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not reset two-step'); }
+    finally { setResetting2fa(null); }
   }
 
   async function toggleTechFlag(id, val) {
@@ -156,6 +168,7 @@ export default function Employees() {
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-800 truncate">{u.name}{isSelf && <span className="text-xs text-slate-400 font-normal"> (you)</span>}</p>
                       <span className={`inline-block mt-0.5 text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_STYLE[u.role] || 'bg-slate-100 text-slate-600'}`}>{cap(u.role)}</span>
+                      {u.twofa_enabled && <span className="ml-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full"><Shield size={10} /> 2-step on</span>}
                     </div>
                   </div>
                   {isAdmin && !isSelf && (
@@ -215,10 +228,18 @@ export default function Employees() {
                         Also works as a technician
                       </label>
                     )}
-                    <button onClick={() => resetPassword(u)} disabled={resetting === u.id}
-                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50">
-                      <KeyRound size={13} /> {resetting === u.id ? 'Generating…' : 'Generate one-time password'}
-                    </button>
+                    <div className="mt-3 flex flex-col gap-2 items-start">
+                      <button onClick={() => resetPassword(u)} disabled={resetting === u.id}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50">
+                        <KeyRound size={13} /> {resetting === u.id ? 'Generating…' : 'Generate one-time password'}
+                      </button>
+                      {u.twofa_enabled && (
+                        <button onClick={() => reset2fa(u)} disabled={resetting2fa === u.id}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-50">
+                          <ShieldOff size={13} /> {resetting2fa === u.id ? 'Removing…' : 'Reset two-step verification'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </Card>

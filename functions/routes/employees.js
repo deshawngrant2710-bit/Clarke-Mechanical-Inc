@@ -14,6 +14,7 @@ const strip = (u) => u && {
   id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone, created_at: u.created_at,
   pay_per_job: u.pay_per_job || 0, salary_amount: u.salary_amount || 0, salary_frequency: u.salary_frequency || 'none',
   also_technician: !!u.also_technician,
+  twofa_enabled: !!(u.twofa && u.twofa.enabled),
 };
 
 router.get('/', async (req, res) => {

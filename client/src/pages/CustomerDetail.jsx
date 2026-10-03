@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Modal, Input, Textarea, Badge, Spinner, Avatar, Empty } from '../components/UI';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText, CheckSquare, KeyRound } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Phone, Mail, MapPin, Briefcase, Plus, CheckCircle, Clock, StickyNote, Send, MessageSquare, Navigation, FileText, CheckSquare, KeyRound, ShieldOff } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import { buildStatementHtml, printHtml } from '../lib/printDoc';
 import { TaskModal } from './Tasks';
@@ -49,6 +49,7 @@ export default function CustomerDetail() {
   const [saving, setSaving] = useState(false);
   const [tempData, setTempData] = useState(null);
   const [resettingPw, setResettingPw] = useState(false);
+  const [resetting2fa, setResetting2fa] = useState(false);
   const [textModal, setTextModal] = useState(false);
   const [textBody, setTextBody] = useState('');
   const [texting, setTexting] = useState(false);
@@ -108,6 +109,17 @@ export default function CustomerDetail() {
     } finally { setResettingPw(false); }
   }
 
+  async function resetTwofa() {
+    if (!window.confirm(`Remove two-step verification for ${customer.name}? Use this only when they've lost access to their phone/authenticator. This will be recorded under your name.`)) return;
+    setResetting2fa(true);
+    try {
+      await api.post('/auth/admin/reset-2fa', { customerId: id, email: customer.email });
+      toast.success('Two-step verification removed — they can sign in with their password');
+      setCustomer(c => ({ ...c, twofa_enabled: false }));
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not reset two-step'); }
+    finally { setResetting2fa(false); }
+  }
+
   async function printStatement() {
     let invoices = [];
     try { const r = await api.get('/billing/invoices'); invoices = r.data.filter(i => i.customer_id === id); }
@@ -161,6 +173,7 @@ export default function CustomerDetail() {
             {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>}
             {!isLeads && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={() => setEditModal(true)}><Pencil size={15} /> Edit</Btn>}
             {canManage && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" loading={resettingPw} onClick={resetCustomerPassword}><KeyRound size={15} /> One-time password</Btn>}
+            {isAdmin && customer.twofa_enabled && <Btn variant="outline" className="w-full min-w-0 whitespace-normal lg:w-auto" loading={resetting2fa} onClick={resetTwofa}><ShieldOff size={15} /> Reset 2-step</Btn>}
             {!isLeads && <Btn variant="danger" className="w-full min-w-0 whitespace-normal lg:w-auto" onClick={handleDelete}><Trash2 size={15} /> Delete</Btn>}
           </div>
         </div>

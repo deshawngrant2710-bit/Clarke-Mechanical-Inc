@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
-const { list, getById, create, update, remove, findWhere } = require('../lib/db');
+const { list, getById, create, update, remove, findWhere, findOne } = require('../lib/db');
 const { authMiddleware, requireStaff, requireRole } = require('../middleware/auth');
 const { sendSms, smsConfigured } = require('../lib/sms');
 
@@ -53,7 +53,14 @@ router.get('/:id', async (req, res) => {
   }
   const jobs = (await findWhere('jobs', 'customer_id', req.params.id))
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  res.json({ ...customer, jobs });
+  // Whether this customer's linked login has two-step verification on (so the
+  // admin can offer to reset it if they're locked out).
+  let twofa_enabled = false, has_login = false;
+  if (customer.email) {
+    const u = await findOne('users', 'email', String(customer.email).toLowerCase());
+    if (u) { has_login = true; twofa_enabled = !!(u.twofa && u.twofa.enabled); }
+  }
+  res.json({ ...customer, jobs, twofa_enabled, has_login });
 });
 
 // Build the customer's fields from the request, deriving the display `name`

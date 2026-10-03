@@ -453,6 +453,52 @@ router.post('/admin/reset-password', authMiddleware, requireRole('admin', 'offic
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not reset the password' }); }
 });
 
+// POST /api/auth/admin/reset-2fa — ADMIN removes a user's two-step verification
+// when they've lost access to their phone/authenticator. Records who authorized it
+// (audit trail). Works for any account (staff OR customer) by userId/email/customerId.
+router.post('/admin/reset-2fa', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim().toLowerCase();
+    const { userId, customerId, reason } = req.body;
+    let user = userId ? await getById('users', userId) : (email ? await findOne('users', 'email', email) : null);
+    if (!user && customerId) {
+      const c = await getById('customers', customerId);
+      if (c?.email) user = await findOne('users', 'email', String(c.email).toLowerCase());
+    }
+    if (!user) return res.status(404).json({ error: 'No login account found for that person.' });
+
+    const wasEnabled = !!(user.twofa && user.twofa.enabled);
+    const at = new Date().toISOString();
+    // Fully clear 2FA so the user signs in with their password and can set it up
+    // fresh later. Stamp who authorized the bypass.
+    await update('users', user.id, {
+      twofa: { enabled: false },
+      twofa_reset_by: req.user?.name || req.user?.email || 'Admin',
+      twofa_reset_by_id: req.user?.id || null,
+      twofa_reset_at: at,
+    });
+
+    // Audit log + office notification so the sign-off is recorded.
+    try {
+      await create('audit_log', uuid(), {
+        action: 'twofa_reset', target_user_id: user.id, target_name: user.name, target_email: user.email,
+        target_role: user.role, was_enabled: wasEnabled, reason: reason ? String(reason).slice(0, 300) : null,
+        by: req.user?.name || null, by_id: req.user?.id || null, at,
+      });
+    } catch (e) { console.error('[auth] audit write failed:', e.message); }
+    try {
+      const { notify } = require('../lib/notify');
+      await notify(['admin', 'office'], {
+        title: 'Two-step verification reset',
+        body: `${req.user?.name || 'An admin'} reset two-step for ${user.name} (${user.email}).`,
+        link: '/employees',
+      });
+    } catch (e) { /* notifications are best-effort */ }
+
+    res.json({ ok: true, name: user.name, email: user.email, was_enabled: wasEnabled });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Could not reset two-step verification' }); }
+});
+
 // PUT /api/auth/me — update your own name / phone (works for every role).
 router.put('/me', authMiddleware, async (req, res) => {
   try {
