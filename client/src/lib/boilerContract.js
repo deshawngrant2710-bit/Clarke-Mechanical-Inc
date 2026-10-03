@@ -42,7 +42,85 @@ export const DEFAULT_EXCLUSIONS = [
 
 export const packageFor = (id) => PACKAGES[id] || null;
 
+/* ---- Residential maintenance agreements (fixed consumer pricing) ---- */
+export const RESIDENTIAL_PLANS = {
+  essential: {
+    id: 'essential', name: 'Boiler Essential Care', annual: 299, monthly: 29, monthly_total: 348, labor_discount: 0,
+    scope: ['One annual boiler cleaning and tune-up', 'Safety and control inspection', 'Combustion testing where applicable', 'Written maintenance report'],
+  },
+  priority: {
+    id: 'priority', name: 'Boiler Priority Care', annual: 449, monthly: 42, monthly_total: 504, labor_discount: 15,
+    scope: ['Everything in Boiler Essential Care', 'Priority scheduling', '15% off qualifying repairs', '$99 diagnostic / service-call fee during normal business hours (vs. the standard $189 fee)'],
+  },
+  wholehome: {
+    id: 'wholehome', name: 'Whole-Home HVAC + Boiler Care', annual: 699, monthly: 65, monthly_total: 780, labor_discount: 15,
+    scope: ['Annual boiler maintenance plus spring AC maintenance', 'Priority scheduling', '15% off qualifying repairs'],
+  },
+};
+export const RESIDENTIAL_ADDONS = [
+  { id: 'extra_boiler', label: 'Additional boiler at the same property', price: 225 },
+  { id: 'extra_ac', label: 'Additional AC system', price: 199 },
+  { id: 'minisplit', label: 'Additional mini-split head', price: 75, note: 'deep cleaning is billed separately' },
+];
+export const RESIDENTIAL_EXCLUSIONS = [
+  'Repairs and replacement parts are additional, subject to any applicable plan discount',
+  'Refrigerant, and refrigerant recovery or recharge',
+  'Major repairs and deep cleaning (including mini-split or coil deep cleaning)',
+  'After-hours premiums and emergency or after-hours service calls, unless expressly included',
+  'Work required due to misuse, neglect, acts of God, or service performed by others',
+];
+export const residentialPlanFor = (id) => RESIDENTIAL_PLANS[id] || null;
+
+export function residentialTotals(c = {}) {
+  const plan = residentialPlanFor(c.plan) || RESIDENTIAL_PLANS.essential;
+  const billing = c.billing === 'monthly' ? 'monthly' : 'annual';
+  const planCharge = billing === 'monthly' ? plan.monthly_total : plan.annual;
+  const addonsMap = (c.addons && typeof c.addons === 'object') ? c.addons : {};
+  const addonLines = RESIDENTIAL_ADDONS
+    .map(a => ({ ...a, qty: Math.max(0, Number(addonsMap[a.id]) || 0) }))
+    .filter(a => a.qty > 0)
+    .map(a => ({ ...a, total: a.qty * a.price }));
+  const addonsTotal = addonLines.reduce((s, a) => s + a.total, 0);
+  const subtotal = planCharge + addonsTotal;
+  return { plan, billing, planCharge, addonLines, addonsTotal, subtotal };
+}
+
+export function buildResidentialBody(c = {}, business = {}) {
+  const bizName = business.name || 'Clarke Mechanical Inc.';
+  const t = residentialTotals(c);
+  const plan = t.plan;
+  const equip = Array.isArray(c.boilers) ? c.boilers : [];
+  const exclusions = (Array.isArray(c.exclusions) && c.exclusions.length) ? c.exclusions : RESIDENTIAL_EXCLUSIONS;
+  const li = (arr) => arr.filter(Boolean).map(x => `• ${esc(x)}`).join('<br>');
+  const equipRows = equip.length
+    ? equip.map((b, i) => `• ${esc([b.type, b.manufacturer, b.model].filter(Boolean).join(' ') || `Unit ${i + 1}`)}${b.serial ? `, S/N ${esc(b.serial)}` : ''}${b.capacity ? `, ${esc(b.capacity)}` : ''}${b.fuel ? `, ${esc(b.fuel)}` : ''}${b.system ? `, ${esc(b.system)}` : ''}`).join('<br>')
+    : '• (Equipment to be listed)';
+  const billingLine = t.billing === 'monthly'
+    ? `Selected billing: <b>Monthly — ${money(plan.monthly)}/month</b> (${money(plan.monthly_total)} total over the 12-month term).`
+    : `Selected billing: <b>Annual — ${money(plan.annual)}</b> for the 12-month term (one payment).`;
+  const P = [];
+  P.push(`This Residential Maintenance Agreement ("Agreement") is entered into between ${esc(bizName)} ("Contractor") and ${esc(c.customer_name || '________________________')} ("Customer") for the residential HVAC and/or boiler equipment located at: ${esc(c.property_address || '________________________')}.`);
+  P.push(`<h3><b>SELECTED PLAN:</b></h3>${esc(plan.name)}<br>Annual payment: <b>${money(plan.annual)}/year</b>. &nbsp;Monthly payment: <b>${money(plan.monthly)}/month</b> (${money(plan.monthly_total)} over 12 months).<br>${billingLine}<br>Both billing options cover a 12-month agreement.`);
+  P.push(`<h3><b>COVERED EQUIPMENT:</b></h3>${equipRows}`);
+  P.push(`<h3><b>WHAT'S INCLUDED:</b></h3>The following are included under this Agreement:<br>${li(plan.scope)}`);
+  if (t.addonLines.length) {
+    const rows = t.addonLines.map(a => `• ${esc(a.label)}${a.qty > 1 ? ` × ${a.qty}` : ''} — ${money(a.total)}/year${a.note ? ` (${esc(a.note)})` : ''}`).join('<br>');
+    P.push(`<h3><b>OPTIONAL ADD-ONS:</b></h3>${rows}<br><br>Add-ons are billed once per year at the start of the agreement term (or added to the first payment). Mini-split deep cleaning is a separate charge and is not included.`);
+  }
+  const priceRows = [
+    `• ${esc(plan.name)} (${t.billing === 'monthly' ? `${money(plan.monthly)}/mo × 12` : 'annual'}) — ${money(t.planCharge)}`,
+    ...t.addonLines.map(a => `• ${esc(a.label)}${a.qty > 1 ? ` × ${a.qty}` : ''} — ${money(a.total)}`),
+  ].join('<br>');
+  P.push(`<h3><b>ITEMIZED PRICING:</b></h3>${priceRows}<br><b>Agreement total (before tax): ${money(t.subtotal)} for the 12-month term.</b>${c.taxable !== false ? ' Applicable sales tax is added.' : ''}`);
+  P.push(`<h3><b>WHAT'S NOT INCLUDED:</b></h3>The following are additional and are not covered by the plan fee:<br>${li(exclusions)}<br><br>Repairs and replacement parts are billed separately, subject to any applicable plan discount. Priority scheduling does not guarantee immediate service. These plans do not include unlimited free service calls.`);
+  P.push(`<h3><b>TERM &amp; RENEWAL:</b></h3>This Agreement runs from ${esc(c.start_date || '____________')} through ${esc(c.expiry_date || '____________')} (12 months). It renews for successive one-year terms unless either party gives written notice of non-renewal at least thirty (30) days before expiration.`);
+  P.push(`<h3><b>PAYMENT:</b></h3>${billingLine} ${t.billing === 'monthly' ? 'Monthly payments are due on the same day each month for the 12-month term.' : 'The annual fee is due in advance at the start of the term.'} Amounts unpaid for more than thirty (30) days may pause service until the account is current.`);
+  P.push(`<h3><b>ACCEPTANCE:</b></h3>By signing, the Customer accepts the selected plan, add-ons, pricing, billing option and terms above, and acknowledges that repairs, replacement parts, refrigerant, deep cleaning, after-hours premiums and emergency work are additional unless expressly included.`);
+  return P.join('<br><br>');
+}
+
 export function buildContractBody(c = {}, business = {}) {
+  if (c.contract_type === 'residential') return buildResidentialBody(c, business);
   const pkg = packageFor(c.package);
   const bizName = business.name || 'Clarke Mechanical Inc.';
   const price = Number(c.annual_price) || (pkg ? pkg.default_price : 0);
@@ -77,21 +155,38 @@ export function buildContractBody(c = {}, business = {}) {
 
 // Build the print/PDF payload (reuses the branded proposal renderer).
 export function contractDocPayload(form, business, customer) {
-  const pkg = packageFor(form.package);
-  const price = Number(form.annual_price) || 0;
+  const isResidential = form.contract_type === 'residential';
   const taxRate = form.tax_rate != null ? Number(form.tax_rate) : 0.08875;
   const taxable = form.taxable !== false;
-  const tax = taxable ? Math.round(price * taxRate * 100) / 100 : 0;
+
+  let items, subtotal, docTitle;
+  if (isResidential) {
+    const t = residentialTotals(form);
+    docTitle = 'MAINTENANCE AGREEMENT';
+    items = [
+      { description: `${t.plan.name} — residential maintenance plan (${t.billing === 'monthly' ? `${money(t.plan.monthly)}/mo × 12` : 'annual'})`, quantity: 1, unit_price: t.planCharge, total: t.planCharge },
+      ...t.addonLines.map(a => ({ description: `Add-on: ${a.label}`, quantity: a.qty, unit_price: a.price, total: a.total })),
+    ];
+    subtotal = t.subtotal;
+  } else {
+    const pkg = packageFor(form.package);
+    const price = Number(form.annual_price) || 0;
+    docTitle = 'SERVICE AGREEMENT';
+    items = [{ description: `Annual boiler service agreement — ${pkg ? pkg.name : 'Custom'} package`, quantity: 1, unit_price: price, total: price }];
+    subtotal = price;
+  }
+  const tax = taxable ? Math.round(subtotal * taxRate * 100) / 100 : 0;
+
   return {
     kind: 'proposal',
     doc: {
-      doc_title: 'SERVICE AGREEMENT',
+      doc_title: docTitle,
       proposal_number: form.contract_number || 'DRAFT',
       issue_date: form.start_date || new Date().toISOString().slice(0, 10),
       expiry_date: form.expiry_date,
       body: buildContractBody({ ...form, customer_name: customer?.name }, { name: business?.business_name || business?.name }),
-      items: [{ description: `Annual boiler service agreement — ${pkg ? pkg.name : 'Custom'} package`, quantity: 1, unit_price: price, total: price }],
-      subtotal: price, discount: 0, tax_rate: taxRate, tax_amount: tax, total: price + tax,
+      items,
+      subtotal, discount: 0, tax_rate: taxRate, tax_amount: tax, total: subtotal + tax,
       service_address: form.property_address,
     },
     business: { name: business?.business_name || business?.name, phone: business?.business_phone, email: business?.business_email, address: business?.business_address, website: business?.business_website },

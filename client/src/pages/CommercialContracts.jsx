@@ -8,13 +8,14 @@ import {
   FileSignature, Plus, Search, Trash2, PlusCircle, MinusCircle, Send, Printer, Download, Eye, ArrowLeft, CheckCircle2, DollarSign, Flame,
 } from 'lucide-react';
 import { printDocument, sharePdf, downloadPdf, buildDocumentHtml } from '../lib/printDoc';
-import { PACKAGES, PRICING_GUIDE, packageFor, contractDocPayload, money } from '../lib/boilerContract';
+import { PACKAGES, PRICING_GUIDE, packageFor, contractDocPayload, money, RESIDENTIAL_PLANS, RESIDENTIAL_ADDONS, residentialTotals } from '../lib/boilerContract';
 import toast from 'react-hot-toast';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const plusYear = () => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); };
 const emptyBoiler = () => ({ type: 'Scotch marine', manufacturer: '', model: '', serial: '', capacity: '', fuel: 'Natural gas', system: 'Steam' });
 const blank = () => ({
+  contract_type: 'commercial',
   customer_id: '', property_name: '', property_address: '', boilers: [emptyBoiler()],
   package: 'professional', annual_price: PACKAGES.professional.default_price,
   labor_discount: PACKAGES.professional.labor_discount, parts_discount: 0, visits: PACKAGES.professional.visits,
@@ -23,7 +24,11 @@ const blank = () => ({
   emergency_rate: '', after_hours_rate: '', min_charge: '', response_time: '4 hours',
   payment_schedule: 'Annual in advance', start_date: today(), expiry_date: plusYear(), renewal_date: '',
   status: 'draft', exclusions_text: '', notes: '',
+  // Residential
+  plan: 'essential', billing: 'annual', addons: {},
 });
+const emptyResEquip = () => ({ type: 'Boiler', manufacturer: '', model: '', serial: '', capacity: '', fuel: 'Natural gas', system: 'Hot water' });
+const RES_TYPES = ['Boiler', 'Furnace', 'Central AC', 'Heat pump', 'Mini-split', 'Water heater', 'Other'];
 
 const FUELS = ['Natural gas', 'Oil (#2)', 'Oil (#4)', 'Oil (#6)', 'Dual-fuel'];
 const SYSTEMS = ['Steam', 'Hot water'];
@@ -59,6 +64,8 @@ export default function CommercialContracts() {
     api.get(`/boiler-contracts/${id}`).then(({ data }) => {
       setEditing({
         ...blank(), ...data,
+        contract_type: data.contract_type || 'commercial',
+        plan: data.plan || 'essential', billing: data.billing || 'annual', addons: data.addons || {},
         boilers: (data.boilers && data.boilers.length) ? data.boilers : [emptyBoiler()],
         emergency_rate: data.emergency_rate ?? '', after_hours_rate: data.after_hours_rate ?? '', min_charge: data.min_charge ?? '',
         exclusions_text: (data.exclusions || []).join('\n'),
@@ -70,10 +77,30 @@ export default function CommercialContracts() {
     const pk = packageFor(id);
     setEditing(e => ({ ...e, package: id, annual_price: (prices[id] || pk.default_price), labor_discount: pk.labor_discount, parts_discount: pk.parts_discount, visits: pk.visits, service_frequency: pk.frequency }));
   }
+  // Switch the whole contract between commercial and residential.
+  function setType(type) {
+    setEditing(e => type === 'residential'
+      ? { ...e, contract_type: 'residential', plan: e.plan || 'essential', billing: e.billing || 'annual', addons: e.addons || {}, boilers: (e.boilers && e.boilers.length) ? e.boilers : [emptyResEquip()] }
+      : { ...e, contract_type: 'commercial', boilers: (e.boilers && e.boilers.length) ? e.boilers : [emptyBoiler()] });
+  }
+  function setAddon(id, qty) {
+    setEditing(e => ({ ...e, addons: { ...(e.addons || {}), [id]: Math.max(0, Math.floor(Number(qty) || 0)) } }));
+  }
 
   function payload() {
     const e = editing;
+    if (e.contract_type === 'residential') {
+      return {
+        contract_type: 'residential',
+        customer_id: e.customer_id || null, property_name: e.property_name, property_address: e.property_address,
+        boilers: e.boilers, plan: e.plan, billing: e.billing, addons: e.addons || {},
+        start_date: e.start_date || null, expiry_date: e.expiry_date || null, renewal_date: e.renewal_date || null,
+        status: e.status, notes: e.notes,
+        exclusions: e.exclusions_text.trim() ? e.exclusions_text.split('\n').map(s => s.trim()).filter(Boolean) : null,
+      };
+    }
     return {
+      contract_type: 'commercial',
       customer_id: e.customer_id || null, property_name: e.property_name, property_address: e.property_address,
       boilers: e.boilers, package: e.package, annual_price: Number(e.annual_price) || 0,
       labor_discount: Number(e.labor_discount) || 0, parts_discount: Number(e.parts_discount) || 0,
@@ -149,15 +176,29 @@ export default function CommercialContracts() {
   /* ---------------- Editor ---------------- */
   if (editing) {
     const e = editing;
+    const isResidential = e.contract_type === 'residential';
+    const resT = isResidential ? residentialTotals(e) : null;
     const cardCls = (id) => `text-left rounded-xl border p-3 transition ${e.package === id ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40' : 'border-slate-200 hover:border-blue-300'}`;
+    const resCardCls = (id) => `text-left rounded-xl border p-3 transition ${e.plan === id ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40' : 'border-slate-200 hover:border-blue-300'}`;
     return (
       <div className="animate-fade-in max-w-4xl">
         <button onClick={() => { setEditing(null); setEditId(null); }} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-4"><ArrowLeft size={15} /> Back to contracts</button>
         <Card className="p-5 sm:p-6 space-y-5">
           <div className="flex items-center gap-2">
             <Flame size={18} className="text-blue-600" />
-            <h1 className="text-lg font-bold text-slate-900">{editId ? `Contract ${e.contract_number || ''}` : 'New boiler service contract'}</h1>
+            <h1 className="text-lg font-bold text-slate-900">{editId ? `Contract ${e.contract_number || ''}` : `New ${isResidential ? 'residential maintenance' : 'boiler service'} agreement`}</h1>
             {e.status && <span className="ml-auto"><Badge status={e.status} /></span>}
+          </div>
+
+          {/* Commercial / Residential selector */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">Agreement type</label>
+            <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50">
+              {[['commercial', 'Commercial Boiler'], ['residential', 'Residential Maintenance']].map(([v, lbl]) => (
+                <button key={v} type="button" onClick={() => setType(v)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${e.contract_type === v ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
+              ))}
+            </div>
           </div>
 
           {/* Customer + property */}
@@ -176,14 +217,14 @@ export default function CommercialContracts() {
           {/* Boiler inventory */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-semibold text-slate-700">Boiler equipment</label>
-              <button onClick={addBoiler} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"><PlusCircle size={14} /> Add boiler</button>
+              <label className="text-sm font-semibold text-slate-700">{isResidential ? 'Covered equipment' : 'Boiler equipment'}</label>
+              <button onClick={addBoiler} className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700"><PlusCircle size={14} /> Add {isResidential ? 'equipment' : 'boiler'}</button>
             </div>
             <div className="space-y-2">
               {e.boilers.map((b, i) => (
                 <div key={i} className="rounded-xl border border-slate-200 p-2.5">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <Select label="Type" value={b.type} onChange={ev => setBoiler(i, 'type', ev.target.value)}>{TYPES.map(t => <option key={t}>{t}</option>)}</Select>
+                    <Select label="Type" value={b.type} onChange={ev => setBoiler(i, 'type', ev.target.value)}>{(isResidential ? RES_TYPES : TYPES).map(t => <option key={t}>{t}</option>)}</Select>
                     <Input label="Manufacturer" value={b.manufacturer} onChange={ev => setBoiler(i, 'manufacturer', ev.target.value)} placeholder="Cleaver-Brooks" />
                     <Input label="Model" value={b.model} onChange={ev => setBoiler(i, 'model', ev.target.value)} />
                     <Input label="Serial #" value={b.serial} onChange={ev => setBoiler(i, 'serial', ev.target.value)} />
@@ -199,6 +240,8 @@ export default function CommercialContracts() {
             </div>
           </div>
 
+          {/* ---------------- Commercial-only sections ---------------- */}
+          {!isResidential && (<>
           {/* Service package */}
           <div>
             <label className="text-sm font-semibold text-slate-700 mb-2 block">Service package</label>
@@ -246,6 +289,74 @@ export default function CommercialContracts() {
               <Input label="Min. emergency charge ($)" type="number" value={e.min_charge} onChange={ev => setField('min_charge', ev.target.value)} />
             </div>
           </div>
+          </>)}
+
+          {/* ---------------- Residential-only sections ---------------- */}
+          {isResidential && (<>
+          {/* Plan + billing */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">Maintenance plan</label>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {Object.values(RESIDENTIAL_PLANS).map(pl => (
+                <button key={pl.id} type="button" onClick={() => setField('plan', pl.id)} className={resCardCls(pl.id)}>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-semibold text-slate-800 leading-tight">{pl.name}</span>
+                  </div>
+                  <p className="text-sm font-bold text-blue-700 mt-1">{money(pl.annual)}/yr <span className="text-xs font-medium text-slate-500">or {money(pl.monthly)}/mo</span></p>
+                  <p className="text-[10px] text-slate-400">{money(pl.monthly_total)} over 12 months</p>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {pl.scope.map((s, k) => <li key={k} className="text-[11px] text-slate-500 leading-snug">• {s}</li>)}
+                  </ul>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">Billing frequency</label>
+            <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50">
+              {[['annual', 'Pay annually'], ['monthly', 'Pay monthly']].map(([v, lbl]) => (
+                <button key={v} type="button" onClick={() => setField('billing', v)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${e.billing === v ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">Both options cover a 12-month agreement. Monthly totals more over the year.</p>
+          </div>
+
+          {/* Add-ons */}
+          <div>
+            <label className="text-sm font-semibold text-slate-700 mb-2 block">Optional annual add-ons</label>
+            <div className="space-y-2">
+              {RESIDENTIAL_ADDONS.map(a => (
+                <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800">{a.label}</p>
+                    <p className="text-[11px] text-slate-400">{money(a.price)}/year each{a.note ? ` · ${a.note}` : ''}</p>
+                  </div>
+                  <input type="number" min="0" value={(e.addons && e.addons[a.id]) || 0} onChange={ev => setAddon(a.id, ev.target.value)} className="w-20 px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm text-right" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Residential totals */}
+          {resT && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between"><span className="text-slate-600">{resT.plan.name} ({e.billing === 'monthly' ? `${money(resT.plan.monthly)}/mo × 12` : 'annual'})</span><span className="font-medium text-slate-800">{money(resT.planCharge)}</span></div>
+                {resT.addonLines.map(a => (
+                  <div key={a.id} className="flex justify-between"><span className="text-slate-600">{a.label}{a.qty > 1 ? ` × ${a.qty}` : ''}</span><span className="font-medium text-slate-800">{money(a.total)}</span></div>
+                ))}
+                <div className="flex justify-between border-t border-slate-200 pt-1.5 mt-1.5"><span className="font-bold text-slate-900">12-month total (before tax)</span><span className="font-bold text-slate-900">{money(resT.subtotal)}</span></div>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {e.billing === 'monthly'
+                  ? `Customer pays ${money(resT.plan.monthly)}/month (${money(resT.plan.monthly_total)} over 12 months)${resT.addonsTotal ? ` plus ${money(resT.addonsTotal)} in add-ons billed at signing` : ''}.`
+                  : `Customer pays ${money(resT.subtotal)} once for the 12-month term.`}
+              </p>
+            </div>
+          )}
+          </>)}
 
           {/* Term */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -279,7 +390,7 @@ export default function CommercialContracts() {
   /* ---------------- List ---------------- */
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Boiler Contracts" subtitle={`${rows.length} commercial service agreements`} icon={<FileSignature size={20} />}>
+      <PageHeader title="Service Contracts" subtitle={`${rows.length} commercial & residential agreements`} icon={<FileSignature size={20} />}>
         <Btn onClick={openNew}><Plus size={16} /> New Contract</Btn>
       </PageHeader>
 
@@ -296,13 +407,14 @@ export default function CommercialContracts() {
         {filtered.length === 0 ? (
           <Empty icon={<FileSignature size={28} />} title="No contracts yet" message="Create a commercial boiler service agreement to get started." action={<Btn onClick={openNew}><Plus size={16} /> New Contract</Btn>} />
         ) : (
-          <Table head={[{ label: 'Contract' }, { label: 'Customer' }, { label: 'Property' }, { label: 'Package' }, { label: 'Annual', align: 'right' }, { label: 'Expires' }, { label: 'Status', align: 'right' }, { label: '' }]}>
+          <Table head={[{ label: 'Contract' }, { label: 'Type' }, { label: 'Customer' }, { label: 'Property' }, { label: 'Plan' }, { label: 'Annual', align: 'right' }, { label: 'Expires' }, { label: 'Status', align: 'right' }, { label: '' }]}>
             {filtered.map(r => (
               <Row key={r.id} onClick={() => openEdit(r.id)}>
                 <Cell><span className="font-semibold text-slate-800">{r.contract_number}</span></Cell>
+                <Cell><span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${r.contract_type === 'residential' ? 'bg-teal-100 text-teal-700' : 'bg-indigo-100 text-indigo-700'}`}>{r.contract_type === 'residential' ? 'Residential' : 'Commercial'}</span></Cell>
                 <Cell><span className="text-sm text-slate-700">{r.customer_name || '—'}</span></Cell>
                 <Cell><span className="text-sm text-slate-600">{r.property_name || r.property_address || '—'}</span></Cell>
-                <Cell><span className="text-sm text-slate-600 capitalize">{r.package}</span></Cell>
+                <Cell><span className="text-sm text-slate-600">{r.contract_type === 'residential' ? (RESIDENTIAL_PLANS[r.plan]?.name || r.plan || '—') : <span className="capitalize">{r.package}</span>}</span></Cell>
                 <Cell align="right"><span className="text-sm font-semibold text-slate-800">{money(r.annual_price)}</span></Cell>
                 <Cell><span className="text-sm text-slate-500">{r.expiry_date || '—'}</span></Cell>
                 <Cell align="right"><Badge status={r.status} /></Cell>

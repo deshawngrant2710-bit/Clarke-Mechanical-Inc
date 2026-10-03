@@ -4,7 +4,7 @@ import { Card, Btn, Badge, Spinner, Empty, Modal, Input } from '../components/UI
 import SignaturePad from '../components/SignaturePad';
 import { Flame, Download, Printer, CheckCircle2, Check, CreditCard, ShieldCheck } from 'lucide-react';
 import { printDocument, downloadPdf } from '../lib/printDoc';
-import { contractDocPayload, packageFor, money } from '../lib/boilerContract';
+import { contractDocPayload, packageFor, money, residentialTotals, RESIDENTIAL_PLANS } from '../lib/boilerContract';
 import { loadHelcimPayJs } from '../lib/helcimPay';
 import toast from 'react-hot-toast';
 
@@ -40,7 +40,11 @@ export default function CustomerContracts() {
 
   const tiers = detail?.tier_options || [];
   const isAccepted = detail && ACCEPTED.includes(detail.status);
-  const total = tiers.filter(t => selected.includes(t.id)).reduce((s, t) => s + t.price, 0);
+  const isResidential = detail?.contract_type === 'residential';
+  const resT = isResidential && detail ? residentialTotals(detail) : null;
+  const total = isResidential
+    ? (resT ? resT.subtotal : 0)
+    : tiers.filter(t => selected.includes(t.id)).reduce((s, t) => s + t.price, 0);
 
   function toggle(id) {
     setSelected(cur => cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]);
@@ -77,13 +81,14 @@ export default function CustomerContracts() {
   }
 
   async function acceptAndPay() {
-    if (!selected.length) return toast.error('Please select at least one plan');
+    if (!isResidential && !selected.length) return toast.error('Please select at least one plan');
     if (!name.trim()) return toast.error('Please type your full name to sign');
     if (!sigRef.current || sigRef.current.isEmpty()) return toast.error('Please sign in the box');
     setBusy(true);
     try {
       const image = sigRef.current.toDataURL();
-      const { data } = await api.post(`/portal/contracts/${openId}/accept`, { name: name.trim(), image, selected });
+      const body = isResidential ? { name: name.trim(), image } : { name: name.trim(), image, selected };
+      const { data } = await api.post(`/portal/contracts/${openId}/accept`, body);
       toast.success('Agreement accepted');
       if (data.payments_enabled && data.invoice_id) {
         setPaying(true);
@@ -134,18 +139,20 @@ export default function CustomerContracts() {
       ) : (
         <div className="space-y-3">
           {list.map(c => {
-            const pk = packageFor(c.package);
+            const isRes = c.contract_type === 'residential';
+            const pk = isRes ? RESIDENTIAL_PLANS[c.plan] : packageFor(c.package);
+            const planName = pk ? pk.name : (isRes ? (c.plan || '—') : (c.package || '—'));
             return (
               <Card key={c.id} className="p-4 sm:p-5 cursor-pointer hover:shadow-[var(--shadow-md)] transition" onClick={() => open(c.id)}>
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="min-w-0">
                     <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Agreement {c.contract_number}</p>
-                    <h2 className="font-bold text-slate-900">{c.property_name || c.property_address || 'Boiler service agreement'}</h2>
+                    <h2 className="font-bold text-slate-900">{c.property_name || c.property_address || (isRes ? 'Residential maintenance agreement' : 'Boiler service agreement')}</h2>
                   </div>
                   <Badge status={c.status} />
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mb-3">
-                  <div className="text-slate-500">Plan</div><div className="text-slate-800 font-medium text-right">{ACCEPTED.includes(c.status) ? (pk ? pk.name : c.package || '—') : 'Choose your plan'}</div>
+                  <div className="text-slate-500">Plan</div><div className="text-slate-800 font-medium text-right">{isRes ? planName : (ACCEPTED.includes(c.status) ? planName : 'Choose your plan')}</div>
                   {ACCEPTED.includes(c.status) && (<><div className="text-slate-500">Annual price</div><div className="text-slate-800 font-medium text-right">{money(c.annual_price)}</div></>)}
                   <div className="text-slate-500">Term</div><div className="text-slate-800 text-right">{fmtDate(c.start_date)} – {fmtDate(c.expiry_date)}</div>
                 </div>
@@ -172,16 +179,31 @@ export default function CustomerContracts() {
                   {detail.accepted_at && <p className="text-xs text-emerald-700/90 mt-0.5">{new Date(detail.accepted_at).toLocaleString()}</p>}
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Your plan{(detail.selected_packages || []).length > 1 ? 's' : ''}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Your plan</p>
                   <div className="space-y-1.5">
-                    {tiers.filter(t => (detail.selected_packages || [detail.package]).includes(t.id)).map(t => (
-                      <div key={t.id} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-700 flex items-center gap-1.5"><Check size={14} className="text-emerald-500" /> {t.name} <span className="text-slate-400">· {t.frequency}</span></span>
-                        <span className="font-semibold text-slate-800">{money(t.price)}/yr</span>
-                      </div>
-                    ))}
+                    {isResidential && resT ? (
+                      <>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-700 flex items-center gap-1.5"><Check size={14} className="text-emerald-500" /> {resT.plan.name} <span className="text-slate-400">· {detail.billing === 'monthly' ? `${money(resT.plan.monthly)}/mo` : 'annual'}</span></span>
+                          <span className="font-semibold text-slate-800">{money(resT.planCharge)}</span>
+                        </div>
+                        {resT.addonLines.map(a => (
+                          <div key={a.id} className="flex items-center justify-between text-sm">
+                            <span className="text-slate-700 flex items-center gap-1.5"><Check size={14} className="text-emerald-500" /> {a.label}{a.qty > 1 ? ` × ${a.qty}` : ''}</span>
+                            <span className="font-semibold text-slate-800">{money(a.total)}</span>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      tiers.filter(t => (detail.selected_packages || [detail.package]).includes(t.id)).map(t => (
+                        <div key={t.id} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-700 flex items-center gap-1.5"><Check size={14} className="text-emerald-500" /> {t.name} <span className="text-slate-400">· {t.frequency}</span></span>
+                          <span className="font-semibold text-slate-800">{money(t.price)}/yr</span>
+                        </div>
+                      ))
+                    )}
                     <div className="flex items-center justify-between text-sm border-t border-slate-100 pt-1.5 mt-1.5">
-                      <span className="font-bold text-slate-900">Annual total</span>
+                      <span className="font-bold text-slate-900">{isResidential ? '12-month total' : 'Annual total'}</span>
                       <span className="font-bold text-slate-900">{money(detail.accepted_total || detail.annual_price)}</span>
                     </div>
                   </div>
@@ -210,41 +232,87 @@ export default function CustomerContracts() {
                 </div>
               </>
             ) : (
-              /* ---------- Not yet accepted: choose plan(s) + sign + pay ---------- */
+              /* ---------- Not yet accepted: review + sign + pay ---------- */
               <>
-                <p className="text-sm text-slate-600">Select the service plan(s) you'd like. You can choose more than one — the annual total updates below.</p>
+                {isResidential && resT ? (
+                  <>
+                    <p className="text-sm text-slate-600">Review your maintenance plan below, then sign to accept.</p>
+                    <div className="rounded-xl border-2 border-blue-500 bg-blue-50/50 p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-bold text-slate-900">{resT.plan.name}</p>
+                        <p className="font-bold text-slate-900 whitespace-nowrap text-right">
+                          {money(resT.plan.annual)}<span className="text-xs font-medium text-slate-500">/yr</span>
+                          <span className="block text-xs font-medium text-slate-500">or {money(resT.plan.monthly)}/mo ({money(resT.plan.monthly_total)}/yr)</span>
+                        </p>
+                      </div>
+                      <ul className="text-xs text-slate-600 space-y-0.5 mt-2">
+                        {resT.plan.scope.map((s, i) => <li key={i} className="flex items-start gap-1.5"><Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />{s}</li>)}
+                      </ul>
+                    </div>
 
-                <div className="space-y-2.5">
-                  {tiers.map(t => {
-                    const on = selected.includes(t.id);
-                    return (
-                      <button key={t.id} type="button" onClick={() => toggle(t.id)}
-                        className={`w-full text-left rounded-xl border-2 p-4 transition ${on ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200 hover:border-slate-300'}`}>
-                        <div className="flex items-start gap-3">
-                          <span className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${on ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
-                            {on && <Check size={14} className="text-white" strokeWidth={3} />}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="font-bold text-slate-900">{t.name}</p>
-                              <p className="font-bold text-slate-900 whitespace-nowrap">{money(t.price)}<span className="text-xs font-medium text-slate-500">/yr</span></p>
-                            </div>
-                            <p className="text-xs text-slate-500 mb-1.5">{t.frequency} · {t.visits} visits/yr · {t.labor_discount}% repair-labor discount{t.parts_discount ? ` · ${t.parts_discount}% parts` : ''}</p>
-                            <ul className="text-xs text-slate-600 space-y-0.5">
-                              {t.scope.slice(0, 4).map((s, i) => <li key={i} className="flex items-start gap-1.5"><Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />{s}</li>)}
-                              {t.scope.length > 4 && <li className="text-slate-400">+{t.scope.length - 4} more</li>}
-                            </ul>
+                    {resT.addonLines.length > 0 && (
+                      <div className="rounded-lg border border-slate-200 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Add-ons</p>
+                        {resT.addonLines.map(a => (
+                          <div key={a.id} className="flex items-center justify-between text-sm py-0.5">
+                            <span className="text-slate-700">{a.label}{a.qty > 1 ? ` × ${a.qty}` : ''}</span>
+                            <span className="font-medium text-slate-800">{money(a.total)}/yr</span>
                           </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                        ))}
+                      </div>
+                    )}
 
-                <div className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
-                  <span className="font-semibold text-slate-700">Annual total</span>
-                  <span className="text-lg font-bold text-slate-900">{money(total)}</span>
-                </div>
+                    <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-700">Billing</span>
+                        <span className="text-sm font-semibold text-slate-800">{detail.billing === 'monthly' ? `${money(resT.plan.monthly)}/month` : 'Annual (one payment)'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-slate-700">12-month total</span>
+                        <span className="text-lg font-bold text-slate-900">{money(resT.subtotal)}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        {detail.billing === 'monthly'
+                          ? `You'll pay ${money(resT.plan.monthly + resT.addonsTotal)} today (first month${resT.addonsTotal ? ' + add-ons' : ''}), then ${money(resT.plan.monthly)}/month for the rest of the 12-month term.`
+                          : 'Covers the full 12-month agreement.'}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-600">Select the service plan(s) you'd like. You can choose more than one — the annual total updates below.</p>
+                    <div className="space-y-2.5">
+                      {tiers.map(t => {
+                        const on = selected.includes(t.id);
+                        return (
+                          <button key={t.id} type="button" onClick={() => toggle(t.id)}
+                            className={`w-full text-left rounded-xl border-2 p-4 transition ${on ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200 hover:border-slate-300'}`}>
+                            <div className="flex items-start gap-3">
+                              <span className={`mt-0.5 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${on ? 'bg-blue-600 border-blue-600' : 'border-slate-300'}`}>
+                                {on && <Check size={14} className="text-white" strokeWidth={3} />}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="font-bold text-slate-900">{t.name}</p>
+                                  <p className="font-bold text-slate-900 whitespace-nowrap">{money(t.price)}<span className="text-xs font-medium text-slate-500">/yr</span></p>
+                                </div>
+                                <p className="text-xs text-slate-500 mb-1.5">{t.frequency} · {t.visits} visits/yr · {t.labor_discount}% repair-labor discount{t.parts_discount ? ` · ${t.parts_discount}% parts` : ''}</p>
+                                <ul className="text-xs text-slate-600 space-y-0.5">
+                                  {t.scope.slice(0, 4).map((s, i) => <li key={i} className="flex items-start gap-1.5"><Check size={12} className="text-emerald-500 mt-0.5 shrink-0" />{s}</li>)}
+                                  {t.scope.length > 4 && <li className="text-slate-400">+{t.scope.length - 4} more</li>}
+                                </ul>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
+                      <span className="font-semibold text-slate-700">Annual total</span>
+                      <span className="text-lg font-bold text-slate-900">{money(total)}</span>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1.5">Type your full name to sign <span className="text-rose-500">*</span></label>
@@ -255,10 +323,12 @@ export default function CustomerContracts() {
                   <SignaturePad ref={sigRef} height={170} />
                 </div>
 
-                <p className="text-[11px] text-slate-400 flex items-start gap-1.5"><ShieldCheck size={13} className="mt-0.5 shrink-0" /> By signing you accept the selected plan(s), scope, price and terms of agreement {detail.contract_number}. Repairs, replacement parts and emergency work are billed separately unless included.</p>
+                <p className="text-[11px] text-slate-400 flex items-start gap-1.5"><ShieldCheck size={13} className="mt-0.5 shrink-0" /> By signing you accept the plan, scope, price and terms of agreement {detail.contract_number}. Repairs, replacement parts, refrigerant, deep cleaning, after-hours premiums and emergency work are billed separately unless included. Priority scheduling does not guarantee immediate service.</p>
 
-                <Btn className="w-full justify-center" onClick={acceptAndPay} loading={busy || paying} disabled={!selected.length}>
-                  <CreditCard size={16} /> {detail.payments_enabled ? `Accept & pay ${money(total)}` : `Accept ${money(total)} agreement`}
+                <Btn className="w-full justify-center" onClick={acceptAndPay} loading={busy || paying} disabled={!isResidential && !selected.length}>
+                  <CreditCard size={16} /> {detail.payments_enabled
+                    ? `Accept & pay ${money(isResidential && detail.billing === 'monthly' ? (resT.plan.monthly + resT.addonsTotal) : total)}`
+                    : `Accept agreement`}
                 </Btn>
               </>
             )}

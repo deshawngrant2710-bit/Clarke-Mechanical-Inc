@@ -6,7 +6,7 @@ const { list, getById, create, update, remove, nameMap } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { render, sendMail } = require('../lib/email');
 const settings = require('../lib/settings');
-const { PACKAGES, PRICING_GUIDE, packageFor, buildContractBody } = require('../lib/boilerContract');
+const { PACKAGES, PRICING_GUIDE, packageFor, buildContractBody, RESIDENTIAL_PLANS, RESIDENTIAL_ADDONS, residentialPlanFor, residentialTotals } = require('../lib/boilerContract');
 const { pdfBuffer } = require('../lib/pdfDoc');
 
 const router = express.Router();
@@ -31,12 +31,53 @@ function liveStatus(c) {
 }
 
 async function shape(body) {
-  const pkg = packageFor(body.package);
   const rate = Number(await settings.get('default_tax_rate')) || 0.08875;
-  const annual = Number(body.annual_price) || (pkg ? pkg.default_price : 0);
   const taxable = body.taxable !== false;
+
+  // ── Residential maintenance agreement ──────────────────────────────────
+  if (body.contract_type === 'residential') {
+    const plan = residentialPlanFor(body.plan) || RESIDENTIAL_PLANS.essential;
+    const billing = body.billing === 'monthly' ? 'monthly' : 'annual';
+    // Normalize the add-ons map to known ids + non-negative integer quantities.
+    const addons = {};
+    for (const a of RESIDENTIAL_ADDONS) {
+      const qty = Math.max(0, Math.floor(Number(body.addons?.[a.id]) || 0));
+      if (qty > 0) addons[a.id] = qty;
+    }
+    const t = residentialTotals({ plan: plan.id, billing, addons });
+    const tax_amount = taxable ? Math.round(t.subtotal * rate * 100) / 100 : 0;
+    return {
+      contract_type: 'residential',
+      customer_id: body.customer_id || null,
+      property_name: body.property_name || null,
+      property_address: body.property_address || null,
+      boilers: Array.isArray(body.boilers) ? body.boilers : [],
+      plan: plan.id,
+      billing,
+      addons,
+      annual_price: t.subtotal,           // 12-month total before tax (for list/revenue)
+      labor_discount: plan.labor_discount,
+      parts_discount: 0,
+      service_frequency: billing === 'monthly' ? 'Annual plan, billed monthly' : 'Annual plan, billed yearly',
+      scope_items: Array.isArray(body.scope_items) ? body.scope_items : null,
+      exclusions: Array.isArray(body.exclusions) ? body.exclusions : null,
+      payment_schedule: billing === 'monthly' ? `${t.plan.monthly ? '$' + t.plan.monthly : ''}/month for 12 months` : 'Annual in advance',
+      start_date: body.start_date || null,
+      expiry_date: body.expiry_date || null,
+      renewal_date: body.renewal_date || null,
+      status: body.status || 'draft',
+      notes: body.notes || null,
+      taxable, tax_rate: rate, tax_amount,
+      total: t.subtotal + tax_amount,
+    };
+  }
+
+  // ── Commercial boiler agreement (unchanged) ────────────────────────────
+  const pkg = packageFor(body.package);
+  const annual = Number(body.annual_price) || (pkg ? pkg.default_price : 0);
   const tax_amount = taxable ? Math.round(annual * rate * 100) / 100 : 0;
   return {
+    contract_type: 'commercial',
     customer_id: body.customer_id || null,
     property_name: body.property_name || null,
     property_address: body.property_address || null,
@@ -80,7 +121,7 @@ router.get('/packages', async (req, res) => {
     after_hours_rate: Number(await settings.get('boiler_after_hours_rate')) || null,
     min_charge: Number(await settings.get('boiler_min_charge')) || null,
   };
-  res.json({ packages: PACKAGES, prices, defaults, pricing_guide: PRICING_GUIDE });
+  res.json({ packages: PACKAGES, prices, defaults, pricing_guide: PRICING_GUIDE, residential_plans: RESIDENTIAL_PLANS, residential_addons: RESIDENTIAL_ADDONS });
 });
 
 router.get('/', async (req, res) => {
@@ -89,7 +130,9 @@ router.get('/', async (req, res) => {
     .map(c => ({
       id: c.id, contract_number: c.contract_number, customer_id: c.customer_id,
       customer_name: customers[c.customer_id] || null, property_name: c.property_name,
-      property_address: c.property_address, package: c.package, annual_price: c.annual_price,
+      property_address: c.property_address,
+      contract_type: c.contract_type || 'commercial', package: c.package, plan: c.plan || null,
+      annual_price: c.annual_price,
       total: c.total, start_date: c.start_date, expiry_date: c.expiry_date, status: liveStatus(c),
       boilers: (c.boilers || []).length, created_at: c.created_at,
     }))
@@ -130,16 +173,27 @@ async function pdfOpts(c) {
   const cfg = await settings.emailConfig();
   const b = cfg.business;
   const cust = c.customer_id ? await getById('customers', c.customer_id) : null;
-  const pkg = packageFor(c.package);
   const body = buildContractBody({ ...c, customer_name: cust?.name }, { name: b.name });
-  const items = [{
-    description: `Annual boiler service agreement — ${pkg ? pkg.name : 'Custom'} package`,
-    quantity: 1, unit_price: Number(c.annual_price) || 0, total: Number(c.annual_price) || 0,
-  }];
+  let items, docTitle;
+  if (c.contract_type === 'residential') {
+    const t = residentialTotals(c);
+    docTitle = 'MAINTENANCE AGREEMENT';
+    items = [
+      { description: `${t.plan.name} — residential maintenance plan (${t.billing === 'monthly' ? `$${t.plan.monthly}/mo × 12` : 'annual'})`, quantity: 1, unit_price: t.planCharge, total: t.planCharge },
+      ...t.addonLines.map(a => ({ description: `Add-on: ${a.label}`, quantity: a.qty, unit_price: a.price, total: a.total })),
+    ];
+  } else {
+    const pkg = packageFor(c.package);
+    docTitle = 'SERVICE AGREEMENT';
+    items = [{
+      description: `Annual boiler service agreement — ${pkg ? pkg.name : 'Custom'} package`,
+      quantity: 1, unit_price: Number(c.annual_price) || 0, total: Number(c.annual_price) || 0,
+    }];
+  }
   return {
     kind: 'proposal',
     doc: {
-      doc_title: 'SERVICE AGREEMENT',
+      doc_title: docTitle,
       proposal_number: c.contract_number,
       issue_date: c.start_date || new Date().toISOString().slice(0, 10),
       expiry_date: c.expiry_date,
@@ -161,11 +215,12 @@ router.post('/:id/send', async (req, res) => {
   if (!cust?.email) return res.status(422).json({ error: 'This customer has no email address on file' });
   try {
     const buf = await pdfBuffer(await pdfOpts(c));
-    const { subject, html } = await render('proposal', { ...c, proposal_number: c.contract_number, title: 'Commercial Boiler Service Agreement', customer_name: cust.name });
+    const agreementTitle = c.contract_type === 'residential' ? 'Residential Maintenance Agreement' : 'Commercial Boiler Service Agreement';
+    const { subject, html } = await render('proposal', { ...c, proposal_number: c.contract_number, title: agreementTitle, customer_name: cust.name });
     const result = await sendMail({
       type: 'boiler_contract', to: cust.email, toName: cust.name, subject, html,
       relatedId: c.id, customerId: c.customer_id, sentBy: req.user?.name,
-      attachments: [{ filename: `Service-Agreement-${c.contract_number}.pdf`, content: buf }],
+      attachments: [{ filename: `${c.contract_type === 'residential' ? 'Maintenance' : 'Service'}-Agreement-${c.contract_number}.pdf`, content: buf }],
     });
     if (result.status === 'failed') return res.status(502).json({ error: result.error || 'Email failed to send' });
     if (['draft', 'proposal_sent'].includes(c.status)) await update('boiler_contracts', c.id, { status: 'awaiting_signature' });

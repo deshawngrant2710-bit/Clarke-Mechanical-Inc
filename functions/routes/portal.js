@@ -8,7 +8,7 @@ const { referralCode } = require('../lib/referral');
 const { smsConfigured, sendSms } = require('../lib/sms');
 const helcim = require('../lib/helcim');
 const { notify } = require('../lib/notify');
-const { PACKAGES } = require('../lib/boilerContract');
+const { PACKAGES, residentialTotals, residentialPlanFor } = require('../lib/boilerContract');
 
 // The three service tiers the customer can choose from, priced from Settings
 // (falling back to the package defaults). Returned to the portal for selection.
@@ -211,7 +211,8 @@ router.get('/contracts', async (req, res) => {
   const nested = await Promise.all(ids.map(id => findWhere('boiler_contracts', 'customer_id', id)));
   const rows = nested.flat().map(c => ({
     id: c.id, contract_number: c.contract_number, property_name: c.property_name, property_address: c.property_address,
-    package: c.package, annual_price: c.annual_price, status: c.status, start_date: c.start_date, expiry_date: c.expiry_date,
+    contract_type: c.contract_type || 'commercial', package: c.package, plan: c.plan || null, billing: c.billing || null,
+    annual_price: c.annual_price, status: c.status, start_date: c.start_date, expiry_date: c.expiry_date,
     service_frequency: c.service_frequency, boilers: c.boilers || [], created_at: c.created_at,
   })).sort(byCreated);
   res.json(rows);
@@ -258,15 +259,8 @@ router.post('/contracts/:id/accept', async (req, res) => {
 
   const name = String(req.body?.name || '').trim();
   const image = String(req.body?.image || '');
-  const selected = Array.isArray(req.body?.selected) ? req.body.selected.filter(id => PACKAGES[id]) : [];
   if (!name) return res.status(400).json({ error: 'Please type your full name to sign.' });
   if (!image.startsWith('data:image')) return res.status(400).json({ error: 'Please draw your signature.' });
-  if (!selected.length) return res.status(400).json({ error: 'Please select at least one service plan.' });
-
-  const tiers = await tierOptions();
-  const chosen = tiers.filter(t => selected.includes(t.id));
-  const total = chosen.reduce((s, t) => s + t.price, 0);
-  const names = chosen.map(t => t.name).join(', ');
 
   const signature = {
     name, image, signed_at: new Date().toISOString(),
@@ -274,31 +268,63 @@ router.post('/contracts/:id/accept', async (req, res) => {
     user_agent: (req.headers['user-agent'] || '').toString().slice(0, 200),
   };
 
-  // Fee invoice for the selected plan(s).
+  let items, payNow, summary, contractPatch;
+
+  if (c.contract_type === 'residential') {
+    // Residential: the plan + add-ons were set by the office. The customer just
+    // signs and pays. Annual billing pays the full 12-month total now; monthly
+    // billing pays the first month + any one-time add-ons at signing.
+    const t = residentialTotals(c);
+    const plan = t.plan;
+    if (c.billing === 'monthly') {
+      payNow = plan.monthly + t.addonsTotal;
+      items = [
+        { description: `${plan.name} — first monthly payment ($${plan.monthly}/mo for 12 months)`, note: '', quantity: 1, unit_price: plan.monthly, total: plan.monthly },
+        ...t.addonLines.map(a => ({ description: `Add-on: ${a.label}${a.qty > 1 ? ` × ${a.qty}` : ''}`, note: '', quantity: a.qty, unit_price: a.price, total: a.total })),
+      ];
+    } else {
+      payNow = t.subtotal;
+      items = [
+        { description: `${plan.name} — annual maintenance plan (12 months)`, note: '', quantity: 1, unit_price: plan.annual, total: plan.annual },
+        ...t.addonLines.map(a => ({ description: `Add-on: ${a.label}${a.qty > 1 ? ` × ${a.qty}` : ''}`, note: '', quantity: a.qty, unit_price: a.price, total: a.total })),
+      ];
+    }
+    summary = `${plan.name} (${c.billing === 'monthly' ? 'monthly' : 'annual'})`;
+    contractPatch = { accepted_total: t.subtotal };
+  } else {
+    // Commercial: the customer selects one or more tiers.
+    const selected = Array.isArray(req.body?.selected) ? req.body.selected.filter(id => PACKAGES[id]) : [];
+    if (!selected.length) return res.status(400).json({ error: 'Please select at least one service plan.' });
+    const tiers = await tierOptions();
+    const chosen = tiers.filter(t => selected.includes(t.id));
+    payNow = chosen.reduce((s, t) => s + t.price, 0);
+    items = chosen.map(t => ({ description: `Boiler Service Agreement — ${t.name} plan (${t.frequency})`, note: '', quantity: 1, unit_price: t.price, total: t.price }));
+    summary = chosen.map(t => t.name).join(', ');
+    contractPatch = { selected_packages: selected, package: selected[0], accepted_total: payNow, annual_price: payNow };
+  }
+
   const invoice_number = await nextInvoiceNumber();
-  const items = chosen.map(t => ({ description: `Boiler Service Agreement — ${t.name} plan (${t.frequency})`, note: '', quantity: 1, unit_price: t.price, total: t.price }));
   const inv = await create('invoices', uuid(), {
     invoice_number, customer_id: c.customer_id, job_id: null, status: 'sent',
     issue_date: new Date().toISOString().slice(0, 10), due_date: null,
-    subtotal: total, discount: 0, tax_rate: 0, tax_amount: 0, total, deposit: 0,
-    notes: `Boiler service agreement ${c.contract_number} — ${names}`, items,
+    subtotal: payNow, discount: 0, tax_rate: 0, tax_amount: 0, total: payNow, deposit: 0,
+    notes: `${c.contract_type === 'residential' ? 'Maintenance' : 'Boiler service'} agreement ${c.contract_number} — ${summary}`, items,
     from_contract: c.id,
   });
 
   const saved = await update('boiler_contracts', c.id, {
-    status: 'accepted', selected_packages: selected, package: selected[0], accepted_total: total,
-    annual_price: total, signature, accepted_at: signature.signed_at, fee_invoice_id: inv.id,
+    status: 'accepted', signature, accepted_at: signature.signed_at, fee_invoice_id: inv.id, ...contractPatch,
   });
 
   try {
     await notify(['admin', 'office'], {
       title: 'Service agreement accepted',
-      body: `${name} accepted boiler agreement ${c.contract_number} (${names}) — ${money(total)}.`,
+      body: `${name} accepted agreement ${c.contract_number} (${summary}) — ${money(payNow)}${c.contract_type === 'residential' && c.billing === 'monthly' ? ' first payment' : ''}.`,
       link: '/boiler-contracts',
     });
   } catch (e) { console.error('[portal] contract notify failed:', e.message); }
 
-  res.json({ contract: saved, invoice_id: inv.id, invoice_number, total, payments_enabled: helcim.configured() });
+  res.json({ contract: saved, invoice_id: inv.id, invoice_number, total: payNow, payments_enabled: helcim.configured() });
 });
 
 // Accept a proposal with a typed name + drawn signature image.
