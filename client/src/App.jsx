@@ -51,6 +51,7 @@ import Payments from './pages/Payments';
 import Receipts from './pages/Receipts';
 import EmailLog from './pages/EmailLog';
 import PriceBook from './pages/PriceBook';
+import ServicePriceBook from './pages/ServicePriceBook';
 import Payroll from './pages/Payroll';
 import Purchasing from './pages/Purchasing';
 import Tasks from './pages/Tasks';
@@ -234,6 +235,7 @@ export default function App() {
             <Route path="/receipts" element={<Receipts />} />
             <Route path="/email-log" element={<EmailLog />} />
             <Route path="/price-book" element={<PriceBook />} />
+            <Route path="/service-pricing" element={<ServicePriceBook />} />
             <Route path="/payroll" element={<Payroll />} />
             <Route path="/purchasing" element={<Purchasing />} />
             <Route path="/tasks" element={<Tasks />} />

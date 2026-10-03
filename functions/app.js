@@ -24,6 +24,7 @@ app.use('/api/proposals', require('./routes/proposals'));
 app.use('/api/boiler-contracts', require('./routes/boilerContracts'));
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/pricebook', require('./routes/pricebook'));
+app.use('/api/service-pricebook', require('./routes/servicePricebook'));
 app.use('/api/purchasing', require('./routes/purchasing'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/employees', require('./routes/employees'));

@@ -7,7 +7,8 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy, Share2, Printer } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, FileText, DollarSign, AlertTriangle, Clock, Mail, BellRing, Copy, Share2, Printer, BookOpen } from 'lucide-react';
+import ServicePicker from '../components/ServicePicker';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
 import { sharePdf, printDocument } from '../lib/printDoc';
@@ -34,6 +35,18 @@ export default function Invoices() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [servicePicker, setServicePicker] = useState(false);
+
+  // Append a service from the price book as a snapshotted line item.
+  function addServiceLine({ description, note, quantity, unit_price }) {
+    setForm(f => {
+      const items = [...f.items];
+      const blankIdx = items.findIndex(it => !(it.description || '').trim() && !Number(it.unit_price));
+      const line = { description, note: note || '', quantity: Number(quantity) || 1, unit_price: Number(unit_price) || 0 };
+      if (blankIdx >= 0) items[blankIdx] = line; else items.push(line);
+      return { ...f, items };
+    });
+  }
   const [reminding, setReminding] = useState(false);
   const [taxInput, setTaxInput] = useState('8.875');
   const [defaultTaxPct, setDefaultTaxPct] = useState('8.875');
@@ -336,10 +349,16 @@ export default function Invoices() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-700">Line items</label>
-              <button onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
-                className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
-                <PlusCircle size={14} /> Add line
-              </button>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setServicePicker(true)}
+                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                  <BookOpen size={14} /> Add service
+                </button>
+                <button onClick={() => setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))}
+                  className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                  <PlusCircle size={14} /> Add line
+                </button>
+              </div>
             </div>
             {priceBook.length > 0 && <p className="text-[11px] text-slate-400 mb-2">Tip: start typing a description to search your price book — the price fills in automatically.</p>}
             <div className="hidden sm:grid grid-cols-12 gap-2 px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -412,6 +431,8 @@ export default function Invoices() {
           </div>
         </div>
       </Modal>
+
+      <ServicePicker open={servicePicker} onClose={() => setServicePicker(false)} onAdd={addServiceLine} />
     </div>
   );
 }
