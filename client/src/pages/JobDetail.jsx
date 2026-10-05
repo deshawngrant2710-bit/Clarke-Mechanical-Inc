@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck, CheckSquare } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck, CheckSquare, Send } from 'lucide-react';
 import { TaskModal } from './Tasks';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -54,6 +54,7 @@ export default function JobDetail() {
   const [signModal, setSignModal] = useState(false);
   const [signMode, setSignMode] = useState('customer'); // 'customer' | 'management' | 'technician'
   const [authorizingTech, setAuthorizingTech] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [resign, setResign] = useState(false); // manager correcting an existing sign-off
   const [approving, setApproving] = useState(false);
   const [bizPhone, setBizPhone] = useState('');
@@ -85,6 +86,16 @@ export default function JobDetail() {
     setSignMode(mode);
     setSignName(mode === 'customer' ? (job.customer_name || '') : (user?.name || ''));
     setSignModal(true);
+  }
+
+  async function requestSignoff() {
+    setRequesting(true);
+    try {
+      await api.post(`/jobs/${id}/request-signoff`);
+      toast.success('Approval request sent to the office');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not send the request'); }
+    finally { setRequesting(false); }
   }
 
   async function authorizeTechSignoff() {
@@ -620,6 +631,12 @@ export default function JobDetail() {
                   )}
                   <Btn size="sm" onClick={() => openSign('management')}><PenLine size={14} /> Sign off as management</Btn>
 
+                  {job.signoff_requested && !job.signoff_approved && !job.signoff_tech_authorized && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                      <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5"><BellRing size={12} /> {job.signoff_requested_by || 'The technician'} requested sign-off approval</p>
+                    </div>
+                  )}
+
                   <div className="pt-2 border-t border-slate-100">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Customer signature</p>
                     {job.signoff_approved ? (
@@ -651,9 +668,11 @@ export default function JobDetail() {
                     </div>
                   ) : job.signoff_tech_authorized ? null : (
                     <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-                      <p className="text-sm font-semibold text-amber-800">Call the office to approve sign-off</p>
-                      <p className="text-xs text-amber-700 mt-0.5">The office can approve the customer to sign here, or authorize you to sign off if the customer isn't on site.</p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <p className="text-sm font-semibold text-amber-800">Sign-off needs office approval</p>
+                      <p className="text-xs text-amber-700 mt-0.5">Request approval below — the office can approve the customer to sign here, or authorize you to sign off if the customer isn't on site.</p>
+                      {job.signoff_requested && <p className="text-xs text-emerald-700 mt-1.5 flex items-center gap-1.5"><CheckCircle2 size={12} /> Request sent{job.signoff_requested_at ? ` · ${new Date(job.signoff_requested_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}</p>}
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Btn size="sm" onClick={requestSignoff} loading={requesting}><Send size={13} /> {job.signoff_requested ? 'Resend request' : 'Request approval'}</Btn>
                         {bizPhone && <a href={`tel:${bizPhone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white text-blue-700 text-xs font-semibold border border-amber-200 hover:bg-blue-50"><Phone size={12} /> Call the office</a>}
                         <button onClick={load} className="text-xs font-semibold text-amber-800 underline">Check again</button>
                       </div>

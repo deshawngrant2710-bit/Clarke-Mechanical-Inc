@@ -311,6 +311,24 @@ router.post('/:id/approve-signoff', requireRole('admin', 'office'), async (req, 
   res.json(saved);
 });
 
+// POST /jobs/:id/request-signoff — a technician asks the office/admin to approve
+// sign-off on site. Pings every admin/office user in-app (bell → opens the job).
+router.post('/:id/request-signoff', async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const at = new Date().toISOString();
+  await update('jobs', req.params.id, { signoff_requested: true, signoff_requested_by: req.user.name, signoff_requested_at: at });
+  try {
+    const { notify } = require('../lib/notify');
+    await notify(['admin', 'office'], {
+      title: 'Sign-off approval requested',
+      body: `${req.user.name} is requesting sign-off approval for "${job.title}".`,
+      link: `/jobs/${job.id}`,
+    });
+  } catch (e) { console.error('[jobs] signoff request notify failed:', e.message); }
+  res.json({ ok: true, requested_at: at });
+});
+
 // POST /jobs/:id/authorize-tech-signoff — office/admin authorizes a TECHNICIAN to
 // sign the job off on the customer's behalf when the customer is not on site.
 // This is a separate, stronger approval than approve-signoff (which only lets the
