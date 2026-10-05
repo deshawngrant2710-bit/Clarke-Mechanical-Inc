@@ -311,21 +311,55 @@ router.post('/:id/approve-signoff', requireRole('admin', 'office'), async (req, 
   res.json(saved);
 });
 
-// POST /jobs/:id/signoff — staff captures the customer's signature on-site.
+// POST /jobs/:id/authorize-tech-signoff — office/admin authorizes a TECHNICIAN to
+// sign the job off on the customer's behalf when the customer is not on site.
+// This is a separate, stronger approval than approve-signoff (which only lets the
+// tech collect the CUSTOMER's own signature).
+router.post('/:id/authorize-tech-signoff', requireRole('admin', 'office'), async (req, res) => {
+  const job = await getById('jobs', req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  const saved = await update('jobs', req.params.id, {
+    signoff_tech_authorized: true, signoff_tech_authorized_by: req.user.name, signoff_tech_authorized_at: new Date().toISOString(),
+  });
+  res.json(saved);
+});
+
+// POST /jobs/:id/signoff — record a sign-off. signoff_type decides who is attesting:
+//   'customer'   – the customer signs (tech needs approve-signoff first)
+//   'management' – a manager/admin signs off directly (customer not required)
+//   'technician' – the tech signs off on the customer's behalf (needs a manager's
+//                   authorize-tech-signoff first). Shows "Signed off by technician".
 router.post('/:id/signoff', async (req, res) => {
   const job = await getById('jobs', req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
-  // A technician can only collect the customer's signature after office approval.
-  if (req.user.role === 'technician' && !job.signoff_approved) {
-    return res.status(403).json({ error: 'Office approval is required before the customer can sign off. Please call the office.' });
+  const role = req.user.role;
+  const isManager = ['admin', 'office'].includes(role);
+  const type = ['customer', 'management', 'technician'].includes(req.body.signoff_type) ? req.body.signoff_type : 'customer';
+
+  if (type === 'management') {
+    if (!isManager) return res.status(403).json({ error: 'Only a manager, admin or office user can sign off as management.' });
+  } else if (type === 'technician') {
+    if (!isManager && !job.signoff_tech_authorized) {
+      return res.status(403).json({ error: 'A manager must authorize signing off on the customer\'s behalf first. Please call the office.' });
+    }
+  } else { // customer
+    if (role === 'technician' && !job.signoff_approved) {
+      return res.status(403).json({ error: 'Office approval is required before the customer can sign off. Please call the office.' });
+    }
   }
+
   const { signature, signed_by } = req.body;
-  if (!signature) return res.status(400).json({ error: 'Signature is required' });
+  // The customer's own signature is required; management/technician attestations
+  // record the staff member's name (a drawn signature is optional).
+  if (type === 'customer' && !signature) return res.status(400).json({ error: 'Signature is required' });
+  const signerName = type === 'customer' ? (signed_by || 'Customer') : (req.user.name || signed_by || 'Staff');
+
   const extra = job.status === 'awaiting-signoff'
     ? { status: 'completed', completed_date: job.completed_date || new Date().toISOString().slice(0, 10) }
     : {};
   const saved = await update('jobs', req.params.id, {
-    signature, signed_by: signed_by || 'Customer', signed_at: new Date().toISOString(), ...extra,
+    signoff_type: type, signature: signature || null, signed_by: signerName,
+    signed_at: new Date().toISOString(), ...extra,
   });
   res.json(saved);
   maybeAutoInvoice(saved, job.status); // best-effort, after response

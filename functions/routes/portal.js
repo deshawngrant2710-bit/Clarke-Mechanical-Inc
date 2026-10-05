@@ -151,7 +151,7 @@ router.get('/jobs', async (req, res) => {
       description: j.description, technician_name: techs[j.technician_id] || null, created_at: j.created_at,
       additional_technician_names: (Array.isArray(j.additional_technician_ids) ? j.additional_technician_ids : []).map(id => techs[id]).filter(Boolean),
       review: reviewByJob[j.id] || null,
-      signed_by: j.signed_by || null, signed_at: j.signed_at || null, signature: j.signature || null,
+      signed_by: j.signed_by || null, signed_at: j.signed_at || null, signature: j.signature || null, signoff_type: j.signoff_type || 'customer',
       en_route_at: j.en_route_at || null,
       photos: photosByJob[j.id] || [],
     }))

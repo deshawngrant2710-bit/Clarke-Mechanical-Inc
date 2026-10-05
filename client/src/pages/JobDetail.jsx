@@ -33,6 +33,7 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isTech = user?.role === 'technician';
+  const isManager = ['admin', 'office'].includes(user?.role);
   // Admin/office users flagged "also a technician" get the field-tech tools too.
   const canTech = isTech || !!user?.also_technician;
   const [job, setJob] = useState(null);
@@ -51,6 +52,8 @@ export default function JobDetail() {
   const [addingPart, setAddingPart] = useState(false);
   const [emailing, setEmailing] = useState('');
   const [signModal, setSignModal] = useState(false);
+  const [signMode, setSignMode] = useState('customer'); // 'customer' | 'management' | 'technician'
+  const [authorizingTech, setAuthorizingTech] = useState(false);
   const [approving, setApproving] = useState(false);
   const [bizPhone, setBizPhone] = useState('');
   const [taskModal, setTaskModal] = useState(false);
@@ -77,13 +80,32 @@ export default function JobDetail() {
     finally { setApproving(false); }
   }
 
+  function openSign(mode) {
+    setSignMode(mode);
+    setSignName(mode === 'customer' ? (job.customer_name || '') : (user?.name || ''));
+    setSignModal(true);
+  }
+
+  async function authorizeTechSignoff() {
+    setAuthorizingTech(true);
+    try {
+      await api.post(`/jobs/${id}/authorize-tech-signoff`);
+      toast.success('Technician authorized to sign off for the customer');
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not authorize'); }
+    finally { setAuthorizingTech(false); }
+  }
+
   async function captureSignoff() {
-    if (!signName.trim()) return toast.error('Enter the customer name');
-    if (padRef.current?.isEmpty()) return toast.error('Please have the customer sign');
+    if (!signName.trim()) return toast.error('Enter a name');
+    // The customer's own signature is required; management/technician sign-offs
+    // record the staff member's name — a drawn signature is optional.
+    if (signMode === 'customer' && padRef.current?.isEmpty()) return toast.error('Please have the customer sign');
     setSigning(true);
     try {
-      await api.post(`/jobs/${id}/signoff`, { signed_by: signName.trim(), signature: padRef.current.toDataURL() });
-      toast.success('Signature captured');
+      const signature = padRef.current && !padRef.current.isEmpty() ? padRef.current.toDataURL() : null;
+      await api.post(`/jobs/${id}/signoff`, { signoff_type: signMode, signed_by: signName.trim(), signature });
+      toast.success(signMode === 'customer' ? 'Signature captured' : 'Job signed off');
       setSignModal(false); setSignName(''); load();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not save signature'); }
     finally { setSigning(false); }
@@ -569,48 +591,74 @@ export default function JobDetail() {
             </Card>
           )}
 
-          {/* Customer sign-off */}
+          {/* Job sign-off */}
           <Card>
-            <CardHeader title="Customer Sign-off" icon={<PenLine size={15} />} />
+            <CardHeader title="Job Sign-off" icon={<PenLine size={15} />} />
             <div className="p-5">
               {job.signed_at ? (
                 <div>
-                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Signed by {job.signed_by}</p>
+                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} />
+                    {job.signoff_type === 'management' ? `Signed off by management · ${job.signed_by}`
+                      : job.signoff_type === 'technician' ? `Signed off by technician · ${job.signed_by}`
+                      : `Signed by ${job.signed_by}`}
+                  </p>
                   <p className="text-xs text-slate-500 mb-2">{new Date(job.signed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                   {job.signature && <img src={job.signature} alt="signature" className="h-16 bg-white border border-slate-200 rounded" />}
                 </div>
               ) : !['awaiting-signoff', 'completed'].includes(job.status) ? (
                 <p className="text-sm text-slate-400">Available once the work is marked done.</p>
-              ) : !isTech ? (
-                // Office / admin: approve, then can also capture the signature
-                job.signoff_approved ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Sign-off approved{job.signoff_approved_by ? ` by ${job.signoff_approved_by}` : ''}</p>
-                    <Btn size="sm" onClick={() => { setSignName(job.customer_name || ''); setSignModal(true); }}><PenLine size={14} /> Capture signature</Btn>
+              ) : isManager ? (
+                // Office / admin: can sign off as management, run the customer flow, or authorize the tech
+                <div className="space-y-3">
+                  <Btn size="sm" onClick={() => openSign('management')}><PenLine size={14} /> Sign off as management</Btn>
+
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">Customer signature</p>
+                    {job.signoff_approved ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={13} /> Approved{job.signoff_approved_by ? ` by ${job.signoff_approved_by}` : ''}</p>
+                        <Btn size="sm" variant="outline" onClick={() => openSign('customer')}><PenLine size={14} /> Capture customer signature</Btn>
+                      </div>
+                    ) : (
+                      <Btn size="sm" variant="outline" onClick={approveSignoff} loading={approving}><CheckCircle2 size={14} /> Approve customer sign-off</Btn>
+                    )}
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-amber-700">The technician is requesting approval to collect the customer's signature on site.</p>
-                    <Btn size="sm" onClick={approveSignoff} loading={approving}><CheckCircle2 size={14} /> Approve customer sign-off</Btn>
+
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5">If the customer isn't on site</p>
+                    {job.signoff_tech_authorized ? (
+                      <p className="text-xs text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={13} /> Technician authorized to sign off{job.signoff_tech_authorized_by ? ` by ${job.signoff_tech_authorized_by}` : ''}</p>
+                    ) : (
+                      <Btn size="sm" variant="outline" onClick={authorizeTechSignoff} loading={authorizingTech}><CheckCircle2 size={14} /> Authorize technician to sign off</Btn>
+                    )}
                   </div>
-                )
+                </div>
               ) : (
-                // Technician
-                job.signoff_approved ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Approved — have the customer sign.</p>
-                    <Btn size="sm" onClick={() => { setSignName(job.customer_name || ''); setSignModal(true); }}><PenLine size={14} /> Customer signature</Btn>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-                    <p className="text-sm font-semibold text-amber-800">Call the office to approve customer sign-off</p>
-                    <p className="text-xs text-amber-700 mt-0.5">Once the office approves, the customer can sign here.</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      {bizPhone && <a href={`tel:${bizPhone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white text-blue-700 text-xs font-semibold border border-amber-200 hover:bg-blue-50"><Phone size={12} /> Call the office</a>}
-                      <button onClick={load} className="text-xs font-semibold text-amber-800 underline">Check again</button>
+                // Technician view
+                <div className="space-y-3">
+                  {job.signoff_approved ? (
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Approved — have the customer sign.</p>
+                      <Btn size="sm" onClick={() => openSign('customer')}><PenLine size={14} /> Customer signature</Btn>
                     </div>
-                  </div>
-                )
+                  ) : job.signoff_tech_authorized ? null : (
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                      <p className="text-sm font-semibold text-amber-800">Call the office to approve sign-off</p>
+                      <p className="text-xs text-amber-700 mt-0.5">The office can approve the customer to sign here, or authorize you to sign off if the customer isn't on site.</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        {bizPhone && <a href={`tel:${bizPhone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white text-blue-700 text-xs font-semibold border border-amber-200 hover:bg-blue-50"><Phone size={12} /> Call the office</a>}
+                        <button onClick={load} className="text-xs font-semibold text-amber-800 underline">Check again</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {job.signoff_tech_authorized && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <p className="text-xs text-emerald-700 flex items-center gap-1.5 mb-1.5"><CheckCircle2 size={13} /> Authorized to sign off for the customer{job.signoff_tech_authorized_by ? ` by ${job.signoff_tech_authorized_by}` : ''}</p>
+                      <Btn size="sm" variant="outline" onClick={() => openSign('technician')}><PenLine size={14} /> Sign off as technician (customer absent)</Btn>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </Card>
@@ -772,17 +820,24 @@ export default function JobDetail() {
         staff={employees.filter(u => u.role && u.role !== 'customer')} customers={customers} jobs={[job]} onDone={() => {}}
         initial={{ customer_id: job.customer_id || '', job_id: id, title: `Follow-up: ${job.title}` }} />
 
-      <Modal open={signModal} onClose={() => setSignModal(false)} title="Capture Customer Sign-off" subtitle={job.title}>
+      <Modal open={signModal} onClose={() => setSignModal(false)}
+        title={signMode === 'management' ? 'Sign off as management' : signMode === 'technician' ? 'Technician sign-off' : 'Capture Customer Sign-off'}
+        subtitle={job.title}>
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Hand the device to the customer to confirm the work is complete.</p>
-          <Input label="Customer name" value={signName} onChange={e => setSignName(e.target.value)} placeholder={job.customer_name || 'Full name'} />
+          <p className="text-sm text-slate-600">
+            {signMode === 'management' ? 'You are signing off on this job on behalf of management. This records your name as the authorizer.'
+              : signMode === 'technician' ? 'You are signing off on the customer’s behalf because they are not on site. A drawn signature is optional.'
+              : 'Hand the device to the customer to confirm the work is complete.'}
+          </p>
+          <Input label={signMode === 'customer' ? 'Customer name' : signMode === 'management' ? 'Manager name' : 'Technician name'}
+            value={signName} onChange={e => setSignName(e.target.value)} placeholder={signMode === 'customer' ? (job.customer_name || 'Full name') : (user?.name || 'Full name')} />
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Signature</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Signature{signMode !== 'customer' ? ' (optional)' : ''}</label>
             <SignaturePad ref={padRef} />
           </div>
           <div className="flex justify-end gap-2">
             <Btn variant="outline" onClick={() => setSignModal(false)}>Cancel</Btn>
-            <Btn onClick={captureSignoff} loading={signing}>{signing ? 'Saving…' : 'Save Signature'}</Btn>
+            <Btn onClick={captureSignoff} loading={signing}>{signing ? 'Saving…' : (signMode === 'customer' ? 'Save Signature' : 'Sign off')}</Btn>
           </div>
         </div>
       </Modal>

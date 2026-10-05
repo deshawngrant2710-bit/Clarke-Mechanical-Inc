@@ -124,7 +124,7 @@ function JobRow({ j, expanded, onToggle, onReschedule, onCancel, onSignoff, onRe
             <div className="mt-3 space-y-3">
               {j.signed_at ? (
                 <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100">
-                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle size={14} /> Signed off by {j.signed_by}</p>
+                  <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle size={14} /> {j.signoff_type === 'management' ? `Signed off by management · ${j.signed_by}` : j.signoff_type === 'technician' ? `Signed off by technician · ${j.signed_by}` : `Signed off by ${j.signed_by}`}</p>
                   <p className="text-xs text-slate-500">{new Date(j.signed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                   {j.signature && <img src={j.signature} alt="signature" className="mt-2 h-14 bg-white border border-slate-200 rounded" />}
                 </div>
