@@ -54,6 +54,7 @@ export default function JobDetail() {
   const [signModal, setSignModal] = useState(false);
   const [signMode, setSignMode] = useState('customer'); // 'customer' | 'management' | 'technician'
   const [authorizingTech, setAuthorizingTech] = useState(false);
+  const [resign, setResign] = useState(false); // manager correcting an existing sign-off
   const [approving, setApproving] = useState(false);
   const [bizPhone, setBizPhone] = useState('');
   const [taskModal, setTaskModal] = useState(false);
@@ -106,7 +107,7 @@ export default function JobDetail() {
       const signature = padRef.current && !padRef.current.isEmpty() ? padRef.current.toDataURL() : null;
       await api.post(`/jobs/${id}/signoff`, { signoff_type: signMode, signed_by: signName.trim(), signature });
       toast.success(signMode === 'customer' ? 'Signature captured' : 'Job signed off');
-      setSignModal(false); setSignName(''); load();
+      setSignModal(false); setSignName(''); setResign(false); load();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not save signature'); }
     finally { setSigning(false); }
   }
@@ -595,7 +596,7 @@ export default function JobDetail() {
           <Card>
             <CardHeader title="Job Sign-off" icon={<PenLine size={15} />} />
             <div className="p-5">
-              {job.signed_at ? (
+              {job.signed_at && !resign ? (
                 <div>
                   <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} />
                     {job.signoff_type === 'management' ? `Signed off by management · ${job.signed_by}`
@@ -604,12 +605,19 @@ export default function JobDetail() {
                   </p>
                   <p className="text-xs text-slate-500 mb-2">{new Date(job.signed_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                   {job.signature && <img src={job.signature} alt="signature" className="h-16 bg-white border border-slate-200 rounded" />}
+                  {isManager && <button onClick={() => setResign(true)} className="mt-2 block text-xs font-semibold text-blue-600 hover:text-blue-700">Correct sign-off</button>}
                 </div>
               ) : !['awaiting-signoff', 'completed'].includes(job.status) ? (
                 <p className="text-sm text-slate-400">Available once the work is marked done.</p>
               ) : isManager ? (
                 // Office / admin: can sign off as management, run the customer flow, or authorize the tech
                 <div className="space-y-3">
+                  {resign && (
+                    <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                      <p className="text-xs text-amber-800">Correcting the sign-off{job.signed_by ? ` (was: ${job.signed_by})` : ''}. Re-signing replaces it.</p>
+                      <button onClick={() => setResign(false)} className="text-xs font-semibold text-amber-800 underline shrink-0">Cancel</button>
+                    </div>
+                  )}
                   <Btn size="sm" onClick={() => openSign('management')}><PenLine size={14} /> Sign off as management</Btn>
 
                   <div className="pt-2 border-t border-slate-100">
