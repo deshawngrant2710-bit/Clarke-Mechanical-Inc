@@ -12,7 +12,8 @@ const { computePrices, CONDITIONS, DEFAULT_PRICING_SETTINGS } = require('../lib/
 const { SERVICE_SEED } = require('../data/servicePricebookSeed');
 
 const router = express.Router();
-router.use(authMiddleware, requireStaff);
+// Pricing is an office/admin tool — technicians don't see the service catalog.
+router.use(authMiddleware, requireRole('admin', 'office'));
 
 const isAdmin = (req) => req.user?.role === 'admin';
 const SETTINGS_DOC = 'settings';

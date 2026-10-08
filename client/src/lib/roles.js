@@ -17,7 +17,7 @@ export const NAV_GROUPS = [
     label: 'Overview',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: STAFF },
-      { to: '/tasks', label: 'To-Do', icon: CheckSquare, roles: STAFF },
+      { to: '/tasks', label: 'To-Do', icon: CheckSquare, roles: ['admin', 'office'] },
       { to: '/sync', label: 'Sync', icon: RefreshCw, roles: STAFF },
       { to: '/assistant', label: 'Assistant', icon: Sparkles, roles: ['admin', 'office'] },
     ],
@@ -48,7 +48,7 @@ export const NAV_GROUPS = [
       { to: '/proposals', label: 'Proposals', icon: FileSignature, roles: ['admin', 'office'] },
       { to: '/boiler-contracts', label: 'Boiler Contracts', icon: Flame, roles: ['admin', 'office'] },
       { to: '/price-book', label: 'Price Book', icon: BookOpen, roles: ['admin', 'office'] },
-      { to: '/service-pricing', label: 'Service Pricing', icon: BookOpen, roles: STAFF },
+      { to: '/service-pricing', label: 'Service Pricing', icon: BookOpen, roles: ['admin', 'office'] },
       { to: '/reports', label: 'Reports', icon: BarChart3, roles: ['admin', 'office'] },
       { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin'] },
     ],
