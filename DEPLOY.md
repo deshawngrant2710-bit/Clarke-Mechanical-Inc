@@ -72,6 +72,47 @@ Then in Xcode: bump the build number → Product → Archive → Distribute.
 
 ---
 
+## Banking (Plaid) setup
+
+The **Banking** page (admin/office) connects the business bank account via Plaid to
+show balance + transactions, and — once approved — pay vendors by ACH.
+
+**Step 1 — make a Plaid account:** sign up at https://dashboard.plaid.com/signup.
+From the dashboard, open **Developers → Keys** and copy the `client_id` and the
+**Sandbox** secret first (free, fake data — good for testing the whole flow).
+
+**Step 2 — add these env vars in Render** (API service → Environment), then deploy:
+
+```
+PLAID_CLIENT_ID = <your client_id>
+PLAID_SECRET    = <sandbox secret to start; production secret when live>
+PLAID_ENV       = sandbox        # change to "production" when going live
+PLAID_TOKEN_KEY = <any 32+ character random string — keep it secret, never change it>
+PLAID_TRANSFER  = off            # set to "on" ONLY after Plaid approves Transfer
+```
+
+`PLAID_TOKEN_KEY` encrypts the stored bank access token. Pick one long random
+string and leave it — changing it later makes the saved bank link unreadable
+(just reconnect the bank if that happens).
+
+**Step 3 — test in sandbox:** open Banking → Connect bank account → choose any
+sample bank → use Plaid's sandbox login `user_good` / `pass_good`. You'll see fake
+balances and transactions. No real account is touched.
+
+**Step 4 — go live (balance/transactions):** in Plaid, request **Production**
+access, get the production secret, set `PLAID_SECRET` to it and `PLAID_ENV=production`
+in Render, redeploy, then reconnect the real Bank of America account.
+
+**Step 5 — go live (paying vendors):** this needs Plaid's **Transfer** product,
+which Plaid approves separately (application + review). Only after that approval,
+set `PLAID_TRANSFER=on`. Until then the "Pay a vendor" button stays hidden and the
+payment endpoint refuses — by design, so no money can move before you're ready.
+
+The Plaid keys are backend-only (Render). They are **never** in the website build,
+so section 1's `VITE_` lines don't change.
+
+---
+
 ## Environment reference
 
 - Website: https://clarkemechanicalinc.org (Firebase Hosting, site `clarke-mechanical-inc`)

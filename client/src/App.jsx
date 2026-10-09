@@ -54,6 +54,7 @@ import PriceBook from './pages/PriceBook';
 import ServicePriceBook from './pages/ServicePriceBook';
 import Payroll from './pages/Payroll';
 import Expenses from './pages/Expenses';
+import Banking from './pages/Banking';
 import Purchasing from './pages/Purchasing';
 import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
@@ -239,6 +240,7 @@ export default function App() {
             <Route path="/service-pricing" element={<ServicePriceBook />} />
             <Route path="/payroll" element={<Payroll />} />
             <Route path="/expenses" element={<Expenses />} />
+            <Route path="/banking" element={<Banking />} />
             <Route path="/purchasing" element={<Purchasing />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/search" element={<SearchResults />} />
