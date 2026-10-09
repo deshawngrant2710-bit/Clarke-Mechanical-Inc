@@ -37,6 +37,7 @@ app.use('/api/time', require('./routes/time'));
 app.use('/api/inspections', require('./routes/inspections'));
 app.use('/api/support', require('./routes/support'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/assistant', require('./routes/assistant'));
 app.use('/api/ai', require('./routes/ai'));

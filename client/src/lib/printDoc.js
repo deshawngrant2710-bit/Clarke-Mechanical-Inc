@@ -602,6 +602,158 @@ export function buildStatementHtml({ business = {}, customer = {}, invoices = []
   </body></html>`;
 }
 
+// Builds the branded Profit & Loss (Income & Expense) statement as a full-page,
+// print-ready HTML document. `pnl` is the /api/reports/pnl payload; `business`
+// is the office's business settings. Rendered via printHtml() → Print / Save PDF.
+export function buildPnlHtml({ business = {}, pnl = {} }, { autoPrint = false } = {}) {
+  const bizName = business.name || 'Clarke Mechanical Inc.';
+  const bizAddr = (business.address || '').split('\n').map(esc).join('<br>');
+  const period = pnl.period || {};
+  const rev = pnl.revenue || {};
+  const exp = pnl.expenses || {};
+  const revenue = Number(rev.total || 0);
+  const expenses = Number(exp.total || 0);
+  const net = Number(pnl.net_profit != null ? pnl.net_profit : revenue - expenses);
+  const margin = Number(pnl.margin || 0);
+  const profit = net >= 0;
+  const pct = (part) => (revenue > 0 ? `${Math.round((part / revenue) * 100)}%` : '—');
+
+  const byCustomer = rev.by_customer || [];
+  const byCategory = exp.by_category || [];
+  const items = exp.items || [];
+  const months = pnl.by_month || [];
+
+  const custRows = byCustomer.length
+    ? byCustomer.map(c => `<tr><td class="desc">${esc(c.name)}</td><td class="r">${money(c.amount)}</td><td class="r muted">${pct(c.amount)}</td></tr>`).join('')
+    : '<tr><td class="desc" colspan="3" style="color:#94a3b8">No income collected in this period</td></tr>';
+
+  const catRows = byCategory.length
+    ? byCategory.map(c => `<tr><td class="desc">${esc(c.name)}</td><td class="r">${money(c.amount)}</td><td class="r muted">${expenses > 0 ? Math.round((c.amount / expenses) * 100) + '%' : '—'}</td></tr>`).join('')
+    : '<tr><td class="desc" colspan="3" style="color:#94a3b8">No expenses recorded in this period</td></tr>';
+
+  const SRC_LABEL = { expense: 'Expense', purchase_order: 'Purchase order', payroll: 'Payroll' };
+  const itemRows = items.length
+    ? items.map(it => `<tr><td>${esc(fmtDate(it.date))}</td><td>${esc(it.category)}</td><td>${esc(SRC_LABEL[it.source] || it.source || '')}</td><td class="desc">${esc(it.name)}</td><td class="r">${money(it.amount)}</td></tr>`).join('')
+    : '<tr><td colspan="5" style="color:#94a3b8">No itemized expenses</td></tr>';
+
+  const monthRows = months.map(m => {
+    const n = Number(m.net || 0);
+    return `<tr><td class="desc">${esc(m.label)}</td><td class="r">${money(m.revenue)}</td><td class="r">${money(m.expenses)}</td><td class="r" style="font-weight:700;color:${n >= 0 ? '#047857' : '#b91c1c'}">${money(n)}</td></tr>`;
+  }).join('');
+
+  const periodLabel = `${fmtDate(period.from)} – ${fmtDate(period.to)}`;
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Profit & Loss — ${esc(bizName)}</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color: #1e293b; font-size: 13px; line-height: 1.5; }
+    .topbar { height: 7px; background: linear-gradient(90deg, #1e3a8a, #3b82f6); }
+    .page { max-width: 820px; margin: 0 auto; padding: 46px 44px; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 30px; }
+    .brand img { height: 44px; margin-bottom: 10px; display: block; }
+    .brand .biz { font-weight: 800; font-size: 15px; color: #0f172a; }
+    .brand .biz-meta { color: #64748b; font-size: 12px; margin-top: 2px; }
+    .doc-title { text-align: right; }
+    .doc-title h1 { margin: 0; font-size: 26px; letter-spacing: 1.5px; color: #1d4ed8; font-weight: 800; }
+    .doc-title .sub { margin-top: 4px; font-size: 12px; color: #64748b; }
+    .doc-title .per { margin-top: 2px; font-size: 13px; color: #0f172a; font-weight: 700; }
+    .cards { display: flex; gap: 12px; margin-bottom: 30px; }
+    .kpi { flex: 1; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+    .kpi .k-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: #94a3b8; font-weight: 700; }
+    .kpi .k-val { font-size: 21px; font-weight: 800; margin-top: 6px; }
+    .kpi.rev .k-val { color: #047857; }
+    .kpi.exp .k-val { color: #b91c1c; }
+    .kpi.net { background: ${profit ? '#ecfdf5' : '#fef2f2'}; border-color: ${profit ? '#a7f3d0' : '#fecaca'}; }
+    .kpi.net .k-val { color: ${profit ? '#047857' : '#b91c1c'}; }
+    .kpi .k-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+    h2.sec { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: #1e3a8a; margin: 28px 0 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 4px; overflow: hidden; border-radius: 8px; }
+    thead th { text-align: left; text-transform: uppercase; font-size: 10px; letter-spacing: .06em; color: #fff; background: #1e3a8a; padding: 10px 12px; font-weight: 700; }
+    thead th.r { text-align: right; }
+    tbody td { padding: 9px 12px; border-bottom: 1px solid #eef2f7; }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    td.r { text-align: right; white-space: nowrap; }
+    td.muted { color: #94a3b8; }
+    td.desc { color: #0f172a; font-weight: 600; }
+    tfoot td { padding: 10px 12px; font-weight: 800; background: #f1f5f9; border-top: 2px solid #cbd5e1; }
+    tfoot td.r { text-align: right; }
+    .pl-row { display: flex; justify-content: space-between; padding: 9px 2px; border-bottom: 1px solid #eef2f7; }
+    .pl-row.total { border-top: 2px solid #cbd5e1; border-bottom: none; font-weight: 800; font-size: 15px; margin-top: 4px; padding-top: 12px; }
+    .pl-row .neg { color: #b91c1c; }
+    .net-band { margin-top: 10px; border-radius: 10px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: 18px; color: #fff; background: ${profit ? 'linear-gradient(90deg,#047857,#10b981)' : 'linear-gradient(90deg,#b91c1c,#ef4444)'}; }
+    .net-band .m { font-size: 12px; font-weight: 700; opacity: .9; }
+    .foot { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 11px; color: #94a3b8; text-align: center; }
+    .note { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+    @media print { .page { padding: 24px 28px; } tbody tr, .pl-row { page-break-inside: avoid; } h2.sec { page-break-after: avoid; } }
+  </style></head><body>
+    <div class="topbar"></div>
+    <div class="page">
+      <div class="head">
+        <div class="brand">
+          <img src="${LOGO_URL}" alt="${esc(bizName)}" />
+          <div class="biz">${esc(bizName)}</div>
+          <div class="biz-meta">
+            ${bizAddr ? bizAddr + '<br>' : ''}
+            ${esc(business.phone || '')}${business.phone && business.email ? ' · ' : ''}${esc(business.email || '')}
+            ${business.website ? `<br>${esc(business.website)}` : ''}
+          </div>
+        </div>
+        <div class="doc-title">
+          <h1>PROFIT &amp; LOSS</h1>
+          <div class="sub">Income &amp; Expense Statement</div>
+          <div class="per">${esc(periodLabel)}</div>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="kpi rev"><div class="k-label">Total Income</div><div class="k-val">${money(revenue)}</div><div class="k-sub">${rev.payments || 0} payment${rev.payments === 1 ? '' : 's'} collected</div></div>
+        <div class="kpi exp"><div class="k-label">Total Expenses</div><div class="k-val">${money(expenses)}</div><div class="k-sub">${pct(expenses)} of income</div></div>
+        <div class="kpi net"><div class="k-label">${profit ? 'Net Profit' : 'Net Loss'}</div><div class="k-val">${money(Math.abs(net))}</div><div class="k-sub">${(margin * 100).toFixed(1)}% margin</div></div>
+      </div>
+
+      <h2 class="sec">Summary</h2>
+      <div class="pl-row"><span>Income (revenue collected)</span><span>${money(revenue)}</span></div>
+      <div class="pl-row"><span>Expenses &amp; cost of operations</span><span class="neg">(${money(expenses)})</span></div>
+      <div class="pl-row total"><span>${profit ? 'Net profit' : 'Net loss'}</span><span style="color:${profit ? '#047857' : '#b91c1c'}">${money(net)}</span></div>
+      <div class="note">Income is money actually received (payments) in the period. Expenses combine logged expenses, purchase orders, and payroll paid in the period.</div>
+
+      <h2 class="sec">Income by customer</h2>
+      <table>
+        <thead><tr><th>Customer</th><th class="r">Amount</th><th class="r">% of income</th></tr></thead>
+        <tbody>${custRows}</tbody>
+        <tfoot><tr><td>Total income</td><td class="r">${money(revenue)}</td><td class="r"></td></tr></tfoot>
+      </table>
+
+      <h2 class="sec">Expenses by category</h2>
+      <table>
+        <thead><tr><th>Category</th><th class="r">Amount</th><th class="r">% of expenses</th></tr></thead>
+        <tbody>${catRows}</tbody>
+        <tfoot><tr><td>Total expenses</td><td class="r">${money(expenses)}</td><td class="r"></td></tr></tfoot>
+      </table>
+      <div class="note">Source totals — logged expenses ${money(exp.manual)} · purchase orders ${money(exp.purchase_orders)} · payroll ${money(exp.payroll)}.</div>
+
+      ${months.length ? `<h2 class="sec">Monthly breakdown</h2>
+      <table>
+        <thead><tr><th>Month</th><th class="r">Income</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead>
+        <tbody>${monthRows}</tbody>
+        <tfoot><tr><td>Total</td><td class="r">${money(revenue)}</td><td class="r">${money(expenses)}</td><td class="r" style="color:${profit ? '#047857' : '#b91c1c'}">${money(net)}</td></tr></tfoot>
+      </table>` : ''}
+
+      <h2 class="sec">Expense detail</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Category</th><th>Source</th><th>Vendor / description</th><th class="r">Amount</th></tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+
+      <div class="net-band"><span>${profit ? 'Net profit for period' : 'Net loss for period'}</span><span>${money(net)} <span class="m">· ${(margin * 100).toFixed(1)}% margin</span></span></div>
+
+      <div class="foot">${esc(bizName)}${business.phone ? ' · ' + esc(business.phone) : ''}${business.email ? ' · ' + esc(business.email) : ''} · Generated ${esc(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</div>
+    </div>
+    ${autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},300);};</script>' : ''}
+  </body></html>`;
+}
+
 // Builds the branded PDF (real vector text) for an invoice / estimate / receipt.
 async function buildPdfBlob(opts) {
   const [{ jsPDF }, { renderPdf, loadPdfLogo }] = await Promise.all([
