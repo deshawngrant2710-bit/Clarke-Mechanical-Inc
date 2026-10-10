@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Modal, Btn } from './UI';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
@@ -25,17 +26,16 @@ function CopyRow({ label, value }) {
 }
 
 export default function PayInvoiceModal({ invoice, onClose, onPaid, stripeEnabled = false }) {
+  const navigate = useNavigate();
   const [notifying, setNotifying] = useState(null);
   const [paying, setPaying] = useState(false);
   const amount = Number(invoice?.total || 0);
   const memo = invoice?.invoice_number || '';
 
-  async function payByCard() {
+  // Open the Clarke-branded, on-site card checkout.
+  function payByCard() {
     setPaying(true);
-    try {
-      const { data } = await api.post(`/portal/invoices/${invoice.id}/stripe-checkout`);
-      window.location.href = data.url; // Stripe-hosted checkout
-    } catch (e) { toast.error(e.response?.data?.error || 'Could not start the card payment.'); setPaying(false); }
+    navigate(`/pay-invoice/${invoice.id}`);
   }
 
   async function notify(method) {

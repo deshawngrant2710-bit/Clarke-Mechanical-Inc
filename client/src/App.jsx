@@ -34,6 +34,7 @@ import CustomerProposals from './pages/CustomerProposals';
 import CustomerContracts from './pages/CustomerContracts';
 import Appointments from './pages/Appointments';
 import PayLink from './pages/PayLink';
+import CheckoutEmbed from './pages/CheckoutEmbed';
 import Account from './pages/Account';
 import MoreCustomer from './pages/MoreCustomer';
 import AboutClarke from './pages/AboutClarke';
@@ -210,6 +211,7 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/pay/:token" element={<PayLink />} />
+          <Route path="/pay-invoice/:id" element={<CheckoutEmbed />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/customers" element={<Customers />} />

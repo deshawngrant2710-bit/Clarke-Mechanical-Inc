@@ -70,29 +70,34 @@ async function balanceDollars(invoice) {
   return Math.max(0, Math.round(((invoice.total || 0) - paid) * 100) / 100);
 }
 
-// Create a Stripe-hosted Checkout Session (card payment) for an invoice balance.
-async function createInvoiceCheckout(invoice, { customer, successUrl, cancelUrl } = {}) {
+// Create a Checkout Session (card payment) for an invoice balance.
+// embedded:true → returns a client_secret to mount Stripe's embedded checkout on
+// our own branded page (no redirect). Otherwise returns a hosted-page url.
+async function createInvoiceCheckout(invoice, { customer, successUrl, cancelUrl, embedded, returnUrl } = {}) {
   const amount = await balanceDollars(invoice);
   if (!(amount > 0)) { const e = new Error('Nothing left to pay.'); e.code = 'NO_BALANCE'; throw e; }
   const label = `Invoice ${invoice.invoice_number || invoice.id} — Clarke Mechanical`;
-  const session = await call('/checkout/sessions', {
+  const params = {
     mode: 'payment',
-    success_url: successUrl || `${siteBase()}/billing?stripe=success`,
-    cancel_url: cancelUrl || `${siteBase()}/billing?stripe=cancel`,
     client_reference_id: invoice.id,
     customer_email: customer?.email || undefined,
     line_items: [{
       quantity: 1,
-      price_data: {
-        currency: 'usd',
-        unit_amount: Math.round(amount * 100),
-        product_data: { name: label },
-      },
+      price_data: { currency: 'usd', unit_amount: Math.round(amount * 100), product_data: { name: label } },
     }],
     payment_intent_data: { description: label },
     metadata: { invoice_id: invoice.id, invoice_number: invoice.invoice_number || '' },
-  }, 'POST', { idempotencyKey: `inv_${invoice.id}_${Math.round(amount * 100)}` });
-  return { id: session.id, url: session.url, amount };
+  };
+  if (embedded) {
+    params.ui_mode = 'embedded';
+    params.return_url = returnUrl || `${siteBase()}/billing?stripe=success&session_id={CHECKOUT_SESSION_ID}`;
+  } else {
+    params.success_url = successUrl || `${siteBase()}/billing?stripe=success`;
+    params.cancel_url = cancelUrl || `${siteBase()}/billing?stripe=cancel`;
+  }
+  const session = await call('/checkout/sessions', params, 'POST',
+    { idempotencyKey: `inv_${invoice.id}_${Math.round(amount * 100)}_${embedded ? 'emb' : 'hos'}` });
+  return { id: session.id, url: session.url, client_secret: session.client_secret, amount };
 }
 
 // Record a successful Stripe payment against an invoice (idempotent on reference),

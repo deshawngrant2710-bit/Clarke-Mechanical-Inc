@@ -610,7 +610,7 @@ export default function Portal() {
         balanceDue={me?.stats?.balanceDue || 0}
         onPay={(inv) => { setPayBillOpen(false); setPayInvoice(inv); }}
       />
-      {payInvoice && <PayInvoiceModal invoice={payInvoice} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
+      {payInvoice && <PayInvoiceModal invoice={payInvoice} stripeEnabled={me?.stripe_enabled} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
       {viewDoc && (
         <Modal open={!!viewDoc} onClose={() => setViewDoc(null)} size="xl"
           title={`${viewDoc.kind === 'invoice' ? 'Invoice' : viewDoc.kind === 'receipt' ? 'Receipt' : 'Estimate'} ${viewDoc.doc.invoice_number || viewDoc.doc.quote_number || ''}`}>

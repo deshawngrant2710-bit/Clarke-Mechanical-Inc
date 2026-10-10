@@ -898,6 +898,27 @@ router.post('/invoices/:id/stripe-checkout', async (req, res) => {
   }
 });
 
+// POST /portal/invoices/:id/stripe-embedded — client_secret for the embedded,
+// on-site card form (Stripe embedded checkout).
+router.post('/invoices/:id/stripe-embedded', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Card payments are not available yet.' });
+  try {
+    const { client_secret, amount } = await stripe.createInvoiceCheckout(invoice, {
+      customer: records[0], embedded: true,
+      returnUrl: `${stripe.siteBase()}/billing?stripe=success&session_id={CHECKOUT_SESSION_ID}`,
+    });
+    res.json({ client_secret, publishable_key: stripe.publishable(), amount, invoice_number: invoice.invoice_number || '' });
+  } catch (e) {
+    if (e.code === 'NO_BALANCE') return res.status(400).json({ error: 'Nothing left to pay.' });
+    console.error('[portal] stripe embedded:', e.message);
+    res.status(502).json({ error: 'Could not start the card payment.' });
+  }
+});
+
 // POST /portal/assistant — customer-facing AI helper. Proxies Google Gemini so the
 // API key stays on the server and is never exposed in the browser.
 router.post('/assistant', async (req, res) => {
