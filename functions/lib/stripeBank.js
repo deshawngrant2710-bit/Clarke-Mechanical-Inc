@@ -10,7 +10,8 @@ const API = 'https://api.stripe.com/v1';
 const secret = () => process.env.STRIPE_SECRET_KEY || '';
 const publishable = () => process.env.STRIPE_PUBLISHABLE_KEY || '';
 const configured = () => !!secret();
-const isLive = () => secret().startsWith('sk_live');
+// Live for standard (sk_live_…) and restricted (rk_live_…) keys alike.
+const isLive = () => /_live_/.test(secret());
 
 // Flatten a params object into Stripe's form encoding (a[b]=c, arr[]=x).
 function toForm(params) {

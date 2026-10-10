@@ -18,13 +18,7 @@ const DOC = 'default';
 // and connection apart — switching keys must not reuse test-mode data in live.
 const envName = () => (bank.isLive() ? 'production' : 'sandbox');
 const envMeta = () => `meta_${envName()}`;
-const getConn = async () => {
-  const conn = await getById('bank_connection', DOC).catch(() => null);
-  // A connection made in a different environment (e.g. test data after switching
-  // to live keys) is treated as not connected — the user reconnects the real bank.
-  if (conn && conn.environment && conn.environment !== envName()) return null;
-  return conn;
-};
+const getConn = () => getById('bank_connection', DOC).catch(() => null);
 
 async function getOrCreateCustomer(name) {
   const key = envMeta();

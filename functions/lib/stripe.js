@@ -19,7 +19,7 @@ const configured = () => !!secret();
 // would never be recorded). Lets the bank-viewing keys be added on their own
 // without turning on invoice payments.
 const paymentsEnabled = () => !!secret() && !!webhookSecret();
-const isLive = () => secret().startsWith('sk_live');
+const isLive = () => /_live_/.test(secret()); // standard sk_live_… or restricted rk_live_…
 const siteBase = () => (process.env.BUSINESS_URL || 'https://clarkemechanicalinc.org').replace(/\/$/, '');
 
 function toForm(params) {
