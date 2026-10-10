@@ -78,15 +78,26 @@ router.post('/connect', requireRole('admin'), async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// GET /api/banking/accounts — refresh + return balances.
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// GET /api/banking/accounts — ask Stripe to refresh balances, then poll briefly
+// until they settle (Stripe fetches balances asynchronously after connect).
 router.get('/accounts', async (req, res) => {
   const conn = await getConn();
   if (!conn) return res.status(404).json({ error: 'No bank account connected' });
+  const ids = conn.account_ids || [];
+  if (!ids.length) return res.json({ accounts: conn.accounts || [] });
   try {
-    const accounts = [];
-    for (const id of (conn.account_ids || [])) {
-      try { accounts.push(await bank.refreshAndGetAccount(id)); } catch { /* skip */ }
+    await Promise.all(ids.map(id => bank.requestBalanceRefresh(id).catch(() => {})));
+    let raws = {};
+    for (let i = 0; i < 6; i++) {
+      const got = await Promise.all(ids.map(id => bank.getAccountRaw(id).catch(() => null)));
+      got.forEach(a => { if (a) raws[a.id] = a; });
+      const stillPending = got.some(a => a && a.balance_refresh && a.balance_refresh.status === 'pending');
+      if (!stillPending) break;
+      await sleep(1000);
     }
+    const accounts = ids.map(id => (raws[id] ? bank.normalizeAccount(raws[id]) : null)).filter(Boolean);
     if (accounts.length) await update('bank_connection', DOC, { accounts });
     res.json({ accounts: accounts.length ? accounts : (conn.accounts || []) });
   } catch (e) { res.status(502).json({ error: e.message }); }

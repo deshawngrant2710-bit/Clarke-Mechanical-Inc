@@ -47,6 +47,12 @@ export default function Banking() {
 
   useEffect(() => {
     if (!status?.connected) return;
+    // Pull fresh balances (Stripe fetches them asynchronously after connect).
+    setBusy('refresh');
+    api.get('/banking/accounts')
+      .then(r => setStatus(s => ({ ...s, accounts: r.data.accounts })))
+      .catch(() => {})
+      .finally(() => setBusy(''));
     api.get('/banking/transactions').then(r => setTxns(r.data)).catch(() => setTxns({ transactions: [] }));
     api.get('/banking/payments').then(r => setPayHistory(r.data)).catch(() => {});
     if (status.transfer_enabled) api.get('/purchasing/vendors').then(r => setVendors(r.data)).catch(() => {});

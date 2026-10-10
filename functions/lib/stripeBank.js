@@ -85,6 +85,15 @@ async function refreshAndGetAccount(accountId) {
   return normalizeAccount(a);
 }
 
+// Ask Stripe to (re)fetch the latest balance for an account. Fetch is async on
+// Stripe's side — the balance appears once balance_refresh.status is 'succeeded'.
+async function requestBalanceRefresh(accountId) {
+  return call(`/financial_connections/accounts/${accountId}/refresh`, { features: ['balance'] });
+}
+async function getAccountRaw(accountId) {
+  return call(`/financial_connections/accounts/${accountId}`, {}, 'GET');
+}
+
 async function listTransactions(accountId, limit = 100) {
   // Transactions must be subscribed before they can be listed.
   try { await call(`/financial_connections/accounts/${accountId}/subscribe`, { features: ['transactions'] }); } catch { /* may already be subscribed, or feature not available */ }
@@ -107,5 +116,6 @@ async function listTransactions(accountId, limit = 100) {
 
 module.exports = {
   configured, isLive, publishable,
-  createCustomer, createSession, refreshAndGetAccount, listTransactions, normalizeAccount,
+  createCustomer, createSession, refreshAndGetAccount, requestBalanceRefresh, getAccountRaw,
+  listTransactions, normalizeAccount,
 };
