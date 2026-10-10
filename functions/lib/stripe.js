@@ -95,8 +95,10 @@ async function createInvoiceCheckout(invoice, { customer, successUrl, cancelUrl,
     params.success_url = successUrl || `${siteBase()}/billing?stripe=success`;
     params.cancel_url = cancelUrl || `${siteBase()}/billing?stripe=cancel`;
   }
-  const session = await call('/checkout/sessions', params, 'POST',
-    { idempotencyKey: `inv_${invoice.id}_${Math.round(amount * 100)}_${embedded ? 'emb' : 'hos'}` });
+  // No idempotency key: a fresh Checkout Session per attempt is fine (unpaid
+  // sessions expire), and real payments are de-duped by the webhook. An
+  // idempotency key would otherwise lock this invoice+amount to one param set.
+  const session = await call('/checkout/sessions', params, 'POST');
   return { id: session.id, url: session.url, client_secret: session.client_secret, amount };
 }
 
