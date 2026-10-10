@@ -102,6 +102,26 @@ async function createInvoiceCheckout(invoice, { customer, successUrl, cancelUrl,
   return { id: session.id, url: session.url, client_secret: session.client_secret, amount };
 }
 
+// Create a PaymentIntent for an invoice balance — powers the custom, on-site
+// checkout page (Stripe Payment Element). Dynamic payment methods on.
+async function createInvoicePaymentIntent(invoice, { customer } = {}) {
+  const amount = await balanceDollars(invoice);
+  if (!(amount > 0)) { const e = new Error('Nothing left to pay.'); e.code = 'NO_BALANCE'; throw e; }
+  const pi = await call('/payment_intents', {
+    amount: Math.round(amount * 100),
+    currency: 'usd',
+    description: `Invoice ${invoice.invoice_number || invoice.id} — Clarke Mechanical`,
+    automatic_payment_methods: { enabled: true },
+    receipt_email: customer?.email || undefined,
+    metadata: { invoice_id: invoice.id, invoice_number: invoice.invoice_number || '' },
+  });
+  return { client_secret: pi.client_secret, id: pi.id, amount };
+}
+
+async function retrievePaymentIntent(id) {
+  return call(`/payment_intents/${id}`, {}, 'GET');
+}
+
 // Record a successful Stripe payment against an invoice (idempotent on reference),
 // mark the invoice paid/partial, and issue a numbered receipt. Safe to call twice.
 async function recordStripePayment(invoiceId, { amount, reference, note }) {
@@ -128,5 +148,6 @@ async function recordStripePayment(invoiceId, { amount, reference, note }) {
 
 module.exports = {
   configured, paymentsEnabled, publishable, isLive, webhookSecret, siteBase,
-  call, verifyWebhook, balanceDollars, createInvoiceCheckout, recordStripePayment,
+  call, verifyWebhook, balanceDollars, createInvoiceCheckout,
+  createInvoicePaymentIntent, retrievePaymentIntent, recordStripePayment,
 };

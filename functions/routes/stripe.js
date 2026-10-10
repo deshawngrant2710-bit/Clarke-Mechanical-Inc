@@ -28,6 +28,17 @@ router.post('/webhook', async (req, res) => {
           note: 'Paid online via Stripe',
         });
       }
+    } else if (event.type === 'payment_intent.succeeded') {
+      // Custom on-site checkout (Payment Element) completes as a PaymentIntent.
+      const pi = event.data.object;
+      const invoiceId = pi.metadata?.invoice_id;
+      if (invoiceId) {
+        await stripe.recordStripePayment(invoiceId, {
+          amount: (pi.amount_received || 0) / 100,
+          reference: String(pi.id),
+          note: 'Paid online via Stripe',
+        });
+      }
     }
   } catch (e) {
     console.error('[stripe] webhook handler error:', e.message);

@@ -919,6 +919,48 @@ router.post('/invoices/:id/stripe-embedded', async (req, res) => {
   }
 });
 
+// POST /portal/invoices/:id/payment-intent — for the custom on-site checkout
+// (Stripe Payment Element). Returns the client secret + an order summary.
+router.post('/invoices/:id/payment-intent', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Card payments are not available yet.' });
+  try {
+    const { client_secret, amount } = await stripe.createInvoicePaymentIntent(invoice, { customer: records[0] });
+    res.json({
+      client_secret, publishable_key: stripe.publishable(), amount_due: amount,
+      invoice: {
+        invoice_number: invoice.invoice_number || '', items: invoice.items || [],
+        subtotal: invoice.subtotal, discount_amount: invoice.discount_amount,
+        tax_amount: invoice.tax_amount, total: invoice.total,
+      },
+    });
+  } catch (e) {
+    if (e.code === 'NO_BALANCE') return res.status(400).json({ error: 'Nothing left to pay.' });
+    console.error('[portal] payment-intent:', e.message);
+    res.status(502).json({ error: 'Could not start the card payment.', detail: e.message });
+  }
+});
+
+// POST /portal/invoices/:id/stripe-confirm — record the payment right after the
+// customer confirms (belt-and-suspenders alongside the webhook). Idempotent.
+router.post('/invoices/:id/stripe-confirm', async (req, res) => {
+  const { ids } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  const piId = req.body?.payment_intent;
+  if (!piId) return res.status(400).json({ error: 'Missing payment reference.' });
+  try {
+    const pi = await stripe.retrievePaymentIntent(piId);
+    if (pi.metadata?.invoice_id !== invoice.id) return res.status(400).json({ error: 'Payment does not match this invoice.' });
+    if (pi.status !== 'succeeded') return res.json({ ok: false, status: pi.status });
+    await stripe.recordStripePayment(invoice.id, { amount: (pi.amount_received || 0) / 100, reference: pi.id });
+    res.json({ ok: true });
+  } catch (e) { console.error('[portal] stripe-confirm:', e.message); res.status(502).json({ error: 'Could not confirm the payment.' }); }
+});
+
 // POST /portal/assistant — customer-facing AI helper. Proxies Google Gemini so the
 // API key stays on the server and is never exposed in the browser.
 router.post('/assistant', async (req, res) => {
