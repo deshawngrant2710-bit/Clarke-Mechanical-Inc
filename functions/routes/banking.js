@@ -14,15 +14,25 @@ const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
 
 const DOC = 'default';
-const META = 'meta';
-const getConn = () => getById('bank_connection', DOC).catch(() => null);
+// Test and live are separate Stripe environments, so keep their stored customer
+// and connection apart — switching keys must not reuse test-mode data in live.
+const envName = () => (bank.isLive() ? 'production' : 'sandbox');
+const envMeta = () => `meta_${envName()}`;
+const getConn = async () => {
+  const conn = await getById('bank_connection', DOC).catch(() => null);
+  // A connection made in a different environment (e.g. test data after switching
+  // to live keys) is treated as not connected — the user reconnects the real bank.
+  if (conn && conn.environment && conn.environment !== envName()) return null;
+  return conn;
+};
 
 async function getOrCreateCustomer(name) {
-  const meta = await getById('bank_connection', META).catch(() => null);
+  const key = envMeta();
+  const meta = await getById('bank_connection', key).catch(() => null);
   if (meta?.stripe_customer_id) return meta.stripe_customer_id;
   const id = await bank.createCustomer(name);
-  if (meta) await update('bank_connection', META, { stripe_customer_id: id });
-  else await create('bank_connection', META, { stripe_customer_id: id });
+  if (meta) await update('bank_connection', key, { stripe_customer_id: id });
+  else await create('bank_connection', key, { stripe_customer_id: id });
   return id;
 }
 
@@ -32,7 +42,7 @@ router.get('/status', async (req, res) => {
   res.json({
     provider: 'stripe',
     configured: bank.configured(),
-    environment: bank.isLive() ? 'production' : 'sandbox',
+    environment: envName(),
     publishable_key: bank.publishable(),
     transfer_enabled: false, // vendor payments are a separate rail, not enabled here
     connected: !!conn,
@@ -68,10 +78,10 @@ router.post('/connect', requireRole('admin'), async (req, res) => {
     }
     const institution_name = linked[0]?.institution_name || accounts[0]?.name || 'Bank';
     const payload = {
-      provider: 'stripe', account_ids, accounts, institution_name,
+      provider: 'stripe', environment: envName(), account_ids, accounts, institution_name,
       connected_by: req.user.name, connected_at: new Date().toISOString(),
     };
-    const existing = await getConn();
+    const existing = await getById('bank_connection', DOC).catch(() => null);
     if (existing) await update('bank_connection', DOC, payload);
     else await create('bank_connection', DOC, payload);
     res.json({ ok: true, institution: institution_name, accounts });
