@@ -7,6 +7,9 @@ const app = express();
 // (needed for accurate login rate-limiting).
 app.set('trust proxy', 1);
 app.use(cors({ origin: true }));
+// Stripe webhook needs the RAW request body to verify its signature, so its
+// parser must run BEFORE the global JSON parser (which would consume the body).
+app.use('/api/stripe/webhook', express.raw({ type: '*/*' }));
 // Allow base64 photo/PDF uploads (portal, inspections, time clock, job photos).
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -39,6 +42,7 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/banking', require('./routes/banking'));
+app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/assistant', require('./routes/assistant'));
 app.use('/api/ai', require('./routes/ai'));

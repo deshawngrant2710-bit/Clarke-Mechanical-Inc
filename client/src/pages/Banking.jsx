@@ -10,16 +10,16 @@ const fmtDate = (d) => {
   const dt = new Date(String(d).length <= 10 ? String(d) + 'T00:00:00' : d);
   return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
-const PLAID_JS = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+const STRIPE_JS = 'https://js.stripe.com/v3/';
 const isNative = () => { try { return !!window.Capacitor?.isNativePlatform?.(); } catch { return false; } };
 
-function loadPlaid() {
+function loadStripe() {
   return new Promise((resolve, reject) => {
-    if (window.Plaid) return resolve();
+    if (window.Stripe) return resolve();
     const s = document.createElement('script');
-    s.src = PLAID_JS; s.async = true;
-    s.onload = () => (window.Plaid ? resolve() : reject(new Error('Could not load Plaid.')));
-    s.onerror = () => reject(new Error('Could not load Plaid.'));
+    s.src = STRIPE_JS; s.async = true;
+    s.onload = () => (window.Stripe ? resolve() : reject(new Error('Could not load Stripe.')));
+    s.onerror = () => reject(new Error('Could not load Stripe.'));
     document.head.appendChild(s);
   });
 }
@@ -55,21 +55,21 @@ export default function Banking() {
   const connect = async () => {
     setErr(''); setBusy('connect');
     try {
-      await loadPlaid();
-      const { data } = await api.post('/banking/link-token');
-      const handler = window.Plaid.create({
-        token: data.link_token,
-        onSuccess: async (public_token, metadata) => {
-          try {
-            await api.post('/banking/connect', { public_token, institution: metadata.institution });
-            loadStatus();
-          } catch (e) { setErr(e.response?.data?.error || 'Could not finish connecting.'); }
-          finally { setBusy(''); }
-        },
-        onExit: (e) => { setBusy(''); if (e) setErr(e.display_message || e.error_message || ''); },
-      });
-      handler.open();
-    } catch (e) { setErr(e.response?.data?.error || e.message || 'Could not start the connection.'); setBusy(''); }
+      await loadStripe();
+      const { data } = await api.post('/banking/session');
+      if (!data.publishable_key) throw new Error('Stripe publishable key is missing.');
+      const stripe = window.Stripe(data.publishable_key);
+      const result = await stripe.collectFinancialConnectionsAccounts({ clientSecret: data.client_secret });
+      if (result.error) { setErr(result.error.message || 'Could not connect.'); setBusy(''); return; }
+      const accts = (result.financialConnectionsSession?.accounts || []).map(a => ({
+        id: a.id, institution_name: a.institution_name, last4: a.last4,
+        category: a.category, subcategory: a.subcategory, display_name: a.display_name,
+      }));
+      if (!accts.length) { setBusy(''); return; } // user closed without linking
+      await api.post('/banking/connect', { accounts: accts });
+      loadStatus();
+    } catch (e) { setErr(e.response?.data?.error || e.message || 'Could not start the connection.'); }
+    finally { setBusy(''); }
   };
 
   const refreshBalances = async () => {
@@ -95,8 +95,8 @@ export default function Banking() {
       <div className="animate-fade-in">
         <PageHeader title="Banking" subtitle="Connect your business bank account" icon={<Landmark size={20} />} />
         <Card className="p-6">
-          <Empty icon={<Landmark size={24} />} title="Plaid isn't set up yet"
-            message="To connect Bank of America, the Plaid keys need to be added in Render (PLAID_CLIENT_ID, PLAID_SECRET, PLAID_TOKEN_KEY). Once those are in, this page lets you securely link the account and see the balance." />
+          <Empty icon={<Landmark size={24} />} title="Bank connection isn't set up yet"
+            message="To connect Bank of America, the Stripe keys need to be added in Render (STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY). Once those are in, this page lets you securely link the account and see the balance." />
         </Card>
       </div>
     );
@@ -117,7 +117,7 @@ export default function Banking() {
 
       {status.environment === 'sandbox' && (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-2.5 flex items-center gap-2">
-          <AlertTriangle size={16} /> Test mode (Plaid sandbox) — connect the sample bank with fake logins. No real money or real account is touched.
+          <AlertTriangle size={16} /> Test mode (Stripe test keys) — connect a sample bank with Stripe's test login. No real money or real account is touched.
         </div>
       )}
       {err && <div className="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5">{err}</div>}
@@ -126,7 +126,7 @@ export default function Banking() {
         <Card className="p-6 text-center">
           <div className="mx-auto w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3"><Building2 size={22} /></div>
           <h2 className="text-lg font-semibold text-slate-800">Connect your bank</h2>
-          <p className="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">You'll sign in to Bank of America through Plaid's secure window. Clarke Mechanical never sees your banking password.</p>
+          <p className="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">You'll sign in to Bank of America through Stripe's secure window. Clarke Mechanical never sees your banking password.</p>
           {isAdmin ? (
             <Btn onClick={connect} loading={busy === 'connect'}><Link2 size={16} /> Connect bank account</Btn>
           ) : (

@@ -72,44 +72,73 @@ Then in Xcode: bump the build number → Product → Archive → Distribute.
 
 ---
 
-## Banking (Plaid) setup
+## Banking (Stripe Financial Connections) setup
 
-The **Banking** page (admin/office) connects the business bank account via Plaid to
-show balance + transactions, and — once approved — pay vendors by ACH.
+The **Banking** page (admin/office) connects the business bank account via Stripe
+Financial Connections to show balance + transactions. (Viewing only — paying
+vendors is a separate rail, not wired to this provider; the "Pay a vendor" button
+stays hidden.)
 
-**Step 1 — make a Plaid account:** sign up at https://dashboard.plaid.com/signup.
-From the dashboard, open **Developers → Keys** and copy the `client_id` and the
-**Sandbox** secret first (free, fake data — good for testing the whole flow).
+**Step 1 — get Stripe keys:** at https://dashboard.stripe.com → **Developers →
+API keys**, copy the **Publishable key** (`pk_test_…`) and **Secret key**
+(`sk_test_…`). Test keys are available immediately, no approval needed.
 
 **Step 2 — add these env vars in Render** (API service → Environment), then deploy:
 
 ```
-PLAID_CLIENT_ID = <your client_id>
-PLAID_SECRET    = <sandbox secret to start; production secret when live>
-PLAID_ENV       = sandbox        # change to "production" when going live
-PLAID_TOKEN_KEY = <any 32+ character random string — keep it secret, never change it>
-PLAID_TRANSFER  = off            # set to "on" ONLY after Plaid approves Transfer
+STRIPE_SECRET_KEY      = sk_test_...   (use sk_live_... when going live)
+STRIPE_PUBLISHABLE_KEY = pk_test_...   (use pk_live_... when going live)
 ```
 
-`PLAID_TOKEN_KEY` encrypts the stored bank access token. Pick one long random
-string and leave it — changing it later makes the saved bank link unreadable
-(just reconnect the bank if that happens).
+The publishable key is safe to expose; the backend hands it to the Banking page so
+no website rebuild is needed when it changes. Both are backend-only env vars —
+section 1's `VITE_` lines don't change.
 
-**Step 3 — test in sandbox:** open Banking → Connect bank account → choose any
-sample bank → use Plaid's sandbox login `user_good` / `pass_good`. You'll see fake
-balances and transactions. No real account is touched.
+**Step 3 — test:** open Banking → Connect bank account → pick a test bank and use
+Stripe's test sign-in. Fake balances/transactions appear. No real account touched.
 
-**Step 4 — go live (balance/transactions):** in Plaid, request **Production**
-access, get the production secret, set `PLAID_SECRET` to it and `PLAID_ENV=production`
-in Render, redeploy, then reconnect the real Bank of America account.
+**Step 4 — go live:** activate the Stripe account (business details), switch both
+env vars to the `..._live_...` keys in Render, redeploy, then connect the real
+Bank of America account. Financial Connections may charge per linked account /
+refresh — see Stripe's pricing.
 
-**Step 5 — go live (paying vendors):** this needs Plaid's **Transfer** product,
-which Plaid approves separately (application + review). Only after that approval,
-set `PLAID_TRANSFER=on`. Until then the "Pay a vendor" button stays hidden and the
-payment endpoint refuses — by design, so no money can move before you're ready.
+**Paying vendors:** not available through Stripe Financial Connections (it reads
+accounts, it doesn't move money). When that's prioritized, it's a separate build
+(e.g. a bill-pay product like Melio/Bill.com, or an ACH rail like Dwolla).
 
-The Plaid keys are backend-only (Render). They are **never** in the website build,
-so section 1's `VITE_` lines don't change.
+---
+
+## Stripe payments (invoice card payments)
+
+Customers can pay invoices by card through Stripe (alongside Helcim, which stays as
+a backup). Uses the SAME Stripe keys as Financial Connections, plus a webhook secret.
+
+**Step 1 — same keys as above** already cover it: `STRIPE_SECRET_KEY`,
+`STRIPE_PUBLISHABLE_KEY`. Nothing extra for the keys.
+
+**Step 2 — create the webhook** so paid invoices are marked paid automatically:
+in Stripe → **Developers → Webhooks → Add endpoint**:
+
+```
+Endpoint URL:  https://clarke-mechanical-inc.onrender.com/api/stripe/webhook
+Events:        checkout.session.completed
+```
+
+Copy the endpoint's **Signing secret** (`whsec_…`) and add it in Render:
+
+```
+STRIPE_WEBHOOK_SECRET = whsec_...
+BUSINESS_URL          = https://clarkemechanicalinc.org   (for pay success/cancel redirects)
+```
+
+**Step 3 — test (sandbox):** open an unpaid invoice → "Pay / charge with Stripe"
+(or the customer pay link → "Pay by card"). Use test card `4242 4242 4242 4242`,
+any future expiry, any CVC. The webhook marks the invoice paid and issues a receipt,
+same as Helcim.
+
+**Step 4 — go live:** switch to live keys (`sk_live_…`, `pk_live_…`), create a live
+webhook endpoint, set its `whsec_…` in Render. Helcim stays available as the
+backup payment method throughout.
 
 ---
 

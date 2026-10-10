@@ -1,30 +1,40 @@
-// Business bank account (Plaid) — connect Bank of America, read balance +
-// transactions, and (approval-gated) pay vendors by ACH.
+// Business bank account via Stripe Financial Connections — connect the account,
+// read balance + transactions. (Viewing only; moving money to vendors is a
+// separate rail and is intentionally not enabled here.)
 //
-// The encrypted Plaid access token lives in the 'bank_connection' doc and never
-// leaves the server. Reading is admin/office; connecting, disconnecting and
-// paying vendors are admin-only (real money / credentials).
+// Stored connection lives in the 'bank_connection' doc. We only keep Stripe
+// Financial Connections account IDs + a reusable customer ID — no bank
+// credentials ever touch this server.
 const express = require('express');
-const { v4: uuid } = require('uuid');
-const { getById, create, update, remove, list } = require('../lib/db');
+const { getById, create, update, remove } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
-const plaid = require('../lib/plaid');
-
-let notify; try { ({ notify } = require('../lib/notify')); } catch { notify = async () => {}; }
+const bank = require('../lib/stripeBank');
 
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office'));
 
 const DOC = 'default';
-const getConn = () => getById('bank_connection', DOC);
+const META = 'meta';
+const getConn = () => getById('bank_connection', DOC).catch(() => null);
 
-// GET /api/banking/status — what's configured + whether an account is linked.
+async function getOrCreateCustomer(name) {
+  const meta = await getById('bank_connection', META).catch(() => null);
+  if (meta?.stripe_customer_id) return meta.stripe_customer_id;
+  const id = await bank.createCustomer(name);
+  if (meta) await update('bank_connection', META, { stripe_customer_id: id });
+  else await create('bank_connection', META, { stripe_customer_id: id });
+  return id;
+}
+
+// GET /api/banking/status
 router.get('/status', async (req, res) => {
-  const conn = await getConn().catch(() => null);
+  const conn = await getConn();
   res.json({
-    configured: plaid.configured(),
-    environment: plaid.plaidEnv(),
-    transfer_enabled: plaid.transferEnabled(),
+    provider: 'stripe',
+    configured: bank.configured(),
+    environment: bank.isLive() ? 'production' : 'sandbox',
+    publishable_key: bank.publishable(),
+    transfer_enabled: false, // vendor payments are a separate rail, not enabled here
     connected: !!conn,
     institution: conn?.institution_name || null,
     connected_at: conn?.connected_at || null,
@@ -33,99 +43,80 @@ router.get('/status', async (req, res) => {
   });
 });
 
-// POST /api/banking/link-token — start the Plaid Link flow (admin only).
-router.post('/link-token', requireRole('admin'), async (req, res) => {
-  if (!plaid.configured()) return res.status(400).json({ error: 'Plaid is not set up yet. Add the Plaid keys in Render first.' });
+// POST /api/banking/session — start a Financial Connections session (admin).
+router.post('/session', requireRole('admin'), async (req, res) => {
+  if (!bank.configured()) return res.status(400).json({ error: 'Stripe is not set up yet. Add the Stripe keys in Render first.' });
   try {
-    const link_token = await plaid.createLinkToken(req.user.id || 'clarke-mechanical');
-    res.json({ link_token });
+    const customer = await getOrCreateCustomer(req.user.name);
+    const session = await bank.createSession(customer);
+    res.json({ client_secret: session.client_secret, publishable_key: bank.publishable() });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// POST /api/banking/connect — exchange the public_token from Plaid Link and
-// store the (encrypted) access token + a snapshot of the accounts (admin only).
+// POST /api/banking/connect — store the accounts the user linked (admin).
+// Body: { accounts: [{ id, institution_name, last4, category, subcategory, display_name }] }
 router.post('/connect', requireRole('admin'), async (req, res) => {
-  const { public_token, institution } = req.body || {};
-  if (!public_token) return res.status(400).json({ error: 'Missing public_token' });
+  const linked = Array.isArray(req.body?.accounts) ? req.body.accounts : [];
+  if (!linked.length) return res.status(400).json({ error: 'No accounts were selected' });
+  const account_ids = linked.map(a => a.id).filter(Boolean);
   try {
-    const { access_token_enc, item_id } = await plaid.exchangePublicToken(public_token);
-    let accounts = [];
-    try { accounts = await plaid.getBalances(access_token_enc); } catch { /* balances fetched later */ }
+    // Pull fresh balances for each linked account.
+    const accounts = [];
+    for (const id of account_ids) {
+      try { accounts.push(await bank.refreshAndGetAccount(id)); }
+      catch { accounts.push(bank.normalizeAccount(linked.find(a => a.id === id) || { id })); }
+    }
+    const institution_name = linked[0]?.institution_name || accounts[0]?.name || 'Bank';
     const payload = {
-      access_token_enc, item_id,
-      institution_name: institution?.name || 'Bank',
-      accounts,
-      connected_by: req.user.name,
-      connected_at: new Date().toISOString(),
+      provider: 'stripe', account_ids, accounts, institution_name,
+      connected_by: req.user.name, connected_at: new Date().toISOString(),
     };
-    const existing = await getConn().catch(() => null);
+    const existing = await getConn();
     if (existing) await update('bank_connection', DOC, payload);
     else await create('bank_connection', DOC, payload);
-    res.json({ ok: true, institution: payload.institution_name, accounts });
+    res.json({ ok: true, institution: institution_name, accounts });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// GET /api/banking/accounts — live balances.
+// GET /api/banking/accounts — refresh + return balances.
 router.get('/accounts', async (req, res) => {
-  const conn = await getConn().catch(() => null);
+  const conn = await getConn();
   if (!conn) return res.status(404).json({ error: 'No bank account connected' });
   try {
-    const accounts = await plaid.getBalances(conn.access_token_enc);
-    await update('bank_connection', DOC, { accounts }); // refresh snapshot
-    res.json({ accounts });
+    const accounts = [];
+    for (const id of (conn.account_ids || [])) {
+      try { accounts.push(await bank.refreshAndGetAccount(id)); } catch { /* skip */ }
+    }
+    if (accounts.length) await update('bank_connection', DOC, { accounts });
+    res.json({ accounts: accounts.length ? accounts : (conn.accounts || []) });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// GET /api/banking/transactions?start=&end=
+// GET /api/banking/transactions
 router.get('/transactions', async (req, res) => {
-  const conn = await getConn().catch(() => null);
+  const conn = await getConn();
   if (!conn) return res.status(404).json({ error: 'No bank account connected' });
   try {
-    const out = await plaid.getTransactions(conn.access_token_enc, { start_date: req.query.start, end_date: req.query.end });
-    res.json(out);
+    let txns = [];
+    for (const id of (conn.account_ids || [])) {
+      const t = await bank.listTransactions(id, 100);
+      txns = txns.concat(t);
+    }
+    txns.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    res.json({ transactions: txns });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// DELETE /api/banking/disconnect — remove the stored connection (admin only).
+// DELETE /api/banking/disconnect (admin)
 router.delete('/disconnect', requireRole('admin'), async (req, res) => {
   await remove('bank_connection', DOC).catch(() => {});
   res.json({ ok: true });
 });
 
-// POST /api/banking/pay — pay a vendor by ACH (admin only, explicit, one at a
-// time). Only works once PLAID_TRANSFER=on and Plaid has approved Transfer.
-router.post('/pay', requireRole('admin'), async (req, res) => {
-  if (!plaid.transferEnabled()) {
-    return res.status(400).json({ error: 'Vendor payments are not enabled yet. They turn on after Plaid approves your Transfer product.' });
-  }
-  const conn = await getConn().catch(() => null);
-  if (!conn) return res.status(404).json({ error: 'No bank account connected' });
-  const { account_id, amount, vendor_id, vendor_name, description } = req.body || {};
-  const amt = Math.round((Number(amount) || 0) * 100) / 100;
-  if (!account_id) return res.status(400).json({ error: 'Choose which account to pay from' });
-  if (!(amt > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
-  let name = vendor_name;
-  if (!name && vendor_id) { const v = await getById('vendors', vendor_id).catch(() => null); name = v?.name; }
-  try {
-    const result = await plaid.createVendorPayment({
-      accessTokenEnc: conn.access_token_enc, account_id, amount: amt, vendor_name: name, description,
-    });
-    const rec = await create('bank_payments', uuid(), {
-      vendor_id: vendor_id || null, vendor_name: name || null, amount: amt,
-      account_id, description: description || null,
-      transfer_id: result.transfer_id, status: result.status,
-      paid_by: req.user.name, created_at: new Date().toISOString(),
-    });
-    try { await notify(['admin', 'office'], { title: 'Vendor payment sent', body: `${name || 'Vendor'} — $${amt.toFixed(2)} (${result.status})`, link: '/banking' }); } catch {}
-    res.status(201).json(rec);
-  } catch (e) { res.status(502).json({ error: e.message }); }
+// Vendor payments are not available through this provider.
+router.post('/pay', requireRole('admin'), (req, res) => {
+  res.status(400).json({ error: 'Vendor payments are not available with the current bank connection.' });
 });
-
-// GET /api/banking/payments — history of ACH vendor payments made here.
-router.get('/payments', async (req, res) => {
-  const items = await list('bank_payments').catch(() => []);
-  items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  res.json(items);
-});
+router.get('/payments', (req, res) => res.json([]));
 
 module.exports = router;

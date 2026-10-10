@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Spinner } from '../components/UI';
-import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer, Share2, Download } from 'lucide-react';
+import { ArrowLeft, DollarSign, Send, CheckCircle2, Receipt, Mail, BellRing, Pencil, Printer, Share2, Download, CreditCard } from 'lucide-react';
 import { printDocument, sharePdf, downloadPdf } from '../lib/printDoc';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
 import Logo from '../components/Logo';
@@ -38,9 +38,21 @@ export default function InvoiceDetail() {
   const [saving, setSaving] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [emailModal, setEmailModal] = useState(false);
+  const [stripeOn, setStripeOn] = useState(false);
+  const [stripeBusy, setStripeBusy] = useState(false);
 
   function load() { api.get(`/billing/invoices/${id}`).then(r => setInvoice(r.data)); }
   useEffect(load, [id]);
+  useEffect(() => { api.get('/stripe/status').then(r => setStripeOn(!!r.data.configured)).catch(() => {}); }, []);
+
+  async function chargeStripe() {
+    setStripeBusy(true);
+    try {
+      const { data } = await api.post(`/stripe/invoices/${id}/checkout`);
+      window.open(data.url, '_blank', 'noopener'); // Stripe-hosted checkout
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not start Stripe payment'); }
+    finally { setStripeBusy(false); }
+  }
 
   // Everything the printed / PDF document needs.
   async function docPayload() {
@@ -225,6 +237,7 @@ export default function InvoiceDetail() {
               <Btn variant="outline" className="w-full" onClick={() => setEmailModal(true)} loading={emailing}><Mail size={15} /> Email Invoice</Btn>
               {invoice.status === 'draft' && <Btn variant="ghost" className="w-full" onClick={handleMarkSent}><Send size={15} /> Mark as Sent</Btn>}
               {invoice.status !== 'paid' && invoice.status !== 'cancelled' && <Btn variant="outline" className="w-full" onClick={sendReminder} loading={emailing}><BellRing size={15} /> Send Payment Reminder</Btn>}
+              {invoice.status !== 'paid' && invoice.status !== 'cancelled' && stripeOn && <Btn variant="outline" className="w-full" onClick={chargeStripe} loading={stripeBusy}><CreditCard size={15} /> Pay / charge with Stripe</Btn>}
               {invoice.status !== 'paid' && <Btn className="w-full" onClick={openPayment}><DollarSign size={16} /> Record Payment</Btn>}
               {invoice.status === 'paid' && <>
                 <div className="text-center py-2 text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg flex items-center justify-center gap-1.5"><CheckCircle2 size={15} /> Paid in full</div>

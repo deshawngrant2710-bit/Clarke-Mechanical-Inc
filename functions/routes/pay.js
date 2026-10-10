@@ -5,6 +5,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { getById, findWhere, create, update, remove } = require('../lib/db');
 const helcim = require('../lib/helcim');
+const stripe = require('../lib/stripe');
 const settings = require('../lib/settings');
 
 const router = express.Router();
@@ -46,9 +47,33 @@ router.get('/:token', async (req, res) => {
   const business = (await settings.get('business_name')) || 'Clarke Mechanical';
   res.json({
     valid: true, business, enabled: helcim.configured(),
+    stripe_enabled: stripe.configured(),
     invoice_number: ctx.invoice.invoice_number || '', amount: await balanceDollars(ctx.invoice),
     paid: ctx.invoice.status === 'paid',
   });
+});
+
+// POST /api/pay/:token/stripe — create a Stripe hosted-checkout link for this
+// invoice. The webhook (not this response) records the payment when it completes.
+router.post('/:token/stripe', async (req, res) => {
+  const ctx = await loadToken(req.params.token);
+  if (!ctx) return res.status(404).json({ error: 'This payment link is invalid or has expired.' });
+  if (ctx.invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  if (!stripe.configured()) return res.status(503).json({ error: 'Stripe payments are not set up yet.' });
+  try {
+    const customer = ctx.invoice.customer_id ? await getById('customers', ctx.invoice.customer_id) : null;
+    const base = stripe.siteBase();
+    const { url, amount } = await stripe.createInvoiceCheckout(ctx.invoice, {
+      customer,
+      successUrl: `${base}/pay/${req.params.token}?stripe=success`,
+      cancelUrl: `${base}/pay/${req.params.token}?stripe=cancel`,
+    });
+    res.json({ url, amount });
+  } catch (e) {
+    if (e.code === 'NO_BALANCE') return res.status(400).json({ error: 'Nothing left to pay.' });
+    console.error('[pay] stripe:', e.message);
+    res.status(502).json({ error: 'Could not start the Stripe payment.' });
+  }
 });
 
 // POST /api/pay/:token/initialize — start a HelcimPay.js session for this invoice.
