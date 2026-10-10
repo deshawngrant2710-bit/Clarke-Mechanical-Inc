@@ -89,7 +89,7 @@ async function createInvoiceCheckout(invoice, { customer, successUrl, cancelUrl,
     metadata: { invoice_id: invoice.id, invoice_number: invoice.invoice_number || '' },
   };
   if (embedded) {
-    params.ui_mode = 'embedded';
+    params.ui_mode = 'embedded_page'; // Stripe renamed 'embedded' → 'embedded_page'
     params.return_url = returnUrl || `${siteBase()}/billing?stripe=success&session_id={CHECKOUT_SESSION_ID}`;
   } else {
     params.success_url = successUrl || `${siteBase()}/billing?stripe=success`;
