@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Logo from '../components/Logo';
-import { ArrowLeft, Loader2, ShieldCheck, AlertCircle, Lock } from 'lucide-react';
+import { ArrowLeft, Loader2, ShieldCheck, AlertCircle, Lock, Check, X } from 'lucide-react';
 
 // Clarke-branded, on-site card checkout built on Stripe's Payment Element — we own
 // the whole page layout (big logo, order summary, pay button); Stripe only renders
@@ -28,6 +28,7 @@ export default function CheckoutEmbed() {
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [err, setErr] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [phase, setPhase] = useState(null); // null | processing | success | declined
   const stripeRef = useRef(null);
   const elementsRef = useRef(null);
 
@@ -62,18 +63,21 @@ export default function CheckoutEmbed() {
   async function handlePay(e) {
     e.preventDefault();
     if (!stripeRef.current || !elementsRef.current) return;
-    setSubmitting(true); setErr('');
+    setSubmitting(true); setErr(''); setPhase('processing');
     const { error, paymentIntent } = await stripeRef.current.confirmPayment({
       elements: elementsRef.current,
       redirect: 'if_required',
       confirmParams: { return_url: `${window.location.origin}/billing?stripe=success` },
     });
-    if (error) { setErr(error.message || 'Payment did not go through.'); setSubmitting(false); return; }
+    if (error) { setErr(error.message || 'Your payment could not be processed.'); setPhase('declined'); setSubmitting(false); return; }
     if (paymentIntent && paymentIntent.status === 'succeeded') {
       try { await api.post(`/portal/invoices/${id}/stripe-confirm`, { payment_intent: paymentIntent.id }); } catch { /* webhook will catch it */ }
-      navigate('/billing?stripe=success');
-    } else { setSubmitting(false); }
+      setPhase('success');
+      setTimeout(() => navigate('/billing?stripe=success'), 2200);
+    } else { setPhase(null); setSubmitting(false); }
   }
+
+  const dismissDeclined = () => { setPhase(null); setSubmitting(false); };
 
   const inv = data?.invoice;
 
@@ -141,6 +145,44 @@ export default function CheckoutEmbed() {
           </div>
         )}
       </div>
+
+      {phase && (
+        <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="text-center max-w-sm">
+            {phase === 'processing' && (
+              <>
+                <div className="relative mx-auto w-28 h-28 mb-6">
+                  <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
+                  <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center animate-pulse"><Logo variant="icon" height={52} /></div>
+                </div>
+                <p className="text-lg font-semibold text-slate-800">Processing your payment…</p>
+                <p className="text-sm text-slate-500 mt-1">Please don't close this window.</p>
+              </>
+            )}
+            {phase === 'success' && (
+              <>
+                <div className="mx-auto w-24 h-24 mb-6 rounded-full bg-emerald-100 flex items-center justify-center ck-pop">
+                  <Check size={52} className="text-emerald-600" strokeWidth={3} />
+                </div>
+                <p className="text-2xl font-bold text-slate-900">Payment successful</p>
+                <p className="text-sm text-slate-500 mt-1">Thank you! Invoice {inv?.invoice_number} is paid. Redirecting…</p>
+              </>
+            )}
+            {phase === 'declined' && (
+              <>
+                <div className="mx-auto w-24 h-24 mb-6 rounded-full bg-red-100 flex items-center justify-center ck-pop">
+                  <X size={52} className="text-red-600" strokeWidth={3} />
+                </div>
+                <p className="text-2xl font-bold text-slate-900">Payment declined</p>
+                <p className="text-sm text-slate-500 mt-1">{err || 'Your card was not charged. Please try a different card.'}</p>
+                <button onClick={dismissDeclined} className="mt-5 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-xl">Try again</button>
+              </>
+            )}
+          </div>
+          <style>{`@keyframes ckpop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}} .ck-pop{animation:ckpop .5s cubic-bezier(.2,.7,.3,1.25) both}`}</style>
+        </div>
+      )}
     </div>
   );
 }
