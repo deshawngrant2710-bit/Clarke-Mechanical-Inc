@@ -915,7 +915,7 @@ router.post('/invoices/:id/stripe-embedded', async (req, res) => {
   } catch (e) {
     if (e.code === 'NO_BALANCE') return res.status(400).json({ error: 'Nothing left to pay.' });
     console.error('[portal] stripe embedded:', e.message);
-    res.status(502).json({ error: 'Could not start the card payment.' });
+    res.status(502).json({ error: 'Could not start the card payment.', detail: e.message });
   }
 });
 
