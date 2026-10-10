@@ -57,7 +57,6 @@ async function createSession(customerId) {
   const s = await call('/financial_connections/sessions', {
     account_holder: { type: 'customer', customer: customerId },
     permissions: ['balances', 'transactions'],
-    filters: { countries: ['US'] },
   });
   return { id: s.id, client_secret: s.client_secret };
 }
