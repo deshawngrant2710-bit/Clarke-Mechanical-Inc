@@ -15,6 +15,10 @@ const secret = () => process.env.STRIPE_SECRET_KEY || '';
 const publishable = () => process.env.STRIPE_PUBLISHABLE_KEY || '';
 const webhookSecret = () => process.env.STRIPE_WEBHOOK_SECRET || '';
 const configured = () => !!secret();
+// Card payments require the webhook secret too (otherwise a completed payment
+// would never be recorded). Lets the bank-viewing keys be added on their own
+// without turning on invoice payments.
+const paymentsEnabled = () => !!secret() && !!webhookSecret();
 const isLive = () => secret().startsWith('sk_live');
 const siteBase = () => (process.env.BUSINESS_URL || 'https://clarkemechanicalinc.org').replace(/\/$/, '');
 
@@ -116,6 +120,6 @@ async function recordStripePayment(invoiceId, { amount, reference, note }) {
 }
 
 module.exports = {
-  configured, publishable, isLive, webhookSecret, siteBase,
+  configured, paymentsEnabled, publishable, isLive, webhookSecret, siteBase,
   call, verifyWebhook, balanceDollars, createInvoiceCheckout, recordStripePayment,
 };

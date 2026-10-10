@@ -47,7 +47,7 @@ router.get('/:token', async (req, res) => {
   const business = (await settings.get('business_name')) || 'Clarke Mechanical';
   res.json({
     valid: true, business, enabled: helcim.configured(),
-    stripe_enabled: stripe.configured(),
+    stripe_enabled: stripe.paymentsEnabled(),
     invoice_number: ctx.invoice.invoice_number || '', amount: await balanceDollars(ctx.invoice),
     paid: ctx.invoice.status === 'paid',
   });
@@ -59,7 +59,7 @@ router.post('/:token/stripe', async (req, res) => {
   const ctx = await loadToken(req.params.token);
   if (!ctx) return res.status(404).json({ error: 'This payment link is invalid or has expired.' });
   if (ctx.invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
-  if (!stripe.configured()) return res.status(503).json({ error: 'Stripe payments are not set up yet.' });
+  if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Stripe payments are not set up yet.' });
   try {
     const customer = ctx.invoice.customer_id ? await getById('customers', ctx.invoice.customer_id) : null;
     const base = stripe.siteBase();
