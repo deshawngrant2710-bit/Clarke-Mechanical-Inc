@@ -2,7 +2,7 @@ import { useState } from 'react';
 import api from '../api/client';
 import { Modal, Btn } from './UI';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
-import { Banknote, Landmark, Mail as MailIcon, Copy, Check, Send, Smartphone } from 'lucide-react';
+import { Banknote, Landmark, Mail as MailIcon, Copy, Check, Send, Smartphone, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -24,10 +24,19 @@ function CopyRow({ label, value }) {
   );
 }
 
-export default function PayInvoiceModal({ invoice, onClose, onPaid }) {
+export default function PayInvoiceModal({ invoice, onClose, onPaid, stripeEnabled = false }) {
   const [notifying, setNotifying] = useState(null);
+  const [paying, setPaying] = useState(false);
   const amount = Number(invoice?.total || 0);
   const memo = invoice?.invoice_number || '';
+
+  async function payByCard() {
+    setPaying(true);
+    try {
+      const { data } = await api.post(`/portal/invoices/${invoice.id}/stripe-checkout`);
+      window.location.href = data.url; // Stripe-hosted checkout
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not start the card payment.'); setPaying(false); }
+  }
 
   async function notify(method) {
     setNotifying(method);
@@ -52,6 +61,14 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid }) {
         <p className="text-sm text-slate-600">
           Choose how you'd like to pay. Use <strong>{memo || 'your invoice number'}</strong> as the reference/memo, then tap <strong>I've sent it</strong> so we can match your payment.
         </p>
+
+        {stripeEnabled && (
+          <div className="rounded-xl border border-blue-300 bg-blue-50/60 p-4">
+            <div className="flex items-center gap-2 mb-1"><CreditCard size={16} className="text-blue-600" /><p className="text-sm font-semibold text-slate-800">Pay by card</p></div>
+            <p className="text-xs text-slate-500 mb-3">Credit or debit card, Apple Pay, or Google Pay — processed securely by Stripe. Marks your invoice paid instantly.</p>
+            <Btn size="sm" className="w-full justify-center" loading={paying} onClick={payByCard}><CreditCard size={14} /> Pay {money(amount)} by card</Btn>
+          </div>
+        )}
 
         {z?.enabled && (
           <div className="rounded-xl border border-slate-200 p-4">

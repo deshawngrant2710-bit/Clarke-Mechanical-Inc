@@ -29,6 +29,17 @@ export default function CustomerInvoices() {
   }
   useEffect(() => { load(); }, []);
 
+  // Returning from Stripe checkout: the webhook marks the invoice paid a moment
+  // later, so reload a few times until it shows up.
+  useEffect(() => {
+    if (!/[?&]stripe=success/.test(window.location.search)) return;
+    toast.success('Payment received — thank you!');
+    let n = 0;
+    const t = setInterval(() => { load(); if (++n >= 5) clearInterval(t); }, 1500);
+    try { window.history.replaceState({}, '', window.location.pathname); } catch {}
+    return () => clearInterval(t);
+  }, []);
+
   const toggle = (id) => setExpanded(e => (e === id ? null : id));
 
   function payBalance() {
@@ -202,7 +213,7 @@ export default function CustomerInvoices() {
         <Lock size={12} /> Pay by Zelle, bank transfer, check, or cash. Tap Pay on an invoice for details.
       </div>
 
-      {payInvoice && <PayInvoiceModal invoice={payInvoice} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
+      {payInvoice && <PayInvoiceModal invoice={payInvoice} stripeEnabled={me?.stripe_enabled} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
       {viewDoc && (
         <Modal open={!!viewDoc} onClose={() => setViewDoc(null)} size="xl"
           title={`${viewDoc.kind === 'invoice' ? 'Invoice' : viewDoc.kind === 'receipt' ? 'Receipt' : 'Estimate'} ${viewDoc.doc.invoice_number || viewDoc.doc.quote_number || ''}`}>

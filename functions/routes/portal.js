@@ -7,6 +7,7 @@ const settings = require('../lib/settings');
 const { referralCode } = require('../lib/referral');
 const { smsConfigured, sendSms } = require('../lib/sms');
 const helcim = require('../lib/helcim');
+const stripe = require('../lib/stripe');
 const { notify } = require('../lib/notify');
 const { PACKAGES, residentialTotals, residentialPlanFor } = require('../lib/boilerContract');
 
@@ -127,6 +128,7 @@ router.get('/me', async (req, res) => {
     profile: records[0] || null,
     stats: { openJobs, invoiceCount, balanceDue },
     business: cfg.business,
+    stripe_enabled: stripe.paymentsEnabled(),
   });
 });
 
@@ -872,6 +874,28 @@ router.post('/invoices/:id/pay-cash', async (req, res) => {
     }
   } catch (e) { console.error('[portal] payment notify failed:', e.message); }
   res.json({ ok: true });
+});
+
+// POST /portal/invoices/:id/stripe-checkout — pay this invoice by card via Stripe.
+router.post('/invoices/:id/stripe-checkout', async (req, res) => {
+  const { ids, records } = await myCustomerIds(req);
+  const invoice = await getById('invoices', req.params.id);
+  if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Card payments are not available yet.' });
+  try {
+    const base = stripe.siteBase();
+    const { url } = await stripe.createInvoiceCheckout(invoice, {
+      customer: records[0],
+      successUrl: `${base}/billing?stripe=success`,
+      cancelUrl: `${base}/billing?stripe=cancel`,
+    });
+    res.json({ url });
+  } catch (e) {
+    if (e.code === 'NO_BALANCE') return res.status(400).json({ error: 'Nothing left to pay.' });
+    console.error('[portal] stripe checkout:', e.message);
+    res.status(502).json({ error: 'Could not start the card payment.' });
+  }
 });
 
 // POST /portal/assistant — customer-facing AI helper. Proxies Google Gemini so the
