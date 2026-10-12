@@ -3,7 +3,10 @@
 // day. Example:
 //   https://YOUR-API/api/cron/appointment-reminders?key=YOUR_CRON_KEY
 const express = require('express');
+const { v4: uuid } = require('uuid');
+const { list, create } = require('../lib/db');
 const { runAppointmentReminders } = require('../lib/reminders');
+let notify; try { ({ notify } = require('../lib/notify')); } catch { notify = async () => {}; }
 
 const router = express.Router();
 
@@ -34,5 +37,45 @@ async function appointmentReminders(req, res) {
 
 router.get('/appointment-reminders', appointmentReminders);
 router.post('/appointment-reminders', appointmentReminders);
+
+// GET or POST /api/cron/subscription-review — weekly nudge to confirm/update
+// subscription prices (they drift month to month). Self-gates to Fridays, so a
+// daily scheduler still fires it only once a week; dedupes within 6 days.
+// Force a run any day with ?force=1.
+async function subscriptionReview(req, res) {
+  try {
+    const force = req.query.force === '1' || req.body?.force === true;
+    const now = new Date();
+    if (!force && now.getDay() !== 5) return res.json({ ok: true, skipped: 'not Friday' });
+
+    const tasks = await list('tasks');
+    const recent = tasks.find(t => t.source === 'subscription_review' && t.created_at && (Date.now() - new Date(t.created_at).getTime()) < 6 * 864e5);
+    if (recent && !force) return res.json({ ok: true, skipped: 'already reminded this week' });
+
+    const subs = (await list('subscriptions')).filter(s => s.active !== false);
+    const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const listStr = subs.length
+      ? subs.map(s => `• ${s.name}: ${money(s.amount)}/${s.frequency === 'yearly' ? 'yr' : 'mo'}`).join('\n')
+      : 'No subscriptions on file yet.';
+
+    await create('tasks', uuid(), {
+      title: 'Review subscription prices',
+      notes: `Weekly check: confirm each subscription is still billed at the right amount (they change month to month) and update any that moved in Financial Reports.\n\n${listStr}`,
+      assigned_to: null, customer_id: null, customer_name: null, job_id: null, job_title: null,
+      invoice_id: null, due_date: now.toISOString().slice(0, 10), remind_at: null,
+      priority: 'normal', recurrence: 'none', comments: [], status: 'open',
+      created_by: 'Automated', created_at: new Date().toISOString(), completed_at: null,
+      source: 'subscription_review',
+    });
+    await notify({ type: 'info', title: 'Review subscription prices', body: 'Weekly check — confirm Quo, Claude and other subscription amounts are still correct, and update any that changed in Financial Reports.', link: '/reports', roles: ['admin', 'office'] });
+
+    res.json({ ok: true, reminded: true, subscriptions: subs.length });
+  } catch (e) {
+    console.error('[cron] subscription-review failed:', e.message);
+    res.status(500).json({ error: 'Subscription review run failed' });
+  }
+}
+router.get('/subscription-review', subscriptionReview);
+router.post('/subscription-review', subscriptionReview);
 
 module.exports = router;

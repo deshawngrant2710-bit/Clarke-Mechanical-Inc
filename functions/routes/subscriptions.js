@@ -24,6 +24,7 @@ function clean(b) {
     category: (b.category || 'Software & subscriptions').trim(),
     notes: (b.notes || '').trim() || null,
     active: b.active !== false,
+    start_date: b.start_date ? String(b.start_date).slice(0, 10) : null,
   };
 }
 
@@ -38,6 +39,7 @@ router.post('/', async (req, res) => {
   const data = clean(req.body);
   if (!data.name) return res.status(400).json({ error: 'Subscription name is required' });
   if (!(data.amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+  if (!data.start_date) data.start_date = new Date().toISOString().slice(0, 10);
   const saved = await create('subscriptions', uuid(), { ...data, created_by: req.user.name, created_at: new Date().toISOString() });
   res.status(201).json(saved);
 });
@@ -45,7 +47,9 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const existing = await getById('subscriptions', req.params.id);
   if (!existing) return res.status(404).json({ error: 'Subscription not found' });
-  res.json(await update('subscriptions', req.params.id, clean(req.body)));
+  const patch = clean(req.body);
+  if (!req.body.start_date) delete patch.start_date; // keep existing start date if not sent
+  res.json(await update('subscriptions', req.params.id, patch));
 });
 
 router.delete('/:id', async (req, res) => {

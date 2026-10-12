@@ -5,7 +5,8 @@ import { RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const monthlyOf = (s) => { const a = Number(s.amount) || 0; return s.frequency === 'yearly' ? a / 12 : a; };
-const blank = () => ({ name: '', amount: '', frequency: 'monthly', category: 'Software & subscriptions', notes: '' });
+const today = () => new Date().toISOString().slice(0, 10);
+const blank = () => ({ name: '', amount: '', frequency: 'monthly', category: 'Software & subscriptions', notes: '', start_date: today() });
 
 // Recurring subscriptions the business pays (software, tools, recurring fees).
 // Their monthly cost flows into the Profit & Loss automatically.
@@ -56,7 +57,7 @@ export default function SubscriptionsManager({ onChange }) {
                   <div className="font-semibold text-slate-900">{money(s.amount)}<span className="text-xs text-slate-400 font-normal">/{s.frequency === 'yearly' ? 'yr' : 'mo'}</span></div>
                   {s.frequency === 'yearly' && <div className="text-xs text-slate-400">{money(monthlyOf(s))}/mo</div>}
                 </div>
-                <button onClick={() => { setErr(''); setModal({ id: s.id, form: { name: s.name, amount: s.amount, frequency: s.frequency, category: s.category, notes: s.notes || '', active: s.active } }); }} className="text-slate-400 hover:text-blue-600 p-1"><Pencil size={15} /></button>
+                <button onClick={() => { setErr(''); setModal({ id: s.id, form: { name: s.name, amount: s.amount, frequency: s.frequency, category: s.category, notes: s.notes || '', active: s.active, start_date: (s.start_date || '').slice(0, 10) } }); }} className="text-slate-400 hover:text-blue-600 p-1"><Pencil size={15} /></button>
                 <button onClick={() => del(s)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={15} /></button>
               </div>
             </div>
@@ -77,6 +78,7 @@ export default function SubscriptionsManager({ onChange }) {
                 <option value="yearly">Yearly</option>
               </Select>
             </div>
+            <Input label="Started" type="date" value={modal.form.start_date || ''} onChange={e => setField('start_date', e.target.value)} hint="Counts from this month onward — set an earlier date if it started before." />
             <Input label="Category (optional)" value={modal.form.category} onChange={e => setField('category', e.target.value)} />
             <Input label="Note (optional)" value={modal.form.notes} onChange={e => setField('notes', e.target.value)} placeholder="What it's for" />
             {modal.id && (
