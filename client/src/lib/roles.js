@@ -49,7 +49,6 @@ export const NAV_GROUPS = [
       { to: '/boiler-contracts', label: 'Boiler Contracts', icon: Flame, roles: ['admin', 'office'] },
       { to: '/price-book', label: 'Price Book', icon: BookOpen, roles: ['admin', 'office'] },
       { to: '/service-pricing', label: 'Service Pricing', icon: BookOpen, roles: ['admin', 'office'] },
-      { to: '/expenses', label: 'Expenses', icon: Wallet, roles: ['admin', 'office'] },
       { to: '/banking', label: 'Banking', icon: Landmark, roles: ['admin', 'office'] },
       { to: '/reports', label: 'Financial Reports', icon: BarChart3, roles: ['admin', 'office'] },
       { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin'] },

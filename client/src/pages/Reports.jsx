@@ -4,6 +4,8 @@ import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, StatCard, Btn, Spinner, Empty, Input } from '../components/UI';
 import { BarChart3, Download, DollarSign, AlertTriangle, Users, FileText, TrendingUp, TrendingDown, Landmark, Receipt, Percent } from 'lucide-react';
 import { buildPnlHtml, printHtml } from '../lib/printDoc';
+import ExpensesManager from '../components/ExpensesManager';
+import SubscriptionsManager from '../components/SubscriptionsManager';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const money0 = (v) => `$${Math.round(Number(v || 0)).toLocaleString('en-US')}`;
@@ -88,10 +90,11 @@ export default function Reports() {
   useEffect(() => { api.get('/reports').then(r => setData(r.data)).catch(() => setData({})); }, []);
   useEffect(() => { api.get('/reports/cash').then(r => setCash(r.data)).catch(() => setCash(null)); }, []);
   useEffect(() => { api.get('/reports/ar-aging').then(r => setAging(r.data)).catch(() => setAging(null)); }, []);
-  useEffect(() => {
+  const loadRange = () => {
     api.get('/reports/pnl', { params: { from, to } }).then(r => setPnl(r.data)).catch(() => setPnl(null));
     api.get('/reports/tax', { params: { from, to } }).then(r => setTax(r.data)).catch(() => setTax(null));
-  }, [from, to]);
+  };
+  useEffect(() => { loadRange(); }, [from, to]);
 
   const generatePnlPdf = async () => {
     if (!pnl) return;
@@ -266,6 +269,10 @@ export default function Reports() {
           </div>
         )}
       </Card>
+
+      {/* Expenses + recurring subscriptions (manage inline) */}
+      <ExpensesManager from={from} to={to} onChange={loadRange} />
+      <SubscriptionsManager onChange={loadRange} />
 
       {/* Technician performance */}
       <Card>

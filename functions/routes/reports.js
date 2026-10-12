@@ -32,9 +32,11 @@ router.get('/pnl', async (req, res) => {
   const from = req.query.from || `${new Date().getFullYear()}-01-01`;
   const to = req.query.to || today;
 
-  const [payments, invoices, customers, expenses, pos, payroll] = await Promise.all([
-    list('payments'), list('invoices'), list('customers'), list('expenses'), list('purchase_orders'), list('payroll_payments'),
+  const [payments, invoices, customers, expenses, pos, payroll, subscriptions] = await Promise.all([
+    list('payments'), list('invoices'), list('customers'), list('expenses'), list('purchase_orders'), list('payroll_payments'), list('subscriptions'),
   ]);
+  const subMonthly = (s) => { const a = Number(s.amount) || 0; return (s.frequency === 'yearly' || s.frequency === 'annual') ? a / 12 : a; };
+  const monthlySubs = round2(subscriptions.filter(s => s.active !== false).reduce((s0, x) => s0 + subMonthly(x), 0));
   const custName = Object.fromEntries(customers.map(c => [c.id, c.name]));
   const invCustomer = Object.fromEntries(invoices.map(i => [i.id, i.customer_id]));
   const mk = (s) => d10(s).slice(0, 7);
@@ -79,15 +81,20 @@ router.get('/pnl', async (req, res) => {
     items.push({ date: d10(p.paid_at), category: 'Payroll & labor', source: 'payroll', name: `Payroll — ${p.user_name || 'Employee'}`, amount: round2(amt) });
   }
 
-  const expensesTotal = round2(manualTotal + poTotal + payrollTotal);
+  const months = monthSeries(from, to);
+  // Recurring subscriptions: their monthly cost applies to every month in range.
+  const subsForPeriod = round2(monthlySubs * months.length);
+  if (subsForPeriod > 0) add('Software & subscriptions', subsForPeriod);
+
+  const expensesTotal = round2(manualTotal + poTotal + payrollTotal + subsForPeriod);
   const net = round2(revenueTotal - expensesTotal);
   const margin = revenueTotal > 0 ? net / revenueTotal : 0;
 
-  const months = monthSeries(from, to);
   const by_month = months.map(m => ({
     month: m.key, label: m.label,
-    revenue: round2(revByMonth[m.key] || 0), expenses: round2(expByMonth[m.key] || 0),
-    net: round2((revByMonth[m.key] || 0) - (expByMonth[m.key] || 0)),
+    revenue: round2(revByMonth[m.key] || 0),
+    expenses: round2((expByMonth[m.key] || 0) + monthlySubs),
+    net: round2((revByMonth[m.key] || 0) - ((expByMonth[m.key] || 0) + monthlySubs)),
   }));
   items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
@@ -98,17 +105,19 @@ router.get('/pnl', async (req, res) => {
   const priorFrom = new Date(fromD.getTime() - dayMs - (toD - fromD)).toISOString().slice(0, 10);
   const sumIn = (arr, dateOf, amtOf, filt) => round2(arr.filter(x => (!filt || filt(x)) && inRange(d10(dateOf(x)), priorFrom, priorTo)).reduce((s, x) => s + (Number(amtOf(x)) || 0), 0));
   const pRev = sumIn(payments, p => p.paid_at, p => p.amount);
+  const priorMonths = monthSeries(priorFrom, priorTo).length;
   const pExp = round2(
     sumIn(expenses, e => e.date, e => e.amount) +
     sumIn(pos, o => o.order_date || o.created_at, o => o.total, o => o.status !== 'cancelled') +
-    sumIn(payroll, p => p.paid_at, p => p.amount));
+    sumIn(payroll, p => p.paid_at, p => p.amount) +
+    (monthlySubs * priorMonths));
   const pNet = round2(pRev - pExp);
   const pct = (cur, prev) => (prev ? round2(((cur - prev) / Math.abs(prev)) * 100) : null);
 
   res.json({
     period: { from, to },
     revenue: { total: revenueTotal, payments: pays.length, by_customer: sortDesc(revByCust) },
-    expenses: { total: expensesTotal, manual: manualTotal, purchase_orders: poTotal, payroll: payrollTotal, by_category: sortDesc(expByCat), items },
+    expenses: { total: expensesTotal, manual: manualTotal, purchase_orders: poTotal, payroll: payrollTotal, subscriptions: subsForPeriod, by_category: sortDesc(expByCat), items },
     net_profit: net, margin,
     by_month,
     compare: {
