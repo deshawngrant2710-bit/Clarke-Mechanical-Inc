@@ -151,13 +151,14 @@ export default function CheckoutEmbed() {
           <div className="text-center max-w-sm">
             {phase === 'processing' && (
               <>
-                <div className="relative mx-auto w-28 h-28 mb-6">
+                <div className="relative mx-auto w-28 h-28 mb-4">
                   <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
                   <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
                   <div className="absolute inset-0 flex items-center justify-center animate-pulse"><Logo variant="icon" height={52} /></div>
                 </div>
-                <p className="text-lg font-semibold text-slate-800">Processing your payment…</p>
-                <p className="text-sm text-slate-500 mt-1">Please don't close this window.</p>
+                <p className="text-lg font-extrabold tracking-tight text-slate-900">CLARKE MECHANICAL <span className="font-semibold text-slate-400">INC.</span></p>
+                <p className="text-sm font-medium text-slate-600 mt-2">Processing your payment…</p>
+                <p className="text-xs text-slate-400 mt-0.5">Please don't close this window.</p>
               </>
             )}
             {phase === 'success' && (

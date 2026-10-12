@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, Btn, Badge, Spinner, Empty, Modal, Input } from '../components/UI';
 import SignaturePad from '../components/SignaturePad';
 import { Flame, Download, Printer, CheckCircle2, Check, CreditCard, ShieldCheck } from 'lucide-react';
 import { printDocument, downloadPdf } from '../lib/printDoc';
 import { contractDocPayload, packageFor, money, residentialTotals, RESIDENTIAL_PLANS } from '../lib/boilerContract';
-import { loadHelcimPayJs } from '../lib/helcimPay';
 import toast from 'react-hot-toast';
 
 const fmtDate = (d) => (d ? new Date(String(d).length <= 10 ? d + 'T00:00:00' : d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
 const ACCEPTED = ['accepted', 'active', 'expiring_soon', 'expired'];
 
 export default function CustomerContracts() {
+  const navigate = useNavigate();
   const [list, setList] = useState(null);
   const [me, setMe] = useState(null);
   const [openId, setOpenId] = useState(null);
@@ -50,36 +51,6 @@ export default function CustomerContracts() {
     setSelected(cur => cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]);
   }
 
-  // HelcimPay card checkout for a portal invoice (same flow as the hosted pay page).
-  function payInvoiceByCard(invoiceId) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const { data: init } = await api.post(`/portal/invoices/${invoiceId}/helcim-initialize`);
-        const checkoutToken = init.checkoutToken;
-        await loadHelcimPayJs();
-        const handler = async (event) => {
-          if (!event.data || event.data.eventName !== `helcim-pay-js-${checkoutToken}`) return;
-          if (event.data.eventStatus === 'ABORTED') {
-            window.removeEventListener('message', handler);
-            reject(new Error('Payment was cancelled or did not go through.'));
-          }
-          if (event.data.eventStatus === 'SUCCESS') {
-            window.removeEventListener('message', handler);
-            try {
-              let msg = event.data.eventMessage;
-              if (typeof msg === 'string') msg = JSON.parse(msg);
-              await api.post(`/portal/invoices/${invoiceId}/helcim-confirm`, { checkoutToken, data: msg.data, hash: msg.hash });
-              window.removeHelcimPayIframe?.();
-              resolve();
-            } catch (e) { reject(new Error(e.response?.data?.error || 'We could not confirm the payment. If you were charged, contact the office.')); }
-          }
-        };
-        window.addEventListener('message', handler);
-        window.appendHelcimPayIframe(checkoutToken);
-      } catch (e) { reject(new Error(e.response?.data?.error || e.message || 'Could not start the payment.')); }
-    });
-  }
-
   async function acceptAndPay() {
     if (!isResidential && !selected.length) return toast.error('Please select at least one plan');
     if (!name.trim()) return toast.error('Please type your full name to sign');
@@ -90,32 +61,21 @@ export default function CustomerContracts() {
       const body = isResidential ? { name: name.trim(), image } : { name: name.trim(), image, selected };
       const { data } = await api.post(`/portal/contracts/${openId}/accept`, body);
       toast.success('Agreement accepted');
-      if (data.payments_enabled && data.invoice_id) {
-        setPaying(true);
-        try {
-          await payInvoiceByCard(data.invoice_id);
-          toast.success('Payment complete — thank you!');
-        } catch (e) {
-          toast.error(e.message + ' You can pay from this page anytime.');
-        } finally { setPaying(false); }
-      } else {
-        toast('Our office will send you payment details.', { icon: 'ℹ️' });
+      if (data.invoice_id) {
+        // Pay the agreement fee on the branded Stripe checkout page.
+        navigate(`/pay-invoice/${data.invoice_id}`);
+        return;
       }
+      toast('Our office will send you payment details.', { icon: 'ℹ️' });
       await open(openId); loadList();
     } catch (e) {
       toast.error(e.response?.data?.error || 'Could not accept the agreement');
     } finally { setBusy(false); }
   }
 
-  async function payNow() {
+  function payNow() {
     if (!detail?.fee_invoice?.id) return;
-    setPaying(true);
-    try {
-      await payInvoiceByCard(detail.fee_invoice.id);
-      toast.success('Payment complete — thank you!');
-      await open(openId); loadList();
-    } catch (e) { toast.error(e.message); }
-    finally { setPaying(false); }
+    navigate(`/pay-invoice/${detail.fee_invoice.id}`);
   }
 
   async function buildDoc() {
