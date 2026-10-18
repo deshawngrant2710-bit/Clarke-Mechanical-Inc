@@ -3,7 +3,7 @@ import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, StatCard, Btn, Spinner, Empty, Modal, Input, Select, Textarea } from '../components/UI';
 import SignaturePad from '../components/SignaturePad';
-import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock, Mail, FileText, ShieldCheck, Eye, Loader2 } from 'lucide-react';
+import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock, Mail, FileText, ShieldCheck, Eye, Loader2, FileCheck2, ClipboardList, RotateCcw, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -20,7 +20,14 @@ const STATUS = {
   open: { label: 'Owed', cls: 'bg-blue-100 text-blue-700' },
   paid: { label: 'Paid', cls: 'bg-emerald-100 text-emerald-700' },
   void: { label: 'Void', cls: 'bg-slate-100 text-slate-500' },
+  approved: { label: 'Approved', cls: 'bg-emerald-100 text-emerald-700' },
+  declined: { label: 'Declined', cls: 'bg-rose-100 text-rose-700' },
+  cleared: { label: 'Cleared', cls: 'bg-emerald-100 text-emerald-700' },
 };
+// Estimate & statement records live alongside bills but aren't money owed.
+const isEstimate = (b) => b.type === 'estimate';
+const isStatement = (b) => b.type === 'statement';
+const isPayable = (b) => !isEstimate(b) && !isStatement(b);
 
 export default function Payables() {
   const [bills, setBills] = useState(null);
@@ -33,6 +40,7 @@ export default function Payables() {
   const [gmail, setGmail] = useState(null);
   const [review, setReview] = useState(null);
   const [sigView, setSigView] = useState(null);
+  const [decide, setDecide] = useState(null); // estimate approve/decline modal
   const [isAdmin] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } });
 
   const load = () => {
@@ -68,11 +76,25 @@ export default function Payables() {
 
   const shown = useMemo(() => {
     const b = bills || [];
-    if (tab === 'owed') return b.filter(x => x.status === 'open');
-    if (tab === 'review') return b.filter(x => x.status === 'pending_review');
-    if (tab === 'paid') return b.filter(x => x.status === 'paid');
+    if (tab === 'owed') return b.filter(x => isPayable(x) && x.status === 'open');
+    if (tab === 'review') return b.filter(x => isPayable(x) && x.status === 'pending_review');
+    if (tab === 'estimates') return b.filter(isEstimate);
+    if (tab === 'statements') return b.filter(isStatement);
+    if (tab === 'paid') return b.filter(x => isPayable(x) && x.status === 'paid');
+    if (tab === 'void') return b.filter(x => x.status === 'void');
     return b;
   }, [bills, tab]);
+
+  // Open bills still owed per vendor — used to show a statement's remaining balance.
+  const owedByVendor = useMemo(() => {
+    const m = {};
+    (bills || []).filter(x => isPayable(x) && x.status === 'open').forEach(x => {
+      const k = x.vendor_id || (x.vendor_name || '').toLowerCase();
+      m[k] = (m[k] || 0) + (Number(x.amount) || 0);
+    });
+    return m;
+  }, [bills]);
+  const vendorRemaining = (b) => owedByVendor[b.vendor_id || (b.vendor_name || '').toLowerCase()] || 0;
 
   const setField = (k, v) => setModal(m => ({ ...m, form: { ...m.form, [k]: v } }));
   const openNew = () => { setErr(''); setModal({ id: null, form: blank() }); };
@@ -118,14 +140,19 @@ export default function Payables() {
         <StatCard label="To review" value={summary?.to_review || 0} icon={<Clock size={18} />} color="blue" animate={false} />
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {[['owed', 'Owed'], ['review', 'To review'], ['paid', 'Paid'], ['all', 'All']].map(([k, lbl]) => (
+      <div className="flex flex-wrap gap-2 mb-4">
+        {[['owed', 'Owed'], ['review', 'To review'], ['estimates', 'Estimates'], ['statements', 'Statements'], ['paid', 'Paid'], ['void', 'Voided'], ['all', 'All']].map(([k, lbl]) => (
           <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${tab === k ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{lbl}</button>
         ))}
       </div>
 
       {bills === null ? <Spinner /> : shown.length === 0 ? (
-        <Empty icon={<FileStack size={22} />} title="No bills here" message={tab === 'owed' ? "You're all caught up — nothing owed to vendors." : 'Nothing in this view.'} action={<Btn onClick={openNew}><Plus size={16} /> Add bill</Btn>} />
+        <Empty icon={<FileStack size={22} />} title={tab === 'estimates' ? 'No estimates here' : tab === 'statements' ? 'No statements here' : 'No bills here'}
+          message={tab === 'owed' ? "You're all caught up — nothing owed to vendors."
+            : tab === 'estimates' ? 'Vendor quotes you move here from the review screen will show up here to approve or decline.'
+            : tab === 'statements' ? 'Vendor statements you move here from the review screen will show up here to reconcile.'
+            : tab === 'void' ? 'Nothing voided.' : 'Nothing in this view.'}
+          action={tab === 'owed' || tab === 'all' ? <Btn onClick={openNew}><Plus size={16} /> Add bill</Btn> : null} />
       ) : (
         <Card>
           <div className="overflow-x-auto">
@@ -133,22 +160,25 @@ export default function Payables() {
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
                   <th className="px-5 py-2.5 font-semibold">Vendor</th>
-                  <th className="px-5 py-2.5 font-semibold">Invoice #</th>
-                  <th className="px-5 py-2.5 font-semibold">Due</th>
+                  <th className="px-5 py-2.5 font-semibold">{tab === 'estimates' ? 'Ref #' : tab === 'statements' ? 'Statement' : 'Invoice #'}</th>
+                  <th className="px-5 py-2.5 font-semibold">{tab === 'statements' ? 'Date' : 'Due'}</th>
                   <th className="px-5 py-2.5 font-semibold">Status</th>
-                  <th className="px-5 py-2.5 font-semibold text-right">Amount</th>
+                  <th className="px-5 py-2.5 font-semibold text-right">{tab === 'statements' ? 'Remaining' : 'Amount'}</th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {shown.map(b => {
-                  const overdue = ['open', 'pending_review'].includes(b.status) && b.due_date && b.due_date < today();
-                  const isRefundBill = b.type === 'refund' || (b.amount || 0) < 0;
+                  const est = isEstimate(b), stm = isStatement(b);
+                  const overdue = !est && !stm && ['open', 'pending_review'].includes(b.status) && b.due_date && b.due_date < today();
+                  const isRefundBill = b.type === 'refund' || (!est && !stm && (b.amount || 0) < 0);
                   const st = (isRefundBill && b.status === 'paid') ? { label: 'Refunded', cls: 'bg-violet-100 text-violet-700' } : (STATUS[b.status] || STATUS.open);
+                  const remaining = stm ? vendorRemaining(b) : 0;
                   return (
                     <tr key={b.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3">
                         <div className="text-slate-800 font-medium">{b.vendor_name || 'Vendor'}</div>
+                        {stm && <div className="text-[11px] text-slate-400 mt-0.5">Statement total {money(b.amount)}</div>}
                         {b.approved_by && (
                           <button onClick={() => setSigView(b)} className="text-[11px] text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1 mt-0.5">
                             <ShieldCheck size={11} /> Signed off by {b.approved_by}{b.approval_signature ? ' · view' : ''}
@@ -156,15 +186,29 @@ export default function Payables() {
                         )}
                       </td>
                       <td className="px-5 py-3 text-slate-500">{b.invoice_number || '—'}</td>
-                      <td className={`px-5 py-3 ${overdue ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>{fmtDate(b.due_date)}</td>
+                      <td className={`px-5 py-3 ${overdue ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>{fmtDate(stm ? b.bill_date : b.due_date)}</td>
                       <td className="px-5 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
-                      <td className="px-5 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">{money(b.amount)}</td>
+                      <td className="px-5 py-3 text-right font-semibold whitespace-nowrap">
+                        {stm
+                          ? <span className={remaining > 0 ? 'text-orange-600' : 'text-emerald-600'}>{money(remaining)}{remaining <= 0 ? ' ✓' : ''}</span>
+                          : <span className="text-slate-900">{money(b.amount)}</span>}
+                      </td>
                       <td className="px-5 py-3 text-right whitespace-nowrap">
-                        {b.status === 'pending_review' && <button title="Review invoice" onClick={() => setReview(b)} className="text-blue-600 hover:text-blue-700 p-1"><Eye size={16} /></button>}
-                        {b.attachment?.has_data && b.status !== 'pending_review' && <button title="View invoice PDF" onClick={() => viewPdf(b.id)} className="text-slate-400 hover:text-blue-600 p-1"><FileText size={15} /></button>}
-                        {['open', 'pending_review'].includes(b.status) && <button title="Mark paid" onClick={() => { if (window.confirm(`Mark ${money(b.amount)} to ${b.vendor_name || 'vendor'} as paid?`)) act(`/vendor-bills/${b.id}/mark-paid`); }} className="text-slate-400 hover:text-emerald-600 p-1"><DollarSign size={16} /></button>}
+                        {/* Estimates: approve / decline */}
+                        {est && b.status === 'pending_review' && <button title="Approve or decline estimate" onClick={() => setDecide(b)} className="text-blue-600 hover:text-blue-700 p-1"><FileCheck2 size={16} /></button>}
+                        {est && (b.status === 'approved' || b.status === 'declined') && <button title="Change decision" onClick={() => setDecide(b)} className="text-slate-400 hover:text-blue-600 p-1"><Pencil size={15} /></button>}
+                        {/* Statements: mark cleared / reopen */}
+                        {stm && b.status !== 'cleared' && <button title="Mark statement cleared" onClick={() => { if (window.confirm(`Confirm this ${b.vendor_name || 'vendor'} statement is cleared / reconciled?`)) act(`/vendor-bills/${b.id}/statement-clear`, { cleared: true }); }} className="text-slate-400 hover:text-emerald-600 p-1"><Check size={16} /></button>}
+                        {stm && b.status === 'cleared' && <button title="Reopen statement" onClick={() => act(`/vendor-bills/${b.id}/statement-clear`, { cleared: false })} className="text-slate-400 hover:text-amber-600 p-1"><RotateCcw size={15} /></button>}
+                        {/* Bills: review / mark paid */}
+                        {!est && !stm && b.status === 'pending_review' && <button title="Review invoice" onClick={() => setReview(b)} className="text-blue-600 hover:text-blue-700 p-1"><Eye size={16} /></button>}
+                        {!est && !stm && ['open', 'pending_review'].includes(b.status) && <button title="Mark paid" onClick={() => { if (window.confirm(`Mark ${money(b.amount)} to ${b.vendor_name || 'vendor'} as paid?`)) act(`/vendor-bills/${b.id}/mark-paid`); }} className="text-slate-400 hover:text-emerald-600 p-1"><DollarSign size={16} /></button>}
+                        {/* View PDF (any type that has one, except while in the review modal path) */}
+                        {b.attachment?.has_data && !(!est && !stm && b.status === 'pending_review') && <button title="View PDF" onClick={() => viewPdf(b.id)} className="text-slate-400 hover:text-blue-600 p-1"><FileText size={15} /></button>}
                         <button title="Edit" onClick={() => openEdit(b)} className="text-slate-400 hover:text-blue-600 p-1"><Pencil size={15} /></button>
-                        {b.status !== 'void' && <button title="Void" onClick={() => { if (window.confirm('Void this bill?')) act(`/vendor-bills/${b.id}/void`); }} className="text-slate-400 hover:text-amber-600 p-1"><Ban size={15} /></button>}
+                        {b.status === 'void'
+                          ? <button title="Unvoid" onClick={() => act(`/vendor-bills/${b.id}/unvoid`)} className="text-slate-400 hover:text-emerald-600 p-1"><RotateCcw size={15} /></button>
+                          : <button title="Void" onClick={() => { if (window.confirm('Void this record?')) act(`/vendor-bills/${b.id}/void`); }} className="text-slate-400 hover:text-amber-600 p-1"><Ban size={15} /></button>}
                         <button title="Delete" onClick={() => del(b)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={15} /></button>
                       </td>
                     </tr>
@@ -206,6 +250,8 @@ export default function Payables() {
       </Modal>
 
       {review && <ReviewModal bill={review} vendors={vendors} onClose={() => setReview(null)} onSaved={() => { setReview(null); load(); }} />}
+
+      {decide && <EstimateDecisionModal bill={decide} onClose={() => setDecide(null)} onSaved={() => { setDecide(null); load(); }} />}
 
       {sigView && (
         <Modal open onClose={() => setSigView(null)} title="Management sign-off" size="md"
@@ -280,6 +326,15 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
     setBusy(true);
     try { await saveFields(); toast.success('Saved'); onSaved(); } catch { toast.error('Could not save'); } finally { setBusy(false); }
   };
+  const moveTo = async (type) => {
+    setBusy(true);
+    try {
+      await saveFields();
+      await api.post(`/vendor-bills/${bill.id}/reclassify`, { type });
+      toast.success(type === 'estimate' ? 'Moved to Estimates.' : 'Moved to Statements.');
+      onSaved();
+    } catch { toast.error('Could not move this document'); } finally { setBusy(false); }
+  };
 
   if (signing) {
     return (
@@ -308,11 +363,12 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="Review vendor invoice" subtitle="Check the details against the PDF, then approve" size="xl"
+    <Modal open onClose={onClose} title="Review vendor document" subtitle="Check it against the PDF. If it's a quote or statement, move it; otherwise approve it as a bill." size="xl"
       footer={<>
         <Btn variant="outline" onClick={onClose}>Close</Btn>
-        <Btn variant="outline" onClick={justSave} loading={busy}>Save</Btn>
-        <Btn onClick={startApprove} loading={busy}><Check size={15} /> Approve</Btn>
+        <Btn variant="outline" onClick={() => moveTo('estimate')} loading={busy}><FileCheck2 size={15} /> It's an estimate</Btn>
+        <Btn variant="outline" onClick={() => moveTo('statement')} loading={busy}><ClipboardList size={15} /> It's a statement</Btn>
+        <Btn onClick={startApprove} loading={busy}><Check size={15} /> Approve as bill</Btn>
       </>}>
       <div className="grid md:grid-cols-2 gap-4">
         <div className="bg-slate-100 rounded-xl overflow-hidden">
@@ -340,6 +396,74 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
           </div>
           <Textarea label="Notes" value={form.notes} onChange={e => set('notes', e.target.value)} />
           {bill.email_from && <p className="text-[11px] text-slate-400">From: {bill.email_from}{bill.email_subject ? ` · ${bill.email_subject}` : ''}</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Approve or decline a vendor estimate (quote), with an optional management signature.
+function EstimateDecisionModal({ bill, onClose, onSaved }) {
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [amount, setAmount] = useState(bill.amount ?? '');
+  const [signer, setSigner] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').name || ''; } catch { return ''; } });
+  const sigRef = useRef(null);
+
+  useEffect(() => {
+    let url;
+    if (bill.attachment?.has_data) {
+      api.get(`/vendor-bills/${bill.id}/attachment`, { responseType: 'blob' })
+        .then(r => { url = URL.createObjectURL(r.data); setPdfUrl(url); }).catch(() => {});
+    }
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [bill.id]);
+
+  const decide = async (decision) => {
+    setBusy(true);
+    try {
+      const sig = sigRef.current && !sigRef.current.isEmpty() ? sigRef.current.toDataURL() : undefined;
+      await api.post(`/vendor-bills/${bill.id}/estimate-decision`, {
+        decision, signer: signer.trim() || undefined, signature: sig,
+        amount: amount === '' ? undefined : Number(amount),
+      });
+      toast.success(decision === 'approved' ? 'Estimate approved.' : 'Estimate declined.');
+      onSaved();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not save decision'); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Review vendor estimate" subtitle="Approve the quote or decline it" size="xl"
+      footer={<>
+        <Btn variant="outline" onClick={onClose}>Close</Btn>
+        <Btn variant="danger" onClick={() => decide('declined')} loading={busy}><X size={15} /> Decline</Btn>
+        <Btn onClick={() => decide('approved')} loading={busy}><Check size={15} /> Approve estimate</Btn>
+      </>}>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="bg-slate-100 rounded-xl overflow-hidden">
+          {bill.attachment?.has_data ? (
+            pdfUrl
+              ? <iframe src={pdfUrl} title="Estimate PDF" className="w-full h-[300px] md:h-[460px] bg-white" />
+              : <div className="flex items-center justify-center h-[300px] md:h-[460px] text-slate-400"><Loader2 size={18} className="animate-spin" /></div>
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-slate-400 text-sm p-4 text-center">No PDF on this estimate.</div>
+          )}
+        </div>
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-200 p-3 text-sm space-y-1.5">
+            <div className="flex justify-between"><span className="text-slate-500">Vendor</span><span className="font-semibold text-slate-800">{bill.vendor_name || 'Vendor'}</span></div>
+            {bill.invoice_number && <div className="flex justify-between"><span className="text-slate-500">Ref #</span><span className="text-slate-700">{bill.invoice_number}</span></div>}
+          </div>
+          <Input label="Quoted amount" type="number" step="0.01" min="0" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
+          <Input label="Decided by (manager)" value={signer} onChange={e => setSigner(e.target.value)} placeholder="Manager name" />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-slate-700">Signature (optional)</label>
+              <button type="button" onClick={() => sigRef.current?.clear()} className="text-xs text-slate-400 hover:text-slate-600">Clear</button>
+            </div>
+            <div className="border border-slate-300 rounded-lg overflow-hidden"><SignaturePad ref={sigRef} height={150} /></div>
+          </div>
+          <p className="text-[11px] text-slate-400">Approving records that management authorized this quote. It does not add money owed — convert it to a bill when the invoice arrives.</p>
         </div>
       </div>
     </Modal>

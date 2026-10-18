@@ -74,7 +74,7 @@ router.get('/pnl', async (req, res) => {
   // Vendor bills (accounts payable): approved or paid bills count as expense by
   // their bill date. Refunds/credits are stored negative and net against this.
   const VB_EXPENSE = ['open', 'paid'];
-  const billsIn = vendorBills.filter(b => VB_EXPENSE.includes(b.status) && inRange(d10(b.bill_date), from, to));
+  const billsIn = vendorBills.filter(b => b.type !== 'estimate' && b.type !== 'statement' && VB_EXPENSE.includes(b.status) && inRange(d10(b.bill_date), from, to));
   const vendorTotal = round2(billsIn.reduce((s, b) => s + (Number(b.amount) || 0), 0));
   for (const b of billsIn) {
     const amt = Number(b.amount) || 0; if (!amt) continue;

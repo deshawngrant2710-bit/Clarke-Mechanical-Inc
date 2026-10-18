@@ -14,6 +14,9 @@ router.use(authMiddleware, requireRole('admin', 'office'));
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const today = () => new Date().toISOString().slice(0, 10);
 const OWED = ['open', 'pending_review']; // counts as outstanding
+// Estimates (quotes) and statements are NOT money owed — they're separate
+// documents, so they never count toward A/P totals or the P&L.
+const PAYABLE = (b) => b.type !== 'estimate' && b.type !== 'statement';
 
 function clean(b) {
   return {
@@ -39,7 +42,7 @@ router.get('/', async (req, res) => {
 
 // GET /api/vendor-bills/summary — totals for dashboard + reports.
 router.get('/summary', async (req, res) => {
-  const bills = await list('vendor_bills');
+  const bills = (await list('vendor_bills')).filter(PAYABLE);
   const t = today();
   const owed = bills.filter(b => OWED.includes(b.status));
   res.json({
@@ -130,7 +133,66 @@ router.post('/:id/mark-paid', async (req, res) => {
 router.post('/:id/void', async (req, res) => {
   const b = await getById('vendor_bills', req.params.id);
   if (!b) return res.status(404).json({ error: 'Bill not found' });
-  res.json(await update('vendor_bills', req.params.id, { status: 'void', voided_by: req.user.name, voided_at: new Date().toISOString() }));
+  res.json(await update('vendor_bills', req.params.id, {
+    status: 'void', prev_status: b.status !== 'void' ? b.status : (b.prev_status || 'open'),
+    voided_by: req.user.name, voided_at: new Date().toISOString(),
+  }));
+});
+
+// Un-void — bring a voided record back so it can be reviewed again. Restores the
+// status it had before it was voided (falls back to open / to-review).
+router.post('/:id/unvoid', async (req, res) => {
+  const b = await getById('vendor_bills', req.params.id);
+  if (!b) return res.status(404).json({ error: 'Bill not found' });
+  const restored = b.prev_status || (b.source && b.source !== 'manual' && !b.approved_at ? 'pending_review' : 'open');
+  res.json(await update('vendor_bills', req.params.id, {
+    status: restored, prev_status: null, unvoided_by: req.user.name, unvoided_at: new Date().toISOString(),
+  }));
+});
+
+// Reclassify a record as a bill, estimate (quote) or statement. Used from the
+// review screen when an imported PDF turns out to be a quote or a statement
+// rather than an invoice we owe.
+router.post('/:id/reclassify', async (req, res) => {
+  const b = await getById('vendor_bills', req.params.id);
+  if (!b) return res.status(404).json({ error: 'Bill not found' });
+  const type = ['bill', 'estimate', 'statement', 'refund'].includes(req.body?.type) ? req.body.type : 'bill';
+  // Estimates await an approve/decline; statements await reconciliation; a plain
+  // bill goes back to open (or stays to-review if it was imported & unapproved).
+  let status = b.status;
+  if (type === 'estimate') status = 'pending_review';
+  else if (type === 'statement') status = 'pending_review';
+  else if (type === 'bill') status = b.approved_at ? 'open' : (b.source && b.source !== 'manual' ? 'pending_review' : 'open');
+  const patch = { type, status };
+  if (type === 'refund') { patch.amount = -Math.abs(Number(b.amount) || 0); patch.status = 'paid'; patch.paid_at = b.paid_at || new Date().toISOString(); }
+  res.json(await update('vendor_bills', req.params.id, patch));
+});
+
+// Approve or decline a vendor estimate (quote). Stores who decided + signature.
+router.post('/:id/estimate-decision', async (req, res) => {
+  const b = await getById('vendor_bills', req.params.id);
+  if (!b) return res.status(404).json({ error: 'Bill not found' });
+  const decision = req.body?.decision === 'declined' ? 'declined' : 'approved';
+  res.json(await update('vendor_bills', req.params.id, {
+    type: 'estimate', status: decision, decided_at: new Date().toISOString(),
+    approved_by: (req.body?.signer || '').trim() || req.user.name,
+    approval_signature: req.body?.signature || null, approved_at: new Date().toISOString(),
+    ...(req.body?.amount != null ? { amount: round2(req.body.amount) } : {}),
+  }));
+});
+
+// Mark a vendor statement cleared (reconciled) or back to open. Optionally records
+// the balance the statement showed + who confirmed it.
+router.post('/:id/statement-clear', async (req, res) => {
+  const b = await getById('vendor_bills', req.params.id);
+  if (!b) return res.status(404).json({ error: 'Bill not found' });
+  const cleared = req.body?.cleared !== false;
+  res.json(await update('vendor_bills', req.params.id, {
+    type: 'statement', status: cleared ? 'cleared' : 'pending_review',
+    ...(cleared ? { cleared_at: new Date().toISOString(), cleared_by: (req.body?.signer || '').trim() || req.user.name } : { cleared_at: null }),
+    ...(req.body?.statement_balance != null ? { statement_balance: round2(req.body.statement_balance) } : {}),
+    ...(req.body?.signature ? { approval_signature: req.body.signature, approved_by: (req.body?.signer || '').trim() || req.user.name } : {}),
+  }));
 });
 
 // GET /api/vendor-bills/:id/attachment — the imported invoice PDF (inline view).
