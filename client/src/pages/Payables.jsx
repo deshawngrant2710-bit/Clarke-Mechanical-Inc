@@ -142,7 +142,8 @@ export default function Payables() {
               <tbody className="divide-y divide-slate-100">
                 {shown.map(b => {
                   const overdue = ['open', 'pending_review'].includes(b.status) && b.due_date && b.due_date < today();
-                  const st = STATUS[b.status] || STATUS.open;
+                  const isRefundBill = b.type === 'refund' || (b.amount || 0) < 0;
+                  const st = (isRefundBill && b.status === 'paid') ? { label: 'Refunded', cls: 'bg-violet-100 text-violet-700' } : (STATUS[b.status] || STATUS.open);
                   return (
                     <tr key={b.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3 text-slate-800 font-medium">{b.vendor_name || 'Vendor'}</td>
@@ -236,12 +237,13 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
     setSigning(true);
   };
   const confirmApprove = async () => {
-    if (!signer.trim()) return toast.error('Enter the approving manager’s name');
-    if (!sigRef.current || sigRef.current.isEmpty()) return toast.error('Please sign in the box');
+    // Signature is required to approve a bill (owed), but optional for a refund.
+    if (!isRefund && (!sigRef.current || sigRef.current.isEmpty())) return toast.error('Please sign in the box');
     setBusy(true);
     try {
       await saveFields();
-      const body = { signer: signer.trim(), signature: sigRef.current.toDataURL() };
+      const sig = sigRef.current && !sigRef.current.isEmpty() ? sigRef.current.toDataURL() : undefined;
+      const body = { signer: signer.trim() || undefined, signature: sig };
       if (isRefund) { await api.post(`/vendor-bills/${bill.id}/mark-paid`, { method: 'refund', ...body }); toast.success('Refund approved & recorded.'); }
       else { await api.post(`/vendor-bills/${bill.id}/approve`, body); toast.success('Approved by management.'); }
       onSaved();
@@ -267,7 +269,7 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
           <Input label="Approved by (manager)" value={signer} onChange={e => setSigner(e.target.value)} placeholder="Manager name" />
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-sm font-medium text-slate-700">Signature</label>
+              <label className="text-sm font-medium text-slate-700">Signature{isRefund ? ' (optional)' : ''}</label>
               <button type="button" onClick={() => sigRef.current?.clear()} className="text-xs text-slate-400 hover:text-slate-600">Clear</button>
             </div>
             <div className="border border-slate-300 rounded-lg overflow-hidden"><SignaturePad ref={sigRef} height={180} /></div>

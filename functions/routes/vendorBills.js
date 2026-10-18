@@ -122,6 +122,7 @@ router.post('/:id/mark-paid', async (req, res) => {
   res.json(await update('vendor_bills', req.params.id, {
     status: 'paid', paid_at: req.body?.paid_at || new Date().toISOString(),
     paid_method: (req.body?.method || '').trim() || null, paid_by: req.user.name,
+    ...((Number(b.amount) || 0) < 0 || req.body?.method === 'refund' ? { type: 'refund' } : {}),
     ...(req.body?.signature ? { approval_signature: req.body.signature, approved_by: (req.body?.signer || '').trim() || req.user.name, approved_at: new Date().toISOString() } : {}),
   }));
 });
