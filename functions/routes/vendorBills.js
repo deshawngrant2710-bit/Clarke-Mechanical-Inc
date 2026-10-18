@@ -106,7 +106,11 @@ router.put('/:id', async (req, res) => {
 router.post('/:id/approve', async (req, res) => {
   const b = await getById('vendor_bills', req.params.id);
   if (!b) return res.status(404).json({ error: 'Bill not found' });
-  const patch = { status: 'open', approved_by: req.user.name, approved_at: new Date().toISOString() };
+  const patch = {
+    status: 'open', approved_at: new Date().toISOString(),
+    approved_by: (req.body?.signer || '').trim() || req.user.name,
+    approval_signature: req.body?.signature || null,
+  };
   if (req.body?.amount != null) patch.amount = round2(req.body.amount); // let them fix the amount on approve
   res.json(await update('vendor_bills', req.params.id, patch));
 });
@@ -118,6 +122,7 @@ router.post('/:id/mark-paid', async (req, res) => {
   res.json(await update('vendor_bills', req.params.id, {
     status: 'paid', paid_at: req.body?.paid_at || new Date().toISOString(),
     paid_method: (req.body?.method || '').trim() || null, paid_by: req.user.name,
+    ...(req.body?.signature ? { approval_signature: req.body.signature, approved_by: (req.body?.signer || '').trim() || req.user.name, approved_at: new Date().toISOString() } : {}),
   }));
 });
 

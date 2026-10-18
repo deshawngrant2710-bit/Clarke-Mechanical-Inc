@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, StatCard, Btn, Spinner, Empty, Modal, Input, Select, Textarea } from '../components/UI';
+import SignaturePad from '../components/SignaturePad';
 import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock, Mail, FileText, ShieldCheck, Eye, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -210,7 +211,11 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
   });
   const [pdfUrl, setPdfUrl] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signer, setSigner] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').name || ''; } catch { return ''; } });
+  const sigRef = useRef(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const isRefund = Number(form.amount) < 0;
 
   useEffect(() => {
     let url;
@@ -226,23 +231,59 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
     if (f.vendor_id) f.vendor_name = vendors.find(v => v.id === f.vendor_id)?.name || f.vendor_name;
     await api.put(`/vendor-bills/${bill.id}`, f);
   };
-  const approve = async () => {
-    if (!(Number(form.amount) > 0)) return toast.error('Enter the amount before approving');
+  const startApprove = () => {
+    if (!form.amount || Number(form.amount) === 0) return toast.error('Enter the amount before approving');
+    setSigning(true);
+  };
+  const confirmApprove = async () => {
+    if (!signer.trim()) return toast.error('Enter the approving manager’s name');
+    if (!sigRef.current || sigRef.current.isEmpty()) return toast.error('Please sign in the box');
     setBusy(true);
-    try { await saveFields(); await api.post(`/vendor-bills/${bill.id}/approve`); toast.success('Approved — now owed.'); onSaved(); }
-    catch (e) { toast.error(e.response?.data?.error || 'Could not approve'); } finally { setBusy(false); }
+    try {
+      await saveFields();
+      const body = { signer: signer.trim(), signature: sigRef.current.toDataURL() };
+      if (isRefund) { await api.post(`/vendor-bills/${bill.id}/mark-paid`, { method: 'refund', ...body }); toast.success('Refund approved & recorded.'); }
+      else { await api.post(`/vendor-bills/${bill.id}/approve`, body); toast.success('Approved by management.'); }
+      onSaved();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not approve'); } finally { setBusy(false); }
   };
   const justSave = async () => {
     setBusy(true);
     try { await saveFields(); toast.success('Saved'); onSaved(); } catch { toast.error('Could not save'); } finally { setBusy(false); }
   };
 
+  if (signing) {
+    return (
+      <Modal open onClose={onClose} title="Management authorization" subtitle={`Sign to ${isRefund ? 'record this refund' : 'approve this bill'}`} size="md"
+        footer={<>
+          <Btn variant="outline" onClick={() => setSigning(false)}>Back</Btn>
+          <Btn onClick={confirmApprove} loading={busy}><Check size={15} /> {isRefund ? 'Confirm refund' : 'Confirm & approve'}</Btn>
+        </>}>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 p-3 text-sm flex items-center justify-between">
+            <span className="text-slate-500">{isRefund ? 'Refund from' : 'Bill from'} {form.vendor_name || vendors.find(v => v.id === form.vendor_id)?.name || 'vendor'}</span>
+            <span className="font-bold text-slate-900">${Math.abs(Number(form.amount) || 0).toFixed(2)}</span>
+          </div>
+          <Input label="Approved by (manager)" value={signer} onChange={e => setSigner(e.target.value)} placeholder="Manager name" />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-slate-700">Signature</label>
+              <button type="button" onClick={() => sigRef.current?.clear()} className="text-xs text-slate-400 hover:text-slate-600">Clear</button>
+            </div>
+            <div className="border border-slate-300 rounded-lg overflow-hidden"><SignaturePad ref={sigRef} height={180} /></div>
+          </div>
+          <p className="text-[11px] text-slate-400">Your signature and name are stored on this bill as the approval record.</p>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal open onClose={onClose} title="Review vendor invoice" subtitle="Check the details against the PDF, then approve" size="xl"
       footer={<>
         <Btn variant="outline" onClick={onClose}>Close</Btn>
         <Btn variant="outline" onClick={justSave} loading={busy}>Save</Btn>
-        <Btn onClick={approve} loading={busy}><Check size={15} /> Approve</Btn>
+        <Btn onClick={startApprove} loading={busy}><Check size={15} /> Approve</Btn>
       </>}>
       <div className="grid md:grid-cols-2 gap-4">
         <div className="bg-slate-100 rounded-xl overflow-hidden">
