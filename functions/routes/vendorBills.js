@@ -5,6 +5,7 @@ const express = require('express');
 const { v4: uuid } = require('uuid');
 const { list, getById, create, update, remove } = require('../lib/db');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { extractInvoice } = require('../lib/invoiceExtract');
 let notify; try { ({ notify } = require('../lib/notify')); } catch { notify = async () => {}; }
 
 const router = express.Router();
@@ -47,6 +48,35 @@ router.get('/summary', async (req, res) => {
     to_review: bills.filter(b => b.status === 'pending_review').length,
     open_count: owed.length,
   });
+});
+
+// POST /api/vendor-bills/upload — upload an invoice PDF; AI extracts the details
+// and files it as a pending-review bill with the PDF attached.
+router.post('/upload', async (req, res) => {
+  const { filename, data, vendor_id } = req.body || {};
+  if (!data) return res.status(400).json({ error: 'No PDF provided' });
+  const b64 = String(data).replace(/^data:[^,]*,/, ''); // strip any data: URL prefix
+  let ex = {};
+  try { ex = await extractInvoice(b64); } catch (e) { console.error('[vendor-bills] extract:', e.message); }
+
+  let vendor = null;
+  const vendors = await list('vendors');
+  if (vendor_id) vendor = vendors.find(v => v.id === vendor_id);
+  if (!vendor && ex.vendor_name) {
+    const n = ex.vendor_name.toLowerCase();
+    vendor = vendors.find(v => v.name && (v.name.toLowerCase() === n || v.name.toLowerCase().includes(n) || n.includes(v.name.toLowerCase())));
+  }
+
+  const saved = await create('vendor_bills', uuid(), {
+    vendor_id: vendor?.id || null, vendor_name: vendor?.name || ex.vendor_name || null,
+    invoice_number: ex.invoice_number || null, amount: round2(ex.amount),
+    bill_date: ex.bill_date || today(), due_date: ex.due_date || null,
+    line_items: ex.line_items || [], notes: 'Uploaded invoice',
+    status: 'pending_review', source: 'upload',
+    attachment: { filename: filename || 'invoice.pdf', mimeType: 'application/pdf', data: b64 },
+    created_by: req.user.name, created_at: new Date().toISOString(),
+  });
+  res.status(201).json(saved);
 });
 
 router.post('/', async (req, res) => {

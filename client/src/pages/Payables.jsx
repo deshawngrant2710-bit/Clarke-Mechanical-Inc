@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, StatCard, Btn, Spinner, Empty, Modal, Input, Select, Textarea } from '../components/UI';
-import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock, Mail, FileText, ShieldCheck } from 'lucide-react';
+import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock, Mail, FileText, ShieldCheck, Eye, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -30,6 +30,7 @@ export default function Payables() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [gmail, setGmail] = useState(null);
+  const [review, setReview] = useState(null);
   const [isAdmin] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } });
 
   const load = () => {
@@ -149,8 +150,8 @@ export default function Payables() {
                       <td className="px-5 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
                       <td className="px-5 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">{money(b.amount)}</td>
                       <td className="px-5 py-3 text-right whitespace-nowrap">
-                        {b.attachment?.has_data && <button title="View invoice PDF" onClick={() => viewPdf(b.id)} className="text-slate-400 hover:text-blue-600 p-1"><FileText size={15} /></button>}
-                        {b.status === 'pending_review' && <button title="Approve" onClick={() => act(`/vendor-bills/${b.id}/approve`)} className="text-slate-400 hover:text-emerald-600 p-1"><Check size={16} /></button>}
+                        {b.status === 'pending_review' && <button title="Review invoice" onClick={() => setReview(b)} className="text-blue-600 hover:text-blue-700 p-1"><Eye size={16} /></button>}
+                        {b.attachment?.has_data && b.status !== 'pending_review' && <button title="View invoice PDF" onClick={() => viewPdf(b.id)} className="text-slate-400 hover:text-blue-600 p-1"><FileText size={15} /></button>}
                         {['open', 'pending_review'].includes(b.status) && <button title="Mark paid" onClick={() => { if (window.confirm(`Mark ${money(b.amount)} to ${b.vendor_name || 'vendor'} as paid?`)) act(`/vendor-bills/${b.id}/mark-paid`); }} className="text-slate-400 hover:text-emerald-600 p-1"><DollarSign size={16} /></button>}
                         <button title="Edit" onClick={() => openEdit(b)} className="text-slate-400 hover:text-blue-600 p-1"><Pencil size={15} /></button>
                         {b.status !== 'void' && <button title="Void" onClick={() => { if (window.confirm('Void this bill?')) act(`/vendor-bills/${b.id}/void`); }} className="text-slate-400 hover:text-amber-600 p-1"><Ban size={15} /></button>}
@@ -187,6 +188,84 @@ export default function Payables() {
           </div>
         )}
       </Modal>
+
+      {review && <ReviewModal bill={review} vendors={vendors} onClose={() => setReview(null)} onSaved={() => { setReview(null); load(); }} />}
     </div>
+  );
+}
+
+// Side-by-side review: the real invoice PDF next to the AI-extracted fields, so you
+// verify (and fix) the amount/dates against the invoice, then approve.
+function ReviewModal({ bill, vendors, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    vendor_id: bill.vendor_id || '', vendor_name: bill.vendor_name || '',
+    invoice_number: bill.invoice_number || '', amount: bill.amount ?? '',
+    bill_date: (bill.bill_date || '').slice(0, 10), due_date: (bill.due_date || '').slice(0, 10), notes: bill.notes || '',
+  });
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    let url;
+    if (bill.attachment?.has_data) {
+      api.get(`/vendor-bills/${bill.id}/attachment`, { responseType: 'blob' })
+        .then(r => { url = URL.createObjectURL(r.data); setPdfUrl(url); }).catch(() => {});
+    }
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [bill.id]);
+
+  const saveFields = async () => {
+    const f = { ...form };
+    if (f.vendor_id) f.vendor_name = vendors.find(v => v.id === f.vendor_id)?.name || f.vendor_name;
+    await api.put(`/vendor-bills/${bill.id}`, f);
+  };
+  const approve = async () => {
+    if (!(Number(form.amount) > 0)) return toast.error('Enter the amount before approving');
+    setBusy(true);
+    try { await saveFields(); await api.post(`/vendor-bills/${bill.id}/approve`); toast.success('Approved — now owed.'); onSaved(); }
+    catch (e) { toast.error(e.response?.data?.error || 'Could not approve'); } finally { setBusy(false); }
+  };
+  const justSave = async () => {
+    setBusy(true);
+    try { await saveFields(); toast.success('Saved'); onSaved(); } catch { toast.error('Could not save'); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Review vendor invoice" subtitle="Check the details against the PDF, then approve" size="xl"
+      footer={<>
+        <Btn variant="outline" onClick={onClose}>Close</Btn>
+        <Btn variant="outline" onClick={justSave} loading={busy}>Save</Btn>
+        <Btn onClick={approve} loading={busy}><Check size={15} /> Approve</Btn>
+      </>}>
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="bg-slate-100 rounded-xl overflow-hidden">
+          {bill.attachment?.has_data ? (
+            pdfUrl
+              ? <iframe src={pdfUrl} title="Invoice PDF" className="w-full h-[300px] md:h-[520px] bg-white" />
+              : <div className="flex items-center justify-center h-[300px] md:h-[520px] text-slate-400"><Loader2 size={18} className="animate-spin" /></div>
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-slate-400 text-sm p-4 text-center">No PDF on this bill — enter the details manually.</div>
+          )}
+        </div>
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">The AI filled these in — fix anything that doesn't match the invoice, then Approve.</p>
+          <Select label="Vendor" value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)}>
+            <option value="">{form.vendor_name ? `${form.vendor_name} (unlinked)` : 'Select a vendor…'}</option>
+            {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Invoice #" value={form.invoice_number} onChange={e => set('invoice_number', e.target.value)} />
+            <Input label="Amount" type="number" step="0.01" min="0" inputMode="decimal" value={form.amount} onChange={e => set('amount', e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Bill date" type="date" value={form.bill_date} onChange={e => set('bill_date', e.target.value)} />
+            <Input label="Due date" type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+          </div>
+          <Textarea label="Notes" value={form.notes} onChange={e => set('notes', e.target.value)} />
+          {bill.email_from && <p className="text-[11px] text-slate-400">From: {bill.email_from}{bill.email_subject ? ` · ${bill.email_subject}` : ''}</p>}
+        </div>
+      </div>
+    </Modal>
   );
 }
