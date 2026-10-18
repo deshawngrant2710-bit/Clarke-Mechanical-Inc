@@ -57,6 +57,7 @@ import Payroll from './pages/Payroll';
 import Expenses from './pages/Expenses';
 import Banking from './pages/Banking';
 import Purchasing from './pages/Purchasing';
+import Payables from './pages/Payables';
 import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
@@ -244,6 +245,7 @@ export default function App() {
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/banking" element={<Banking />} />
             <Route path="/purchasing" element={<Purchasing />} />
+            <Route path="/vendor-bills" element={<Payables />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/search" element={<SearchResults />} />
             <Route path="/assistant" element={<AdminAssistant />} />

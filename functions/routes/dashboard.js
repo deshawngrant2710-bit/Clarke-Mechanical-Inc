@@ -54,9 +54,10 @@ async function technicianDashboard(req, res) {
 router.get('/', async (req, res) => {
   if (req.user.role === 'technician') return technicianDashboard(req, res);
 
-  const [customers, jobs, invoices, inventory, users, reviews, quotes, chats, payReqs, paid_] = await Promise.all([
-    list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'), list('quotes'), list('support_chats'), list('payment_requests'), paidMap(),
+  const [customers, jobs, invoices, inventory, users, reviews, quotes, chats, payReqs, vendorBills, paid_] = await Promise.all([
+    list('customers'), list('jobs'), list('invoices'), list('inventory'), list('users'), list('reviews'), list('quotes'), list('support_chats'), list('payment_requests'), list('vendor_bills'), paidMap(),
   ]);
+  const apOwed = vendorBills.filter(b => ['open', 'pending_review'].includes(b.status));
   const t = today();
   // Don't count staff (who have a matching login) as customers — mirrors the Customers list.
   const staffEmails = new Set(users.filter(u => u.role && u.role !== 'customer' && u.email).map(u => u.email.toLowerCase()));
@@ -98,6 +99,8 @@ router.get('/', async (req, res) => {
     pendingRevenue: sum(invoices.filter(i => ['sent', 'draft'].includes(i.status))),
     monthlyRevenue: sum(paid.filter(i => i.issue_date && i.issue_date.slice(0, 7) === t.slice(0, 7))),
     outstandingAmount: invoices.filter(i => !['paid', 'cancelled'].includes(i.status)).reduce((s, i) => s + balanceOf(i, paid_), 0),
+    vendorsOwed: apOwed.reduce((s, b) => s + (b.amount || 0), 0),
+    vendorBillsToReview: vendorBills.filter(b => b.status === 'pending_review').length,
     totalInvoices: invoices.length,
     overdueInvoices: invoices.filter(i => i.status !== 'paid' && i.due_date && i.due_date < t).length,
     avgTicket: paid.length ? sum(paid) / paid.length : 0,

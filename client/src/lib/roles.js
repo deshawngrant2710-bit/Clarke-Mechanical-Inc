@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award, Landmark,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award, Landmark, FileStack,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -49,6 +49,7 @@ export const NAV_GROUPS = [
       { to: '/boiler-contracts', label: 'Boiler Contracts', icon: Flame, roles: ['admin', 'office'] },
       { to: '/price-book', label: 'Price Book', icon: BookOpen, roles: ['admin', 'office'] },
       { to: '/service-pricing', label: 'Service Pricing', icon: BookOpen, roles: ['admin', 'office'] },
+      { to: '/vendor-bills', label: 'Vendor Bills', icon: FileStack, roles: ['admin', 'office'] },
       { to: '/banking', label: 'Banking', icon: Landmark, roles: ['admin', 'office'] },
       { to: '/reports', label: 'Financial Reports', icon: BarChart3, roles: ['admin', 'office'] },
       { to: '/payroll', label: 'Payroll', icon: Wallet, roles: ['admin'] },

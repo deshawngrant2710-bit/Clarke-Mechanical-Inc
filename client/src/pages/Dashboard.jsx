@@ -14,7 +14,7 @@ import {
   Users, Briefcase, DollarSign, AlertTriangle,
   Clock, Receipt, TrendingUp, CalendarDays, UserPlus, FilePlus,
   Wrench, ArrowRight, Zap, Star, CheckCircle, Timer, MapPin, Navigation, MessagesSquare, CheckSquare, Circle,
-  ChevronDown, Plus, X,
+  ChevronDown, Plus, X, FileStack,
 } from 'lucide-react';
 import { directionsLink } from '../lib/geo';
 import PageHeader from '../components/PageHeader';
@@ -214,6 +214,7 @@ export default function Dashboard() {
               <StatCard label="Revenue Collected" value={data.totalRevenue} prefix="$" decimals={2} icon={<DollarSign size={18} />} color="green" />
               <StatCard label="Pending Revenue" value={data.pendingRevenue} prefix="$" decimals={2} icon={<Clock size={18} />} color="blue" />
               <StatCard label="Avg. Ticket" value={data.avgTicket} prefix="$" decimals={2} icon={<Receipt size={18} />} color="purple" />
+              <StatCard label="Owe Vendors" value={data.vendorsOwed || 0} prefix="$" decimals={2} icon={<FileStack size={18} />} color="orange" sub={data.vendorBillsToReview ? `${data.vendorBillsToReview} to review` : 'accounts payable'} onClick={() => navigate('/vendor-bills')} />
             </div>
             <div className="grid grid-cols-1 gap-6">
               <Card className="p-5">

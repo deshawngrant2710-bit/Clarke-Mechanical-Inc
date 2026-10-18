@@ -42,6 +42,7 @@ app.use('/api/support', require('./routes/support'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/expenses', require('./routes/expenses'));
 app.use('/api/subscriptions', require('./routes/subscriptions'));
+app.use('/api/vendor-bills', require('./routes/vendorBills'));
 app.use('/api/banking', require('./routes/banking'));
 app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/search', require('./routes/search'));
