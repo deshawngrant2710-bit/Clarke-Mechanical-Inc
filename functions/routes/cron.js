@@ -89,16 +89,23 @@ async function vendorInvoices(req, res) {
     if (!conn) return res.json({ ok: true, skipped: 'gmail_not_connected' });
 
     const vendors = await list('vendors');
-    const vmap = new Map(vendors.filter(v => v.email).map(v => [v.email.toLowerCase(), v]));
-    if (vmap.size === 0) return res.json({ ok: true, skipped: 'no_vendor_emails' });
+    // Match on any of a vendor's sender emails AND optional domains, so invoices
+    // from different people at the same vendor (AR, Tessa, Jerome…) all map to it.
+    const emailMap = new Map(); const domainMap = new Map();
+    const lc = (s) => String(s || '').toLowerCase().trim();
+    for (const v of vendors) {
+      [v.email, ...String(v.invoice_emails || '').split(/[,;\s]+/)].map(lc).filter(Boolean).forEach(e => emailMap.set(e, v));
+      String(v.invoice_domains || '').split(/[,;\s]+/).map(e => lc(e).replace(/^@/, '')).filter(Boolean).forEach(d => domainMap.set(d, v));
+    }
+    if (emailMap.size === 0 && domainMap.size === 0) return res.json({ ok: true, skipped: 'no_vendor_emails' });
 
     const token = await gmail.getAccessToken();
     // Normal runs look back 3 days; pass ?days=60 once for a catch-up of older
     // invoices already in the inbox. ?max raises how many messages are scanned.
     const days = Math.min(Math.max(Number(req.query.days) || 3, 1), 180);
     const max = Math.min(Math.max(Number(req.query.max) || 25, 1), 100);
-    const froms = [...vmap.keys()].slice(0, 40).map(e => `from:${e}`).join(' OR ');
-    const q = `has:attachment newer_than:${days}d (${froms})`;
+    const terms = [...emailMap.keys(), ...domainMap.keys()].slice(0, 40).map(x => `from:${x}`).join(' OR ');
+    const q = `has:attachment newer_than:${days}d (${terms})`;
     const msgs = await gmail.listMessages(token, q, max);
 
     const existing = await list('vendor_bills');
@@ -110,7 +117,7 @@ async function vendorInvoices(req, res) {
       try {
         const msg = await gmail.getMessage(token, id);
         const { fromEmail, subject, pdfs } = gmail.parseHeadersAndParts(msg);
-        const vendor = vmap.get(fromEmail);
+        const vendor = emailMap.get(fromEmail) || domainMap.get(fromEmail.split('@')[1] || '');
         if (!vendor || !pdfs.length) continue;
 
         const pdf = pdfs[0];

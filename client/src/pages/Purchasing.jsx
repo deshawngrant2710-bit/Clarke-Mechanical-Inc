@@ -176,7 +176,7 @@ export default function Purchasing() {
   );
 }
 
-const emptyVendor = () => ({ name: '', email: '', phone: '', address: '', contact_name: '', contact_phone: '', notes: '' });
+const emptyVendor = () => ({ name: '', email: '', phone: '', address: '', contact_name: '', contact_phone: '', notes: '', invoice_emails: '', invoice_domains: '' });
 
 function VendorsModal({ open, onClose, vendors, onDone }) {
   const [form, setForm] = useState(emptyVendor());
@@ -189,6 +189,7 @@ function VendorsModal({ open, onClose, vendors, onDone }) {
     setForm({
       name: v.name || '', email: v.email || '', phone: v.phone || '', address: v.address || '',
       contact_name: v.contact_name || '', contact_phone: v.contact_phone || '', notes: v.notes || '',
+      invoice_emails: v.invoice_emails || '', invoice_domains: v.invoice_domains || '',
     });
   }
   function cancelEdit() { setEditId(null); setForm(emptyVendor()); }
@@ -224,6 +225,8 @@ function VendorsModal({ open, onClose, vendors, onDone }) {
             <Input label="Contact number" value={form.contact_phone} onChange={set('contact_phone')} placeholder="Direct / cell" />
           </div>
           <Input label="Email" value={form.email} onChange={set('email')} placeholder="orders@vendor.com" />
+          <Input label="Other invoice senders" value={form.invoice_emails} onChange={set('invoice_emails')} placeholder="tessa@vendor.com, jerome@vendor.com" hint="Extra addresses people here email invoices from (comma-separated)." />
+          <Input label="Invoice email domains" value={form.invoice_domains} onChange={set('invoice_domains')} placeholder="vendor.com" hint="Treat anyone from these domains as this vendor (comma-separated)." />
           <Input label="Notes" value={form.notes} onChange={set('notes')} placeholder="Account #, delivery info, etc." />
           <div className="flex justify-end gap-2">
             {editId && <Btn size="sm" variant="outline" onClick={cancelEdit}>Cancel</Btn>}

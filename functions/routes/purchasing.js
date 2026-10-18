@@ -14,6 +14,10 @@ const cleanVendor = (b) => ({
   contact_name: b.contact_name || null,   // external contact person
   contact_phone: b.contact_phone || null, // their direct / cell number
   notes: b.notes || null,
+  // Extra sender addresses + email domains for matching invoice emails from any
+  // person at this vendor (comma-separated).
+  invoice_emails: b.invoice_emails || null,
+  invoice_domains: b.invoice_domains || null,
 });
 
 router.get('/vendors', async (req, res) => {
