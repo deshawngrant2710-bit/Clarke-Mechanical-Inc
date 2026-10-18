@@ -32,6 +32,7 @@ export default function Payables() {
   const [err, setErr] = useState('');
   const [gmail, setGmail] = useState(null);
   const [review, setReview] = useState(null);
+  const [sigView, setSigView] = useState(null);
   const [isAdmin] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } });
 
   const load = () => {
@@ -146,7 +147,14 @@ export default function Payables() {
                   const st = (isRefundBill && b.status === 'paid') ? { label: 'Refunded', cls: 'bg-violet-100 text-violet-700' } : (STATUS[b.status] || STATUS.open);
                   return (
                     <tr key={b.id} className="hover:bg-slate-50">
-                      <td className="px-5 py-3 text-slate-800 font-medium">{b.vendor_name || 'Vendor'}</td>
+                      <td className="px-5 py-3">
+                        <div className="text-slate-800 font-medium">{b.vendor_name || 'Vendor'}</div>
+                        {b.approved_by && (
+                          <button onClick={() => setSigView(b)} className="text-[11px] text-emerald-600 hover:text-emerald-700 inline-flex items-center gap-1 mt-0.5">
+                            <ShieldCheck size={11} /> Signed off by {b.approved_by}{b.approval_signature ? ' · view' : ''}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-slate-500">{b.invoice_number || '—'}</td>
                       <td className={`px-5 py-3 ${overdue ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>{fmtDate(b.due_date)}</td>
                       <td className="px-5 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
@@ -198,6 +206,26 @@ export default function Payables() {
       </Modal>
 
       {review && <ReviewModal bill={review} vendors={vendors} onClose={() => setReview(null)} onSaved={() => { setReview(null); load(); }} />}
+
+      {sigView && (
+        <Modal open onClose={() => setSigView(null)} title="Management sign-off" size="md"
+          footer={<Btn variant="outline" onClick={() => setSigView(null)}>Close</Btn>}>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 p-4 text-sm space-y-1.5">
+              <div className="flex justify-between"><span className="text-slate-500">Vendor</span><span className="font-semibold text-slate-800">{sigView.vendor_name || 'Vendor'}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Amount</span><span className="font-semibold text-slate-900">{money(sigView.amount)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Approved by</span><span className="font-semibold text-slate-800">{sigView.approved_by}</span></div>
+              {sigView.approved_at && <div className="flex justify-between"><span className="text-slate-500">Date</span><span className="text-slate-700">{fmtDate(sigView.approved_at)}</span></div>}
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-1">Signature</p>
+              {sigView.approval_signature
+                ? <img src={sigView.approval_signature} alt="Approval signature" className="w-full max-h-48 object-contain border border-slate-200 rounded-lg bg-white" />
+                : <p className="text-sm text-slate-400">Approved without a signature (e.g. a refund).</p>}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
