@@ -81,10 +81,16 @@ router.post('/upload', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const data = clean(req.body);
-  if (!(data.amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+  const isRefund = req.body.type === 'refund';
+  if (!(Math.abs(data.amount) > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
   if (!data.vendor_name && !data.vendor_id) return res.status(400).json({ error: 'Choose or name a vendor' });
+  // A refund/credit from a vendor is stored as a negative, already-settled bill so
+  // it nets against expenses and isn't shown as money we owe.
+  if (isRefund) { data.amount = -Math.abs(data.amount); }
   const saved = await create('vendor_bills', uuid(), {
-    ...data, status: 'open', source: 'manual',
+    ...data, type: isRefund ? 'refund' : 'bill',
+    status: isRefund ? 'paid' : 'open', source: 'manual',
+    paid_at: isRefund ? new Date().toISOString() : undefined,
     created_by: req.user.name, created_at: new Date().toISOString(),
   });
   res.status(201).json(saved);

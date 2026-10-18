@@ -12,7 +12,7 @@ const fmtDate = (d) => {
   return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
 const today = () => new Date().toISOString().slice(0, 10);
-const blank = () => ({ vendor_id: '', vendor_name: '', invoice_number: '', amount: '', bill_date: today(), due_date: '', notes: '' });
+const blank = () => ({ type: 'bill', vendor_id: '', vendor_name: '', invoice_number: '', amount: '', bill_date: today(), due_date: '', notes: '' });
 
 const STATUS = {
   pending_review: { label: 'To review', cls: 'bg-amber-100 text-amber-700' },
@@ -74,7 +74,7 @@ export default function Payables() {
 
   const setField = (k, v) => setModal(m => ({ ...m, form: { ...m.form, [k]: v } }));
   const openNew = () => { setErr(''); setModal({ id: null, form: blank() }); };
-  const openEdit = (b) => { setErr(''); setModal({ id: b.id, form: { vendor_id: b.vendor_id || '', vendor_name: b.vendor_name || '', invoice_number: b.invoice_number || '', amount: b.amount ?? '', bill_date: (b.bill_date || '').slice(0, 10) || today(), due_date: (b.due_date || '').slice(0, 10), notes: b.notes || '' } }); };
+  const openEdit = (b) => { setErr(''); setModal({ id: b.id, form: { type: b.type === 'refund' || (b.amount || 0) < 0 ? 'refund' : 'bill', vendor_id: b.vendor_id || '', vendor_name: b.vendor_name || '', invoice_number: b.invoice_number || '', amount: Math.abs(b.amount ?? 0) || '', bill_date: (b.bill_date || '').slice(0, 10) || today(), due_date: (b.due_date || '').slice(0, 10), notes: b.notes || '' } }); };
 
   const save = async () => {
     const f = { ...modal.form };
@@ -171,6 +171,12 @@ export default function Payables() {
         {modal && (
           <div className="space-y-4">
             {err && <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{err}</div>}
+            {!modal.id && (
+              <Select label="Type" value={modal.form.type} onChange={e => setField('type', e.target.value)}>
+                <option value="bill">Bill — we owe this vendor</option>
+                <option value="refund">Refund / credit — vendor paid us back</option>
+              </Select>
+            )}
             <Select label="Vendor" value={modal.form.vendor_id} onChange={e => setField('vendor_id', e.target.value)}>
               <option value="">Select a vendor…</option>
               {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}

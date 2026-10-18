@@ -32,8 +32,8 @@ router.get('/pnl', async (req, res) => {
   const from = req.query.from || `${new Date().getFullYear()}-01-01`;
   const to = req.query.to || today;
 
-  const [payments, invoices, customers, expenses, pos, payroll, subscriptions] = await Promise.all([
-    list('payments'), list('invoices'), list('customers'), list('expenses'), list('purchase_orders'), list('payroll_payments'), list('subscriptions'),
+  const [payments, invoices, customers, expenses, payroll, subscriptions, vendorBills] = await Promise.all([
+    list('payments'), list('invoices'), list('customers'), list('expenses'), list('payroll_payments'), list('subscriptions'), list('vendor_bills'),
   ]);
   const subMonthly = (s) => { const a = Number(s.amount) || 0; return (s.frequency === 'yearly' || s.frequency === 'annual') ? a / 12 : a; };
   const activeSubs = subscriptions.filter(s => s.active !== false);
@@ -71,12 +71,16 @@ router.get('/pnl', async (req, res) => {
   }
   const manualTotal = round2(manual.reduce((s, e) => s + (Number(e.amount) || 0), 0));
 
-  const poIn = pos.filter(o => o.status !== 'cancelled' && inRange(d10(o.order_date || o.created_at), from, to));
-  const poTotal = round2(poIn.reduce((s, o) => s + (Number(o.total) || 0), 0));
-  for (const o of poIn) {
-    const amt = Number(o.total) || 0; if (!amt) continue;
-    add('Materials & parts (purchase orders)', amt); addM(mk(o.order_date || o.created_at), amt);
-    items.push({ date: d10(o.order_date || o.created_at), category: 'Materials & parts (purchase orders)', source: 'purchase_order', name: `PO ${o.po_number || ''} — ${o.vendor_name || 'Vendor'}`.trim(), amount: round2(amt) });
+  // Vendor bills (accounts payable): approved or paid bills count as expense by
+  // their bill date. Refunds/credits are stored negative and net against this.
+  const VB_EXPENSE = ['open', 'paid'];
+  const billsIn = vendorBills.filter(b => VB_EXPENSE.includes(b.status) && inRange(d10(b.bill_date), from, to));
+  const vendorTotal = round2(billsIn.reduce((s, b) => s + (Number(b.amount) || 0), 0));
+  for (const b of billsIn) {
+    const amt = Number(b.amount) || 0; if (!amt) continue;
+    const cat = amt < 0 ? 'Vendor refunds / credits' : 'Materials & vendor bills';
+    add(cat, amt); addM(mk(b.bill_date), amt);
+    items.push({ date: d10(b.bill_date), category: cat, source: 'vendor_bill', name: `${b.vendor_name || 'Vendor'}${b.invoice_number ? ' — ' + b.invoice_number : ''}`, amount: round2(amt) });
   }
 
   const payrollIn = payroll.filter(p => inRange(d10(p.paid_at), from, to));
@@ -94,7 +98,7 @@ router.get('/pnl', async (req, res) => {
   subsForPeriod = round2(subsForPeriod);
   if (subsForPeriod > 0) add('Software & subscriptions', subsForPeriod);
 
-  const expensesTotal = round2(manualTotal + poTotal + payrollTotal + subsForPeriod);
+  const expensesTotal = round2(manualTotal + vendorTotal + payrollTotal + subsForPeriod);
   const net = round2(revenueTotal - expensesTotal);
   const margin = revenueTotal > 0 ? net / revenueTotal : 0;
 
@@ -116,7 +120,7 @@ router.get('/pnl', async (req, res) => {
   const priorSubs = monthSeries(priorFrom, priorTo).reduce((t, m) => t + subsForMonth(m.key), 0);
   const pExp = round2(
     sumIn(expenses, e => e.date, e => e.amount) +
-    sumIn(pos, o => o.order_date || o.created_at, o => o.total, o => o.status !== 'cancelled') +
+    sumIn(vendorBills, b => b.bill_date, b => b.amount, b => VB_EXPENSE.includes(b.status)) +
     sumIn(payroll, p => p.paid_at, p => p.amount) +
     priorSubs);
   const pNet = round2(pRev - pExp);
@@ -125,7 +129,12 @@ router.get('/pnl', async (req, res) => {
   res.json({
     period: { from, to },
     revenue: { total: revenueTotal, payments: pays.length, by_customer: sortDesc(revByCust) },
-    expenses: { total: expensesTotal, manual: manualTotal, purchase_orders: poTotal, payroll: payrollTotal, subscriptions: subsForPeriod, by_category: sortDesc(expByCat), items },
+    expenses: { total: expensesTotal, manual: manualTotal, vendor_bills: vendorTotal, payroll: payrollTotal, subscriptions: subsForPeriod, by_category: sortDesc(expByCat), items },
+    accounts_payable: (() => {
+      const t2 = new Date().toISOString().slice(0, 10);
+      const owed = vendorBills.filter(b => ['open', 'pending_review'].includes(b.status));
+      return { outstanding: round2(owed.reduce((s, b) => s + (Number(b.amount) || 0), 0)), overdue: round2(owed.filter(b => b.due_date && b.due_date < t2).reduce((s, b) => s + (Number(b.amount) || 0), 0)) };
+    })(),
     net_profit: net, margin,
     by_month,
     compare: {

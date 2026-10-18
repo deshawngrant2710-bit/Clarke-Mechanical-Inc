@@ -716,7 +716,7 @@ export function buildPnlHtml({ business = {}, pnl = {} }, { autoPrint = false } 
       <div class="pl-row"><span>Income (revenue collected)</span><span>${money(revenue)}</span></div>
       <div class="pl-row"><span>Expenses &amp; cost of operations</span><span class="neg">(${money(expenses)})</span></div>
       <div class="pl-row total"><span>${profit ? 'Net profit' : 'Net loss'}</span><span style="color:${profit ? '#047857' : '#b91c1c'}">${money(net)}</span></div>
-      <div class="note">Income is money actually received (payments) in the period. Expenses combine logged expenses, purchase orders, and payroll paid in the period.</div>
+      <div class="note">Income is money actually received (payments) in the period. Expenses combine logged expenses, vendor bills, payroll, and recurring subscriptions.</div>
 
       <h2 class="sec">Income by customer</h2>
       <table>
@@ -731,7 +731,7 @@ export function buildPnlHtml({ business = {}, pnl = {} }, { autoPrint = false } 
         <tbody>${catRows}</tbody>
         <tfoot><tr><td>Total expenses</td><td class="r">${money(expenses)}</td><td class="r"></td></tr></tfoot>
       </table>
-      <div class="note">Source totals — logged expenses ${money(exp.manual)} · purchase orders ${money(exp.purchase_orders)} · payroll ${money(exp.payroll)}.</div>
+      <div class="note">Source totals — logged expenses ${money(exp.manual)} · vendor bills ${money(exp.vendor_bills)} · payroll ${money(exp.payroll)} · subscriptions ${money(exp.subscriptions)}.</div>
 
       ${months.length ? `<h2 class="sec">Monthly breakdown</h2>
       <table>

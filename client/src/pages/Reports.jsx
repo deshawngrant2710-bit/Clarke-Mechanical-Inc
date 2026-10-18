@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, StatCard, Btn, Spinner, Empty, Input } from '../components/UI';
@@ -79,6 +80,7 @@ function TrendChart({ data }) {
 const AGING_COLS = [['current', 'Current'], ['d1_30', '1–30'], ['d31_60', '31–60'], ['d61_90', '61–90'], ['d90_plus', '90+']];
 
 export default function Reports() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [from, setFrom] = useState(yearStart());
   const [to, setTo] = useState(todayStr());
@@ -154,6 +156,17 @@ export default function Reports() {
           <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">{((pnl?.margin || 0) * 100).toFixed(1)}% margin <Delta pct={cmp?.net_change_pct} /></div>
         </div>
       </div>
+
+      {/* Accounts payable (what you owe vendors) */}
+      {pnl?.accounts_payable && pnl.accounts_payable.outstanding !== 0 && (
+        <div className="mb-6 rounded-xl border border-orange-200 bg-orange-50/60 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="text-sm text-slate-700">
+            <span className="font-semibold">Accounts payable</span> — you owe vendors <span className="font-bold text-orange-700">{money(pnl.accounts_payable.outstanding)}</span>
+            {pnl.accounts_payable.overdue > 0 && <> · <span className="text-red-600 font-semibold">{money(pnl.accounts_payable.overdue)} overdue</span></>}
+          </div>
+          <button onClick={() => navigate('/vendor-bills')} className="text-xs text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap">View bills →</button>
+        </div>
+      )}
 
       {/* Trend chart */}
       <Card className="p-5 mb-6">
