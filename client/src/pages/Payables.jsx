@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, StatCard, Btn, Spinner, Empty, Modal, Input, Select, Textarea } from '../components/UI';
-import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock } from 'lucide-react';
+import { FileStack, Plus, Check, DollarSign, AlertTriangle, Trash2, Pencil, Ban, Clock, Mail, FileText, ShieldCheck } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtDate = (d) => {
@@ -28,13 +29,39 @@ export default function Payables() {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [gmail, setGmail] = useState(null);
+  const [isAdmin] = useState(() => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } });
 
   const load = () => {
     api.get('/vendor-bills').then(r => setBills(r.data)).catch(() => setBills([]));
     api.get('/vendor-bills/summary').then(r => setSummary(r.data)).catch(() => {});
   };
+  const loadGmail = () => api.get('/gmail/status').then(r => setGmail(r.data)).catch(() => setGmail(null));
   useEffect(load, []);
-  useEffect(() => { api.get('/purchasing/vendors').then(r => setVendors(r.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get('/purchasing/vendors').then(r => setVendors(r.data)).catch(() => {}); loadGmail(); }, []);
+
+  // Returning from the Google authorization flow.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('gmail') === 'connected') { toast.success('Gmail connected — vendor invoices will import automatically.'); loadGmail(); }
+    else if (p.get('gmail') === 'error') toast.error('Could not connect Gmail. Please try again.');
+    if (p.get('gmail')) { try { window.history.replaceState({}, '', window.location.pathname); } catch {} }
+  }, []);
+
+  const connectGmail = async () => {
+    try { const { data } = await api.get('/gmail/connect'); window.location.href = data.url; }
+    catch (e) { toast.error(e.response?.data?.error || 'Could not start Gmail connection.'); }
+  };
+  const disconnectGmail = async () => {
+    if (!window.confirm('Disconnect Gmail? Invoices will stop importing automatically.')) return;
+    try { await api.post('/gmail/disconnect'); loadGmail(); } catch { toast.error('Could not disconnect.'); }
+  };
+  const viewPdf = async (id) => {
+    try {
+      const r = await api.get(`/vendor-bills/${id}/attachment`, { responseType: 'blob' });
+      window.open(URL.createObjectURL(r.data), '_blank', 'noopener');
+    } catch { toast.error('Could not open the PDF.'); }
+  };
 
   const shown = useMemo(() => {
     const b = bills || [];
@@ -66,6 +93,21 @@ export default function Payables() {
     <div className="animate-fade-in">
       <PageHeader title="Vendor Bills" subtitle="What you owe your vendors (accounts payable)" icon={<FileStack size={20} />}
         action={<Btn onClick={openNew}><Plus size={16} /> Add bill</Btn>} />
+
+      {/* Gmail auto-import status */}
+      {gmail && (gmail.connected ? (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-emerald-800"><ShieldCheck size={16} /> Inbox connected{gmail.email ? ` (${gmail.email})` : ''} — vendor invoices import automatically.</div>
+          {isAdmin && <button onClick={disconnectGmail} className="text-xs text-slate-500 hover:text-red-600">Disconnect</button>}
+        </div>
+      ) : gmail.configured ? (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50/60 px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-slate-700"><Mail size={16} className="text-blue-600" /> Auto-capture vendor invoices from your inbox — connect Gmail (read-only).</div>
+          {isAdmin ? <Btn size="sm" onClick={connectGmail}><Mail size={14} /> Connect Gmail</Btn> : <span className="text-xs text-slate-400">Ask an admin to connect.</span>}
+        </div>
+      ) : isAdmin ? (
+        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 flex items-center gap-2"><Mail size={16} /> Email auto-import needs the Google keys added in Render first (see DEPLOY.md).</div>
+      ) : null)}
 
       <div className="grid grid-cols-3 gap-4 mb-5">
         <StatCard label="Outstanding" value={summary?.outstanding || 0} prefix="$" decimals={2} icon={<DollarSign size={18} />} color="orange" />
@@ -107,6 +149,7 @@ export default function Payables() {
                       <td className="px-5 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span></td>
                       <td className="px-5 py-3 text-right font-semibold text-slate-900 whitespace-nowrap">{money(b.amount)}</td>
                       <td className="px-5 py-3 text-right whitespace-nowrap">
+                        {b.attachment?.has_data && <button title="View invoice PDF" onClick={() => viewPdf(b.id)} className="text-slate-400 hover:text-blue-600 p-1"><FileText size={15} /></button>}
                         {b.status === 'pending_review' && <button title="Approve" onClick={() => act(`/vendor-bills/${b.id}/approve`)} className="text-slate-400 hover:text-emerald-600 p-1"><Check size={16} /></button>}
                         {['open', 'pending_review'].includes(b.status) && <button title="Mark paid" onClick={() => { if (window.confirm(`Mark ${money(b.amount)} to ${b.vendor_name || 'vendor'} as paid?`)) act(`/vendor-bills/${b.id}/mark-paid`); }} className="text-slate-400 hover:text-emerald-600 p-1"><DollarSign size={16} /></button>}
                         <button title="Edit" onClick={() => openEdit(b)} className="text-slate-400 hover:text-blue-600 p-1"><Pencil size={15} /></button>

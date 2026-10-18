@@ -142,6 +142,49 @@ backup payment method throughout.
 
 ---
 
+## Vendor invoice auto-import (Gmail)
+
+Reads the office inbox (read-only) every ~2 hours, finds emails from **vendors you
+have on file (with an email address)**, AI-extracts the invoice from the PDF, and
+files it under **Vendor Bills** as "to review."
+
+**Step 1 — Google Cloud project (one time):**
+1. https://console.cloud.google.com → create a project.
+2. **APIs & Services → Library →** enable **Gmail API**.
+3. **OAuth consent screen:** User type **External**; fill the basics; under
+   **Test users** add the office Gmail address. (Keep it in **Testing** — that lets
+   that one account use Gmail read access without Google's full app verification.)
+4. **Credentials → Create credentials → OAuth client ID → Web application.**
+   Add **Authorized redirect URI:**
+   `https://clarke-mechanical-inc.onrender.com/api/gmail/callback`
+   Copy the **Client ID** and **Client secret**.
+
+**Step 2 — add env vars in Render:**
+
+```
+GOOGLE_OAUTH_CLIENT_ID     = <client id>
+GOOGLE_OAUTH_CLIENT_SECRET = <client secret>
+GOOGLE_OAUTH_REDIRECT_URI  = https://clarke-mechanical-inc.onrender.com/api/gmail/callback
+GMAIL_TOKEN_KEY            = <any 32+ char random string — encrypts the stored token>
+```
+
+(`GEMINI_API_KEY` is already set and does the invoice reading; `BUSINESS_URL` is
+already set for the redirect back to the app.)
+
+**Step 3 — connect + schedule:**
+- In the app: **Vendor Bills → Connect Gmail** (admin), sign in with the office Gmail.
+- Make sure each vendor in Purchasing has its **email address** filled in — that's
+  how the system knows which senders are vendors.
+- Point a scheduler (cron-job.org / Render Cron) at this **every 2 hours**:
+  `https://clarke-mechanical-inc.onrender.com/api/cron/vendor-invoices?key=YOUR_CRON_KEY`
+- Test immediately by opening that URL once (with the key) — check the response for
+  `"imported": N`, then look in Vendor Bills → To review.
+
+Imported bills land as **pending review** (AI isn't perfect) — you confirm the
+amount and approve before it counts as owed.
+
+---
+
 ## Environment reference
 
 - Website: https://clarkemechanicalinc.org (Firebase Hosting, site `clarke-mechanical-inc`)

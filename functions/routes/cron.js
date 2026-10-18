@@ -4,8 +4,10 @@
 //   https://YOUR-API/api/cron/appointment-reminders?key=YOUR_CRON_KEY
 const express = require('express');
 const { v4: uuid } = require('uuid');
-const { list, create } = require('../lib/db');
+const { list, create, update } = require('../lib/db');
 const { runAppointmentReminders } = require('../lib/reminders');
+const gmail = require('../lib/gmail');
+const { extractInvoice } = require('../lib/invoiceExtract');
 let notify; try { ({ notify } = require('../lib/notify')); } catch { notify = async () => {}; }
 
 const router = express.Router();
@@ -77,5 +79,70 @@ async function subscriptionReview(req, res) {
 }
 router.get('/subscription-review', subscriptionReview);
 router.post('/subscription-review', subscriptionReview);
+
+// GET or POST /api/cron/vendor-invoices — scan Gmail for recent emails from known
+// vendors, pull the PDF invoice, AI-extract the details, and file each as a
+// pending-review vendor bill. Point a scheduler at this every ~2 hours.
+async function vendorInvoices(req, res) {
+  try {
+    const conn = await gmail.getConn();
+    if (!conn) return res.json({ ok: true, skipped: 'gmail_not_connected' });
+
+    const vendors = await list('vendors');
+    const vmap = new Map(vendors.filter(v => v.email).map(v => [v.email.toLowerCase(), v]));
+    if (vmap.size === 0) return res.json({ ok: true, skipped: 'no_vendor_emails' });
+
+    const token = await gmail.getAccessToken();
+    const froms = [...vmap.keys()].slice(0, 40).map(e => `from:${e}`).join(' OR ');
+    const q = `has:attachment newer_than:3d (${froms})`;
+    const msgs = await gmail.listMessages(token, q, 25);
+
+    const existing = await list('vendor_bills');
+    const seen = new Set(existing.map(b => b.email_message_id).filter(Boolean));
+
+    let imported = 0;
+    for (const { id } of msgs) {
+      if (seen.has(id)) continue;
+      try {
+        const msg = await gmail.getMessage(token, id);
+        const { fromEmail, subject, pdfs } = gmail.parseHeadersAndParts(msg);
+        const vendor = vmap.get(fromEmail);
+        if (!vendor || !pdfs.length) continue;
+
+        const pdf = pdfs[0];
+        const b64 = await gmail.getAttachment(token, id, pdf.attachmentId);
+        let data = {};
+        try { data = await extractInvoice(b64); } catch (e) { console.error('[cron] extract:', e.message); }
+
+        const tooBig = (b64.length * 0.75) > 6 * 1024 * 1024; // skip storing very large PDFs
+        await create('vendor_bills', uuid(), {
+          vendor_id: vendor.id, vendor_name: vendor.name,
+          invoice_number: data.invoice_number || null,
+          amount: Number(data.amount) || 0,
+          bill_date: data.bill_date || new Date().toISOString().slice(0, 10),
+          due_date: data.due_date || null,
+          line_items: data.line_items || [],
+          notes: `Auto-imported from email: "${(subject || '').slice(0, 120)}"`,
+          status: 'pending_review', source: 'email',
+          email_message_id: id, email_from: fromEmail, email_subject: subject || null,
+          attachment: tooBig ? { filename: pdf.filename, mimeType: 'application/pdf', data: null } : { filename: pdf.filename, mimeType: 'application/pdf', data: b64 },
+          created_by: 'Email import', created_at: new Date().toISOString(),
+        });
+        seen.add(id); imported++;
+      } catch (e) { console.error('[cron] vendor-invoice msg failed:', e.message); }
+    }
+
+    try { await update('gmail_connection', 'default', { last_check: new Date().toISOString() }); } catch {}
+    if (imported > 0) {
+      await notify({ type: 'payment', title: 'New vendor invoice' + (imported > 1 ? 's' : '') + ' to review', body: `${imported} invoice${imported > 1 ? 's' : ''} captured from email — review and approve in Vendor Bills.`, link: '/vendor-bills', roles: ['admin', 'office'] });
+    }
+    res.json({ ok: true, scanned: msgs.length, imported });
+  } catch (e) {
+    console.error('[cron] vendor-invoices failed:', e.message);
+    res.status(500).json({ error: 'Vendor invoice scan failed', detail: e.message });
+  }
+}
+router.get('/vendor-invoices', vendorInvoices);
+router.post('/vendor-invoices', vendorInvoices);
 
 module.exports = router;

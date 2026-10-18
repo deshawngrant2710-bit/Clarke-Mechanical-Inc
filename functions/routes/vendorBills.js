@@ -27,12 +27,13 @@ function clean(b) {
   };
 }
 
-// GET /api/vendor-bills?status=  — list (newest first).
+// GET /api/vendor-bills?status=  — list (newest first). The heavy PDF base64 is
+// stripped here; fetch it via /:id/attachment only when viewing.
 router.get('/', async (req, res) => {
   let items = await list('vendor_bills');
   if (req.query.status) items = items.filter(b => b.status === req.query.status);
   items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  res.json(items);
+  res.json(items.map(b => ({ ...b, attachment: b.attachment ? { filename: b.attachment.filename, has_data: !!b.attachment.data } : null })));
 });
 
 // GET /api/vendor-bills/summary — totals for dashboard + reports.
@@ -88,6 +89,16 @@ router.post('/:id/void', async (req, res) => {
   const b = await getById('vendor_bills', req.params.id);
   if (!b) return res.status(404).json({ error: 'Bill not found' });
   res.json(await update('vendor_bills', req.params.id, { status: 'void', voided_by: req.user.name, voided_at: new Date().toISOString() }));
+});
+
+// GET /api/vendor-bills/:id/attachment — the imported invoice PDF (inline view).
+router.get('/:id/attachment', async (req, res) => {
+  const b = await getById('vendor_bills', req.params.id);
+  if (!b || !b.attachment?.data) return res.status(404).json({ error: 'No attachment' });
+  const buf = Buffer.from(b.attachment.data, 'base64');
+  res.setHeader('Content-Type', b.attachment.mimeType || 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${(b.attachment.filename || 'invoice.pdf').replace(/"/g, '')}"`);
+  res.send(buf);
 });
 
 router.delete('/:id', async (req, res) => {
