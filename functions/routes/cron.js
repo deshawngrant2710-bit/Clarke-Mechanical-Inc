@@ -93,9 +93,13 @@ async function vendorInvoices(req, res) {
     if (vmap.size === 0) return res.json({ ok: true, skipped: 'no_vendor_emails' });
 
     const token = await gmail.getAccessToken();
+    // Normal runs look back 3 days; pass ?days=60 once for a catch-up of older
+    // invoices already in the inbox. ?max raises how many messages are scanned.
+    const days = Math.min(Math.max(Number(req.query.days) || 3, 1), 180);
+    const max = Math.min(Math.max(Number(req.query.max) || 25, 1), 100);
     const froms = [...vmap.keys()].slice(0, 40).map(e => `from:${e}`).join(' OR ');
-    const q = `has:attachment newer_than:3d (${froms})`;
-    const msgs = await gmail.listMessages(token, q, 25);
+    const q = `has:attachment newer_than:${days}d (${froms})`;
+    const msgs = await gmail.listMessages(token, q, max);
 
     const existing = await list('vendor_bills');
     const seen = new Set(existing.map(b => b.email_message_id).filter(Boolean));
