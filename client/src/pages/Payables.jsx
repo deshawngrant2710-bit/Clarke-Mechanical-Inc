@@ -265,8 +265,7 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
     setSigning(true);
   };
   const confirmApprove = async () => {
-    // Signature is required to approve a bill (owed), but optional for a refund.
-    if (!isRefund && (!sigRef.current || sigRef.current.isEmpty())) return toast.error('Please sign in the box');
+    // Signature is optional — management can approve with or without signing.
     setBusy(true);
     try {
       await saveFields();
@@ -297,7 +296,7 @@ function ReviewModal({ bill, vendors, onClose, onSaved }) {
           <Input label="Approved by (manager)" value={signer} onChange={e => setSigner(e.target.value)} placeholder="Manager name" />
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-sm font-medium text-slate-700">Signature{isRefund ? ' (optional)' : ''}</label>
+              <label className="text-sm font-medium text-slate-700">Signature (optional)</label>
               <button type="button" onClick={() => sigRef.current?.clear()} className="text-xs text-slate-400 hover:text-slate-600">Clear</button>
             </div>
             <div className="border border-slate-300 rounded-lg overflow-hidden"><SignaturePad ref={sigRef} height={180} /></div>
