@@ -132,7 +132,7 @@ router.get('/pnl', async (req, res) => {
     expenses: { total: expensesTotal, manual: manualTotal, vendor_bills: vendorTotal, payroll: payrollTotal, subscriptions: subsForPeriod, by_category: sortDesc(expByCat), items },
     accounts_payable: (() => {
       const t2 = new Date().toISOString().slice(0, 10);
-      const owed = vendorBills.filter(b => ['open', 'pending_review'].includes(b.status));
+      const owed = vendorBills.filter(b => b.type !== 'estimate' && b.type !== 'statement' && ['open', 'pending_review'].includes(b.status));
       return { outstanding: round2(owed.reduce((s, b) => s + (Number(b.amount) || 0), 0)), overdue: round2(owed.filter(b => b.due_date && b.due_date < t2).reduce((s, b) => s + (Number(b.amount) || 0), 0)) };
     })(),
     net_profit: net, margin,
