@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Textarea, Select, Empty, Spinner } from '../components/UI';
-import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail, CheckSquare, Square } from 'lucide-react';
+import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail, CheckSquare, Square, Check } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { pointsFor, labelFor } from '../lib/points';
+import { labelFor } from '../lib/points';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -59,6 +59,7 @@ export default function Pipeline() {
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [active, setActive] = useState(null); // lead being viewed
+  const [advanceStage, setAdvanceStage] = useState(null); // stage the sheet must confirm (contacted/quoted)
   const [q, setQ] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
@@ -89,12 +90,15 @@ export default function Pipeline() {
   }
 
   async function moveStage(lead, stage) {
+    // Contacted & Quoted need the detail sheet + a verification note first.
+    if (stage === 'contacted' || stage === 'quoted') { setActive(lead); setAdvanceStage(stage); return; }
     setLeads(ls => ls.map(l => (l.id === lead.id ? { ...l, stage } : l)));
     try {
       const { data } = await api.put(`/leads/${lead.id}`, { stage });
       if (data?._points) toast.success(`+${data._points.points} points · ${labelFor(data._points.type)}`);
     } catch { toast.error('Could not move lead'); load(); }
   }
+  const closeLead = () => { setActive(null); setAdvanceStage(null); load(); };
 
   // Quick "left a voicemail" — logs it and sets a follow-up for tomorrow.
   async function markVoicemail(lead) {
@@ -204,7 +208,7 @@ export default function Pipeline() {
 
       <AddLeadModal open={addOpen} onClose={() => setAddOpen(false)} onDone={load} />
       <ImportLeadsModal open={importOpen} onClose={() => setImportOpen(false)} onDone={load} />
-      {active && <LeadModal lead={active} onClose={() => setActive(null)} onDone={load} navigate={navigate} />}
+      {active && <LeadModal lead={active} advanceStage={advanceStage} onClose={closeLead} onDone={load} navigate={navigate} />}
     </div>
   );
 }
@@ -329,26 +333,57 @@ function ImportLeadsModal({ open, onClose, onDone }) {
   );
 }
 
-function LeadModal({ lead, onClose, onDone, navigate }) {
+function LeadModal({ lead, advanceStage, onClose, onDone, navigate }) {
   const [form, setForm] = useState(lead);
   const [saving, setSaving] = useState(false);
   const [logging, setLogging] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const [outcome, setOutcome] = useState(OUTCOMES[0].v);
   const [note, setNote] = useState('');
+  const [verifyNote, setVerifyNote] = useState('');
   const [followUp, setFollowUp] = useState('');
   const [createJob, setCreateJob] = useState(true);
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  const stageLabel = (s) => (STAGES.find(x => x.id === s)?.label || s);
+  const stagePoints = { contacted: 1, quoted: 5 };
+
+  // Confirm an advance to Contacted/Quoted — requires the verification note, saves
+  // the latest details, records the note on the lead, and awards the stage point.
+  async function confirmAdvance() {
+    if (!verifyNote.trim()) return toast.error(advanceStage === 'quoted' ? 'Describe what the estimate is for' : 'Add a note about the call');
+    setAdvancing(true);
+    try {
+      const { data } = await api.put(`/leads/${lead.id}`, {
+        stage: advanceStage, verify_note: verifyNote.trim(),
+        email: form.email, value: form.value, notes: form.notes,
+        next_follow_up: form.next_follow_up || null,
+      });
+      if (data?._points) toast.success(`Marked ${stageLabel(advanceStage)} · +${data._points.points} points`);
+      else toast.success(`Marked ${stageLabel(advanceStage)}`);
+      onDone(); onClose();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not update'); }
+    finally { setAdvancing(false); }
+  }
+
   async function save() {
+    // Advancing to Contacted/Quoted from the Save button needs the verification
+    // note too — route it through the same rule rather than silently moving.
+    const movingToVerified = (form.stage === 'contacted' || form.stage === 'quoted') && form.stage !== lead.stage;
+    if (movingToVerified && !verifyNote.trim()) {
+      return toast.error(form.stage === 'quoted' ? 'Add a note describing the estimate below to move to Quoted' : 'Add a note about the call below to move to Contacted');
+    }
     setSaving(true);
     try {
-      await api.put(`/leads/${lead.id}`, {
+      const { data } = await api.put(`/leads/${lead.id}`, {
         name: form.name, phone: form.phone, email: form.email, address: form.address,
         source: form.source, value: form.value, notes: form.notes, stage: form.stage,
         next_follow_up: form.next_follow_up,
+        ...(movingToVerified ? { verify_note: verifyNote.trim() } : {}),
       });
-      toast.success('Saved'); onDone();
+      if (data?._points) toast.success(`Saved · +${data._points.points} points`); else toast.success('Saved');
+      onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not save'); }
     finally { setSaving(false); }
   }
@@ -364,10 +399,11 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
   async function logCall() {
     setLogging(true);
     try {
-      const pt = outcomePt(outcome);
-      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome, note, next_follow_up: followUp || undefined, point_type: pt });
+      // Points come from advancing the lead's stage, not from logging a call —
+      // this just records what happened for history.
+      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome, note, next_follow_up: followUp || undefined });
       setForm(data); setNote(''); setFollowUp('');
-      toast.success(pt ? `Call logged · +${pointsFor(pt)} points` : 'Call logged'); onDone();
+      toast.success('Call logged'); onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not log call'); }
     finally { setLogging(false); }
   }
@@ -394,6 +430,27 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
   return (
     <Modal open={!!lead} onClose={onClose} title={form.name || 'Lead'} size="lg">
       <div className="space-y-4">
+        {advanceStage && (
+          <div className="rounded-xl border-2 border-blue-200 bg-blue-50/60 p-4">
+            <p className="text-sm font-semibold text-blue-800 flex items-center gap-1.5">
+              <PhoneCall size={15} /> Confirm {stageLabel(advanceStage)} to earn +{stagePoints[advanceStage]} point{stagePoints[advanceStage] === 1 ? '' : 's'}
+            </p>
+            <p className="text-xs text-blue-700/80 mt-0.5 mb-2">
+              {advanceStage === 'quoted'
+                ? 'What is the estimate for? Describe the work the business wants quoted.'
+                : 'What happened on the call? Record it so we can verify the contact.'}
+            </p>
+            <Textarea value={verifyNote} onChange={e => setVerifyNote(e.target.value)} rows={3}
+              placeholder={advanceStage === 'quoted' ? 'e.g. Estimate for replacing 2 rooftop units at their Elm St building' : 'e.g. Spoke with the property manager — interested in a maintenance quote, call back Friday'} />
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <Btn variant="ghost" size="sm" onClick={onClose}>Cancel</Btn>
+              <Btn size="sm" onClick={confirmAdvance} loading={advancing} disabled={!verifyNote.trim()}>
+                <Check size={14} /> Confirm {stageLabel(advanceStage)}
+              </Btn>
+            </div>
+          </div>
+        )}
+
         {converted && (
           <button onClick={() => { onClose(); navigate(`/customers/${form.customer_id}`); }}
             className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100">
@@ -429,7 +486,7 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
           <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1.5"><PhoneCall size={15} /> Call log</p>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <Select label="Outcome" value={outcome} onChange={e => setOutcome(e.target.value)}>
-              {OUTCOMES.map(o => <option key={o.v} value={o.v}>{o.v}{o.pt ? ` (+${pointsFor(o.pt)} pts)` : ''}</option>)}
+              {OUTCOMES.map(o => <option key={o.v} value={o.v}>{o.v}</option>)}
             </Select>
             <Input label="Next follow-up" type="date" value={followUp} onChange={e => setFollowUp(e.target.value)} />
           </div>

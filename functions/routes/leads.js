@@ -14,6 +14,8 @@ const clampStage = (s) => (STAGES.includes(s) ? s : 'new');
 // Moving a lead into a stage auto-awards the matching point (once per lead).
 // New, Voicemail and Lost award nothing.
 const STAGE_POINTS = { contacted: 'completed_call', quoted: 'qualified_lead', won: 'new_customer' };
+// Stages that can't be entered without a verification note from the agent.
+const NOTE_REQUIRED = ['contacted', 'quoted'];
 
 // GET /api/leads — all leads (newest first).
 router.get('/', async (req, res) => {
@@ -64,17 +66,36 @@ router.put('/:id', async (req, res) => {
     let awarded = null;
     if (b.stage !== undefined) {
       const newStage = clampStage(b.stage);
+      const changing = newStage !== lead.stage;
+      const vn = (b.verify_note || '').toString().trim();
+      // Contacted and Quoted must be verified — the agent has to record what
+      // happened on the call / what the estimate is for before advancing.
+      if (changing && NOTE_REQUIRED.includes(newStage) && !vn) {
+        return res.status(400).json({
+          error: newStage === 'quoted'
+            ? 'Add a note describing what the estimate is for before moving to Quoted.'
+            : 'Add a note about the call before moving to Contacted.',
+        });
+      }
       patch.stage = newStage;
-      // Award the stage's point the first time this lead reaches it (deduped per
-      // lead, so moving back and forth doesn't multiply points).
-      const pt = (newStage !== lead.stage) ? STAGE_POINTS[newStage] : null;
+      if (vn) {
+        const entry = {
+          at: new Date().toISOString(), by: req.user.name,
+          outcome: newStage === 'quoted' ? 'Quoted — estimate requested' : newStage === 'contacted' ? 'Contacted — spoke with them' : `Moved to ${newStage}`,
+          note: vn.slice(0, 1000),
+        };
+        patch.call_log = [...(lead.call_log || []), entry];
+        patch.last_contacted = entry.at;
+      }
+      // Award the stage's point the first time this lead reaches it, credited to
+      // the agent making the move. Deduped per lead so re-moving doesn't multiply.
+      const pt = changing ? STAGE_POINTS[newStage] : null;
       if (pt) {
-        const creditId = lead.created_by_id || req.user.id;
         try {
           const ev = await awardPoints({
-            agentId: creditId, agentName: lead.created_by || req.user.name, type: pt,
+            agentId: req.user.id, agentName: req.user.name, type: pt,
             customerId: lead.customer_id || null, customerName: lead.name,
-            note: `Moved to ${newStage}`, source: 'auto', relatedId: lead.id, createdBy: req.user.name,
+            note: vn || `Moved to ${newStage}`, source: 'auto', relatedId: lead.id, createdBy: req.user.name,
           });
           if (ev) awarded = { type: pt, points: ev.points };
         } catch (e) { console.error('[points] stage award failed:', e.message); }
@@ -101,24 +122,9 @@ router.post('/:id/log', async (req, res) => {
     const patch = { call_log, last_contacted: entry.at };
     if (b.next_follow_up !== undefined) patch.next_follow_up = b.next_follow_up || null;
     if (b.stage) patch.stage = clampStage(b.stage);
-    else if (lead.stage === 'new') patch.stage = 'contacted'; // first touch advances New → Contacted
+    // Note: points are earned only by advancing the lead's stage (see PUT), so a
+    // plain call-log entry here records history but awards nothing.
     const saved = await update('leads', req.params.id, patch);
-
-    // Auto-award points for the outcome the agent recorded. A completed call can
-    // be earned on every call; qualified/appointment/large-contract count once
-    // per lead (deduped) so re-logging doesn't multiply them.
-    const pt = b.point_type;
-    if (pt && POINT_TYPES[pt]) {
-      try {
-        await awardPoints({
-          agentId: req.user.id, agentName: req.user.name, type: pt,
-          customerId: lead.customer_id || null, customerName: lead.name,
-          note: entry.note || entry.outcome, createdBy: req.user.name,
-          source: 'auto',
-          relatedId: pt === 'completed_call' ? null : lead.id, // dedupe all but completed_call
-        });
-      } catch (e) { console.error('[points] call-log award failed:', e.message); }
-    }
     res.json(saved);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not log the call' }); }
 });

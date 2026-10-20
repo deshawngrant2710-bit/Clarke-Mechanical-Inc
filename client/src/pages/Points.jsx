@@ -7,7 +7,7 @@ import {
   Card, Btn, Modal, Input, Select, Textarea, Empty, SkeletonPage, StatCard, Table, Row, Cell,
 } from '../components/UI';
 import { Award, Plus, Trash2, Trophy, Phone, TrendingUp, DollarSign, Sparkles } from 'lucide-react';
-import { POINT_TYPES, MANUAL_TYPES, labelFor, pointsFor } from '../lib/points';
+import { POINT_TYPES, MANUAL_TYPES, EARN_HOW, labelFor, pointsFor } from '../lib/points';
 import toast from 'react-hot-toast';
 
 const money = (n) => `$${(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -112,8 +112,8 @@ export default function Points() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Btn onClick={() => openLog()}><Phone size={16} /> Log a call</Btn>
-            <Btn variant="outline" onClick={() => navigate('/pipeline')}>Go to Pipeline</Btn>
+            <Btn onClick={() => navigate('/pipeline')}><Phone size={16} /> Go to Pipeline</Btn>
+            <Btn variant="outline" onClick={() => openLog()}><Plus size={16} /> Log appointment / contract</Btn>
             <Btn variant="outline" onClick={() => navigate('/customers')}>Customers</Btn>
           </div>
         </div>
@@ -129,7 +129,7 @@ export default function Points() {
       {/* How points are earned */}
       <Card className="p-5 mb-6">
         <h3 className="text-sm font-bold text-slate-900 mb-1 flex items-center gap-1.5"><Sparkles size={15} className="text-blue-500" /> How to earn points</h3>
-        <p className="text-xs text-slate-500 mb-3">Tap any <span className="font-semibold text-slate-700">Log a call</span> activity below to record it — or log it against a lead in the <span className="font-semibold text-slate-700">Pipeline</span>. New customers and completed jobs credit on their own.</p>
+        <p className="text-xs text-slate-500 mb-3">Most points come from moving a lead through the <span className="font-semibold text-slate-700">Pipeline</span> — Contacted and Quoted need a short note to confirm the contact. Appointments and large contracts can be logged here; new customers and closed jobs credit on their own.</p>
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
           {Object.entries(POINT_TYPES).map(([id, t]) => {
             const manual = MANUAL_TYPES.includes(id);
@@ -142,7 +142,7 @@ export default function Points() {
                 </div>
                 <div className="shrink-0 text-right whitespace-nowrap">
                   <span className="text-sm font-bold text-blue-600">+{t.points}</span>
-                  <span className={`block text-[10px] font-semibold uppercase tracking-wide ${manual ? 'text-blue-500' : 'text-slate-400'}`}>{manual ? 'log a call' : 'automatic'}</span>
+                  <span className={`block text-[10px] font-semibold uppercase tracking-wide ${manual ? 'text-blue-500' : 'text-slate-400'}`}>{EARN_HOW[id] || 'automatic'}</span>
                 </div>
               </button>
             );
