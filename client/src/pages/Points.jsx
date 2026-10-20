@@ -30,6 +30,13 @@ export default function Points() {
   const [form, setForm] = useState({ type: 'completed_call', customer_id: '', note: '', agent_id: '' });
   const [busy, setBusy] = useState(false);
 
+  // Open the log modal, optionally pre-selecting an activity. Falls back to the
+  // first manual activity so the picker is never empty.
+  const openLog = (type) => {
+    setForm({ type: type && MANUAL_TYPES.includes(type) ? type : MANUAL_TYPES[0], customer_id: '', note: '', agent_id: '' });
+    setLogOpen(true);
+  };
+
   function load() {
     Promise.all([api.get('/points/summary'), api.get('/points?limit=300')])
       .then(([s, e]) => { setSummary(s.data); setEvents(e.data); setRate(s.data.dollar_value ? String(s.data.dollar_value) : ''); })
@@ -105,9 +112,9 @@ export default function Points() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Btn onClick={() => navigate('/pipeline')}><Phone size={16} /> Go to Pipeline</Btn>
+            <Btn onClick={() => openLog()}><Phone size={16} /> Log a call</Btn>
+            <Btn variant="outline" onClick={() => navigate('/pipeline')}>Go to Pipeline</Btn>
             <Btn variant="outline" onClick={() => navigate('/customers')}>Customers</Btn>
-            {isManager && <Btn variant="outline" onClick={() => setLogOpen(true)}><Plus size={16} /> Manual adjust</Btn>}
           </div>
         </div>
       </div>
@@ -122,20 +129,24 @@ export default function Points() {
       {/* How points are earned */}
       <Card className="p-5 mb-6">
         <h3 className="text-sm font-bold text-slate-900 mb-1 flex items-center gap-1.5"><Sparkles size={15} className="text-blue-500" /> How to earn points</h3>
-        <p className="text-xs text-slate-500 mb-3">Points log automatically — just record the outcome when you log a call in the <span className="font-semibold text-slate-700">Pipeline</span>. New customers and completed jobs credit on their own.</p>
+        <p className="text-xs text-slate-500 mb-3">Tap any <span className="font-semibold text-slate-700">Log a call</span> activity below to record it — or log it against a lead in the <span className="font-semibold text-slate-700">Pipeline</span>. New customers and completed jobs credit on their own.</p>
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
-          {Object.entries(POINT_TYPES).map(([id, t]) => (
-            <div key={id} className="flex items-start justify-between gap-3 py-1 border-b border-slate-50">
-              <div>
-                <p className="text-sm font-medium text-slate-800">{t.label}</p>
-                <p className="text-xs text-slate-500">{t.desc}</p>
-              </div>
-              <div className="shrink-0 text-right whitespace-nowrap">
-                <span className="text-sm font-bold text-blue-600">+{t.points}</span>
-                <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{MANUAL_TYPES.includes(id) ? 'log a call' : 'automatic'}</span>
-              </div>
-            </div>
-          ))}
+          {Object.entries(POINT_TYPES).map(([id, t]) => {
+            const manual = MANUAL_TYPES.includes(id);
+            return (
+              <button key={id} type="button" disabled={!manual} onClick={() => manual && openLog(id)}
+                className={`flex items-start justify-between gap-3 py-1 border-b border-slate-50 text-left ${manual ? 'hover:bg-blue-50/50 rounded-lg px-1 -mx-1 cursor-pointer' : 'cursor-default'}`}>
+                <div>
+                  <p className="text-sm font-medium text-slate-800">{t.label}</p>
+                  <p className="text-xs text-slate-500">{t.desc}</p>
+                </div>
+                <div className="shrink-0 text-right whitespace-nowrap">
+                  <span className="text-sm font-bold text-blue-600">+{t.points}</span>
+                  <span className={`block text-[10px] font-semibold uppercase tracking-wide ${manual ? 'text-blue-500' : 'text-slate-400'}`}>{manual ? 'log a call' : 'automatic'}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </Card>
 
