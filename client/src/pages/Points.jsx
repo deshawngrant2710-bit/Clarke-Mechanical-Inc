@@ -6,7 +6,7 @@ import PageHeader from '../components/PageHeader';
 import {
   Card, Btn, Modal, Input, Select, Textarea, Empty, SkeletonPage, StatCard, Table, Row, Cell,
 } from '../components/UI';
-import { Award, Plus, Trash2, Trophy, Phone, TrendingUp, DollarSign, Sparkles } from 'lucide-react';
+import { Award, Plus, Trash2, Trophy, Phone, TrendingUp, DollarSign, Sparkles, X } from 'lucide-react';
 import { POINT_TYPES, MANUAL_TYPES, EARN_HOW, labelFor, pointsFor } from '../lib/points';
 import toast from 'react-hot-toast';
 
@@ -29,6 +29,7 @@ export default function Points() {
   const [logOpen, setLogOpen] = useState(false);
   const [form, setForm] = useState({ type: 'completed_call', customer_id: '', note: '', agent_id: '' });
   const [busy, setBusy] = useState(false);
+  const [filterAgent, setFilterAgent] = useState(null); // admin/office: focus one agent's activity
 
   // Open the log modal, optionally pre-selecting an activity. Falls back to the
   // first manual activity so the picker is never empty.
@@ -38,12 +39,13 @@ export default function Points() {
   };
 
   function load() {
-    Promise.all([api.get('/points/summary'), api.get('/points?limit=300')])
+    const q = filterAgent ? `/points?limit=300&agent=${filterAgent}` : '/points?limit=300';
+    Promise.all([api.get('/points/summary'), api.get(q)])
       .then(([s, e]) => { setSummary(s.data); setEvents(e.data); setRate(s.data.dollar_value ? String(s.data.dollar_value) : ''); })
       .catch(() => setSummary({ leaderboard: [], dollar_value: 0, is_manager: isManager, me_id: user?.id }));
     api.get('/customers').then(r => setCustomers(r.data)).catch(() => setCustomers([]));
   }
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [filterAgent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refresh the moment the agent returns to this tab/screen (e.g. after logging a
   // call in the Pipeline) so points + the welcome line update instantly.
@@ -167,7 +169,8 @@ export default function Points() {
           ) : (
             <Table head={[{ label: 'Agent' }, { label: 'Activities', align: 'right' }, { label: 'Points', align: 'right' }, { label: 'Value', align: 'right' }]}>
               {agentsForPicker.map((a, i) => (
-                <Row key={a.agent_id}>
+                <Row key={a.agent_id} onClick={() => setFilterAgent(filterAgent === a.agent_id ? null : a.agent_id)}
+                  className={`cursor-pointer ${filterAgent === a.agent_id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
                   <Cell><span className="font-semibold text-slate-800">{i === 0 ? '🏆 ' : ''}{a.agent_name}</span></Cell>
                   <Cell align="right"><span className="text-sm text-slate-600">{a.count}</span></Cell>
                   <Cell align="right"><span className="font-bold text-slate-900">{a.points}</span></Cell>
@@ -176,27 +179,41 @@ export default function Points() {
               ))}
             </Table>
           )}
+          {isManager && <p className="text-[11px] text-slate-400 mt-2">Tip: click an agent to see only their call notes below.</p>}
         </Card>
       )}
 
-      {/* Activity history */}
+      {/* Activity history — readable feed so managers can read each call note */}
       <Card className="p-5">
-        <h3 className="text-sm font-bold text-slate-900 mb-3">{isManager ? 'All activity' : 'My activity'}</h3>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <h3 className="text-sm font-bold text-slate-900">
+            {isManager ? (filterAgent ? `${(agentsForPicker.find(a => a.agent_id === filterAgent) || {}).agent_name || 'Agent'}'s activity` : 'All activity') : 'My activity'}
+          </h3>
+          {filterAgent && <button onClick={() => setFilterAgent(null)} className="text-xs font-medium text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"><X size={13} /> Clear filter</button>}
+        </div>
         {events.length === 0 ? (
-          <Empty icon={<Award size={24} />} title="No activity yet" message="Log your first call or lead to start earning points." />
+          <Empty icon={<Award size={24} />} title="No activity yet" message={isManager ? 'As the team moves leads through the pipeline, every call note shows up here.' : 'Move a lead through the pipeline to start earning points.'} />
         ) : (
-          <Table head={[{ label: 'When' }, ...(isManager ? [{ label: 'Agent' }] : []), { label: 'Activity' }, { label: 'Customer' }, { label: 'Points', align: 'right' }, ...(isAdmin ? [{ label: '', align: 'right' }] : [])]}>
+          <div className="divide-y divide-slate-100">
             {events.map(e => (
-              <Row key={e.id}>
-                <Cell><span className="text-sm text-slate-500">{fmtDate(e.created_at)}</span></Cell>
-                {isManager && <Cell><span className="text-sm text-slate-700">{e.agent_name || '—'}</span></Cell>}
-                <Cell><span className="text-sm text-slate-800">{labelFor(e.type)}{e.source === 'auto' ? <span className="ml-1.5 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">AUTO</span> : ''}</span></Cell>
-                <Cell><span className="text-sm text-slate-600">{e.customer_name || '—'}</span></Cell>
-                <Cell align="right"><span className="font-bold text-blue-600">+{e.points}</span></Cell>
-                {isAdmin && <Cell align="right"><button onClick={() => removeEntry(e.id)} title="Remove" className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button></Cell>}
-              </Row>
+              <div key={e.id} className="py-3 flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-slate-800">{labelFor(e.type)}</span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">+{e.points}</span>
+                    {e.source === 'auto' && e.note && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">VERIFIED</span>}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {[isManager ? (e.agent_name || '—') : null, e.customer_name || null, fmtDate(e.created_at)].filter(Boolean).join(' · ')}
+                  </div>
+                  {e.note
+                    ? <p className="mt-1.5 text-sm text-slate-700 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 whitespace-pre-wrap">{e.note}</p>
+                    : <p className="mt-1 text-xs text-slate-300 italic">No note recorded</p>}
+                </div>
+                {isAdmin && <button onClick={() => removeEntry(e.id)} title="Remove entry" className="text-slate-300 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg shrink-0"><Trash2 size={15} /></button>}
+              </div>
             ))}
-          </Table>
+          </div>
         )}
       </Card>
 

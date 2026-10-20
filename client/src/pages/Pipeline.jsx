@@ -194,6 +194,11 @@ export default function Pipeline() {
                         {lead.last_contacted && <span>Last: {fmtDate(lead.last_contacted)}</span>}
                         {(lead.call_log?.length || 0) > 0 && <span className="flex items-center gap-1"><PhoneCall size={11} /> {lead.call_log.length}</span>}
                       </div>
+                      {lead.call_log?.length > 0 && lead.call_log[lead.call_log.length - 1].note && (
+                        <p className="mt-1.5 text-[11px] text-slate-500 bg-slate-50 rounded-md px-2 py-1 line-clamp-2" title={lead.call_log[lead.call_log.length - 1].note}>
+                          “{lead.call_log[lead.call_log.length - 1].note}”
+                        </p>
+                      )}
                       <select value={lead.stage || 'new'} onClick={e => e.stopPropagation()} onChange={e => moveStage(lead, e.target.value)}
                         className="mt-2 w-full text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 bg-slate-50 outline-none focus:border-blue-400">
                         {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
