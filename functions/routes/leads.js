@@ -9,8 +9,11 @@ const { awardPoints, POINT_TYPES } = require('../lib/points');
 const router = express.Router();
 router.use(authMiddleware, requireRole('admin', 'office', 'leads'));
 
-const STAGES = ['new', 'contacted', 'quoted', 'won', 'lost'];
+const STAGES = ['new', 'voicemail', 'contacted', 'quoted', 'won', 'lost'];
 const clampStage = (s) => (STAGES.includes(s) ? s : 'new');
+// Moving a lead into a stage auto-awards the matching point (once per lead).
+// New, Voicemail and Lost award nothing.
+const STAGE_POINTS = { contacted: 'completed_call', quoted: 'qualified_lead', won: 'new_customer' };
 
 // GET /api/leads — all leads (newest first).
 router.get('/', async (req, res) => {
@@ -58,9 +61,27 @@ router.put('/:id', async (req, res) => {
       if (b[f] !== undefined) patch[f] = b[f] === '' ? null : b[f];
     }
     if (b.value !== undefined) patch.value = b.value === '' || b.value == null ? null : Number(b.value);
-    if (b.stage !== undefined) patch.stage = clampStage(b.stage);
+    let awarded = null;
+    if (b.stage !== undefined) {
+      const newStage = clampStage(b.stage);
+      patch.stage = newStage;
+      // Award the stage's point the first time this lead reaches it (deduped per
+      // lead, so moving back and forth doesn't multiply points).
+      const pt = (newStage !== lead.stage) ? STAGE_POINTS[newStage] : null;
+      if (pt) {
+        const creditId = lead.created_by_id || req.user.id;
+        try {
+          const ev = await awardPoints({
+            agentId: creditId, agentName: lead.created_by || req.user.name, type: pt,
+            customerId: lead.customer_id || null, customerName: lead.name,
+            note: `Moved to ${newStage}`, source: 'auto', relatedId: lead.id, createdBy: req.user.name,
+          });
+          if (ev) awarded = { type: pt, points: ev.points };
+        } catch (e) { console.error('[points] stage award failed:', e.message); }
+      }
+    }
     const saved = await update('leads', req.params.id, patch);
-    res.json(saved);
+    res.json({ ...saved, _points: awarded });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not update lead' }); }
 });
 

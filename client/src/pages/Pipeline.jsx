@@ -5,7 +5,7 @@ import PageHeader from '../components/PageHeader';
 import { Card, Btn, Modal, Input, Textarea, Select, Empty, Spinner } from '../components/UI';
 import { Filter, Plus, Phone, MessageSquare, PhoneCall, Trash2, UserPlus, CalendarClock, ChevronRight, Upload, FileSpreadsheet, Search, X, Voicemail, CheckSquare, Square } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { pointsFor } from '../lib/points';
+import { pointsFor, labelFor } from '../lib/points';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -28,11 +28,14 @@ function mapRow(row) {
 
 const STAGES = [
   { id: 'new', label: 'New', dot: 'bg-slate-400', head: 'text-slate-600' },
+  { id: 'voicemail', label: 'Voicemail', dot: 'bg-violet-500', head: 'text-violet-600' },
   { id: 'contacted', label: 'Contacted', dot: 'bg-blue-500', head: 'text-blue-600' },
   { id: 'quoted', label: 'Quoted', dot: 'bg-amber-500', head: 'text-amber-600' },
   { id: 'won', label: 'Won', dot: 'bg-emerald-500', head: 'text-emerald-600' },
   { id: 'lost', label: 'Lost', dot: 'bg-red-500', head: 'text-red-600' },
 ];
+// Points auto-awarded when a lead is moved into a stage (mirrors the server).
+const STAGE_POINTS = { contacted: 'completed_call', quoted: 'qualified_lead', won: 'new_customer' };
 // Each call outcome the agent picks auto-logs the matching points. The ones that
 // earn points are listed first; the "no contact" outcomes earn nothing.
 const OUTCOMES = [
@@ -87,16 +90,19 @@ export default function Pipeline() {
 
   async function moveStage(lead, stage) {
     setLeads(ls => ls.map(l => (l.id === lead.id ? { ...l, stage } : l)));
-    try { await api.put(`/leads/${lead.id}`, { stage }); } catch { toast.error('Could not move lead'); load(); }
+    try {
+      const { data } = await api.put(`/leads/${lead.id}`, { stage });
+      if (data?._points) toast.success(`+${data._points.points} points · ${labelFor(data._points.type)}`);
+    } catch { toast.error('Could not move lead'); load(); }
   }
 
   // Quick "left a voicemail" — logs it and sets a follow-up for tomorrow.
   async function markVoicemail(lead) {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     try {
-      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow });
+      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow, stage: 'voicemail' });
       setLeads(ls => ls.map(l => (l.id === lead.id ? data : l)));
-      toast.success('Voicemail logged — reminder set for tomorrow');
+      toast.success('Voicemail logged — moved to Voicemail, reminder set for tomorrow');
     } catch { toast.error('Could not log voicemail'); }
   }
 
@@ -350,8 +356,8 @@ function LeadModal({ lead, onClose, onDone, navigate }) {
   async function quickVoicemail() {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     try {
-      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow });
-      setForm(data); toast.success('Voicemail logged — reminder set for tomorrow'); onDone();
+      const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow, stage: 'voicemail' });
+      setForm(data); toast.success('Voicemail logged — moved to Voicemail'); onDone();
     } catch { toast.error('Could not log voicemail'); }
   }
 
