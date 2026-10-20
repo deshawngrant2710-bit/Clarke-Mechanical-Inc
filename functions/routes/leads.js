@@ -16,6 +16,27 @@ const clampStage = (s) => (STAGES.includes(s) ? s : 'new');
 const STAGE_POINTS = { contacted: 'completed_call', quoted: 'qualified_lead', won: 'new_customer' };
 // Stages that can't be entered without a verification note from the agent.
 const NOTE_REQUIRED = ['contacted', 'quoted'];
+// Progress rank of each stage, and which point type each earned stage maps to.
+// Moving a lead to a lower stage reverses the points it earned for the stages it
+// has now dropped below (so a mistaken Contacted/Quoted can be undone).
+const STAGE_RANK = { new: 0, voicemail: 1, contacted: 1, quoted: 2, won: 3, lost: 99 };
+const TYPE_RANK = { completed_call: 1, qualified_lead: 2, new_customer: 3 };
+
+// Remove this lead's auto-awarded stage points that sit above the new stage.
+// Keeps a New-Customer point if the lead is already converted to a real customer.
+async function reversePointsBelow(lead, newStage) {
+  const newRank = STAGE_RANK[newStage] ?? 0;
+  let reversed = 0;
+  const events = await list('point_events');
+  for (const e of events) {
+    if (e.related_id !== lead.id || e.source !== 'auto') continue;
+    const r = TYPE_RANK[e.type];
+    if (!r || r <= newRank) continue;
+    if (e.type === 'new_customer' && lead.customer_id) continue; // keep real conversions
+    try { await remove('point_events', e.id); reversed += Number(e.points) || 0; } catch {}
+  }
+  return reversed;
+}
 
 // GET /api/leads — all leads (newest first).
 router.get('/', async (req, res) => {
@@ -63,7 +84,7 @@ router.put('/:id', async (req, res) => {
       if (b[f] !== undefined) patch[f] = b[f] === '' ? null : b[f];
     }
     if (b.value !== undefined) patch.value = b.value === '' || b.value == null ? null : Number(b.value);
-    let awarded = null;
+    let awarded = null, reversed = 0;
     if (b.stage !== undefined) {
       const newStage = clampStage(b.stage);
       const changing = newStage !== lead.stage;
@@ -100,9 +121,11 @@ router.put('/:id', async (req, res) => {
           if (ev) awarded = { type: pt, points: ev.points };
         } catch (e) { console.error('[points] stage award failed:', e.message); }
       }
+      // Moving backward? Take back the points for stages this lead dropped below.
+      if (changing) { try { reversed = await reversePointsBelow(lead, newStage); } catch (e) { console.error('[points] reverse failed:', e.message); } }
     }
     const saved = await update('leads', req.params.id, patch);
-    res.json({ ...saved, _points: awarded });
+    res.json({ ...saved, _points: awarded, _reversed: reversed });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not update lead' }); }
 });
 
@@ -121,11 +144,16 @@ router.post('/:id/log', async (req, res) => {
     const call_log = [...(lead.call_log || []), entry];
     const patch = { call_log, last_contacted: entry.at };
     if (b.next_follow_up !== undefined) patch.next_follow_up = b.next_follow_up || null;
-    if (b.stage) patch.stage = clampStage(b.stage);
+    let reversed = 0;
+    if (b.stage) {
+      const newStage = clampStage(b.stage);
+      patch.stage = newStage;
+      if (newStage !== lead.stage) { try { reversed = await reversePointsBelow(lead, newStage); } catch (e) { console.error('[points] reverse failed:', e.message); } }
+    }
     // Note: points are earned only by advancing the lead's stage (see PUT), so a
     // plain call-log entry here records history but awards nothing.
     const saved = await update('leads', req.params.id, patch);
-    res.json(saved);
+    res.json({ ...saved, _reversed: reversed });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Could not log the call' }); }
 });
 

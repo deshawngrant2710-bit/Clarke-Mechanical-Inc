@@ -96,6 +96,7 @@ export default function Pipeline() {
     try {
       const { data } = await api.put(`/leads/${lead.id}`, { stage });
       if (data?._points) toast.success(`+${data._points.points} points · ${labelFor(data._points.type)}`);
+      if (data?._reversed > 0) toast(`−${data._reversed} points reversed`, { icon: '↩️' });
     } catch { toast.error('Could not move lead'); load(); }
   }
   const closeLead = () => { setActive(null); setAdvanceStage(null); load(); };
@@ -107,6 +108,7 @@ export default function Pipeline() {
       const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow, stage: 'voicemail' });
       setLeads(ls => ls.map(l => (l.id === lead.id ? data : l)));
       toast.success('Voicemail logged — moved to Voicemail, reminder set for tomorrow');
+      if (data?._reversed > 0) toast(`−${data._reversed} points reversed`, { icon: '↩️' });
     } catch { toast.error('Could not log voicemail'); }
   }
 
@@ -362,6 +364,7 @@ function LeadModal({ lead, advanceStage, onClose, onDone, navigate }) {
       });
       if (data?._points) toast.success(`Marked ${stageLabel(advanceStage)} · +${data._points.points} points`);
       else toast.success(`Marked ${stageLabel(advanceStage)}`);
+      if (data?._reversed > 0) toast(`−${data._reversed} points reversed`, { icon: '↩️' });
       onDone(); onClose();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not update'); }
     finally { setAdvancing(false); }
@@ -383,6 +386,7 @@ function LeadModal({ lead, advanceStage, onClose, onDone, navigate }) {
         ...(movingToVerified ? { verify_note: verifyNote.trim() } : {}),
       });
       if (data?._points) toast.success(`Saved · +${data._points.points} points`); else toast.success('Saved');
+      if (data?._reversed > 0) toast(`−${data._reversed} points reversed`, { icon: '↩️' });
       onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not save'); }
     finally { setSaving(false); }
@@ -392,7 +396,9 @@ function LeadModal({ lead, advanceStage, onClose, onDone, navigate }) {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     try {
       const { data } = await api.post(`/leads/${lead.id}/log`, { outcome: 'Left voicemail', next_follow_up: tomorrow, stage: 'voicemail' });
-      setForm(data); toast.success('Voicemail logged — moved to Voicemail'); onDone();
+      setForm(data); toast.success('Voicemail logged — moved to Voicemail');
+      if (data?._reversed > 0) toast(`−${data._reversed} points reversed`, { icon: '↩️' });
+      onDone();
     } catch { toast.error('Could not log voicemail'); }
   }
 
