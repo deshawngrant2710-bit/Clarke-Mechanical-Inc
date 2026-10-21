@@ -116,8 +116,9 @@ export default function Payables() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Vendor Bills" subtitle="What you owe your vendors (accounts payable)" icon={<FileStack size={20} />}
-        action={<Btn onClick={openNew}><Plus size={16} /> Add bill</Btn>} />
+      <PageHeader title="Vendor Bills" subtitle="What you owe your vendors (accounts payable)" icon={<FileStack size={20} />}>
+        <Btn onClick={openNew}><Plus size={16} /> Add bill</Btn>
+      </PageHeader>
 
       {/* Gmail auto-import status */}
       {gmail && (gmail.connected ? (

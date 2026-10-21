@@ -113,13 +113,14 @@ export default function Banking() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Banking" subtitle="Business bank account — balance, activity, and vendor payments" icon={<Landmark size={20} />}
-        action={status.connected && isAdmin && (
+      <PageHeader title="Banking" subtitle="Business bank account — balance, activity, and vendor payments" icon={<Landmark size={20} />}>
+        {status.connected && isAdmin && (
           <div className="flex gap-2">
             <Btn variant="outline" size="sm" onClick={refreshBalances} loading={busy === 'refresh'}><RefreshCw size={14} /> Refresh</Btn>
             {status.transfer_enabled && <Btn size="sm" onClick={() => setPayOpen(true)}><Send size={14} /> Pay a vendor</Btn>}
           </div>
-        )} />
+        )}
+      </PageHeader>
 
       {status.environment === 'sandbox' && (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-2.5 flex items-center gap-2">

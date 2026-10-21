@@ -71,8 +71,9 @@ export default function Expenses() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Expenses" subtitle="Log business costs — materials, fuel, rent, insurance and more" icon={<Wallet size={20} />}
-        action={<Btn onClick={openNew}><Plus size={16} /> Log expense</Btn>} />
+      <PageHeader title="Expenses" subtitle="Log business costs — materials, fuel, rent, insurance and more" icon={<Wallet size={20} />}>
+        <Btn onClick={openNew}><Plus size={16} /> Log expense</Btn>
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-4 mb-5">
         <StatCard label={`Total (${fmtDate(from)} – ${fmtDate(to)})`} value={total} prefix="$" decimals={2} icon={<DollarSign size={18} />} color="red" />
