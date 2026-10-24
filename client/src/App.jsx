@@ -58,6 +58,8 @@ import Expenses from './pages/Expenses';
 import Banking from './pages/Banking';
 import Purchasing from './pages/Purchasing';
 import Payables from './pages/Payables';
+import Installations from './pages/Installations';
+import InstallationDetail from './pages/InstallationDetail';
 import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
@@ -228,6 +230,8 @@ export default function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/inspections" element={<Inspections />} />
             <Route path="/inspections/:id" element={<InspectionDetail />} />
+            <Route path="/installations" element={<Installations />} />
+            <Route path="/installations/:id" element={<InstallationDetail />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/support" element={<Support />} />

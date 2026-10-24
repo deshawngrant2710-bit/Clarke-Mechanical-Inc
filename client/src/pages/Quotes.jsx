@@ -9,7 +9,7 @@ import {
   Card, Btn, Badge, Modal, Input, Select, Textarea, Empty, SkeletonPage,
   StatCard, SearchInput, Table, Row, Cell,
 } from '../components/UI';
-import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer, Share2, Ban, BookOpen } from 'lucide-react';
+import { Plus, Search, Trash2, PlusCircle, MinusCircle, ClipboardList, CheckCircle, Send, DollarSign, Mail, FileText, Copy, Briefcase, Printer, Share2, Ban, BookOpen, HardHat } from 'lucide-react';
 import ServicePicker from '../components/ServicePicker';
 import { printDocument, sharePdf } from '../lib/printDoc';
 import VoidDialog from '../components/VoidDialog';
@@ -157,6 +157,14 @@ export default function Quotes() {
       toast.success('Invoice created from estimate');
       navigate(`/invoices/${data.id}`);
     } catch (err) { toast.error(err.response?.data?.error || 'Could not convert to invoice'); }
+  }
+
+  async function convertToInstallation(quoteId) {
+    try {
+      const { data } = await api.post('/installations', { from_quote_id: quoteId });
+      toast.success(data.already ? 'Opening the installation project' : 'Installation project created');
+      navigate(`/installations/${data.id}`);
+    } catch (err) { toast.error(err.response?.data?.error || 'Could not create project'); }
   }
 
   const filtered = quotes.filter(q =>
@@ -459,6 +467,9 @@ export default function Quotes() {
             <div className="flex gap-2">
               <Btn variant="outline" onClick={previewQuote} loading={previewing}><Mail size={15} /> Preview as customer</Btn>
               <Btn variant="outline" onClick={printCurrent}><Printer size={15} /> Print / Save PDF</Btn>
+              {editingId && form.status !== 'void' && (
+                <Btn variant="outline" onClick={() => convertToInstallation(editingId)}><HardHat size={15} /> To installation project</Btn>
+              )}
               {editingId && form.status !== 'void' && (
                 <Btn variant="danger" onClick={() => openVoid(null, { id: editingId, quote_number: quotes.find(q => q.id === editingId)?.quote_number })}><Ban size={15} /> Void</Btn>
               )}

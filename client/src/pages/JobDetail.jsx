@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Card, CardHeader, Btn, Badge, Modal, Input, Select, Textarea, Spinner, Avatar, Empty } from '../components/UI';
 import AddressAutocomplete from '../components/AddressAutocomplete';
-import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck, CheckSquare, Send } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Camera, Upload, User, MapPin, Calendar, Wrench, CheckCircle2, MailCheck, BellRing, PenLine, Navigation, Phone, MessageSquare, ClipboardCheck, Plus, Package, FileText, Printer, Clock, CalendarCheck, CheckSquare, Send, HardHat } from 'lucide-react';
 import { TaskModal } from './Tasks';
 import toast from 'react-hot-toast';
 import { sendEmail } from '../lib/email';
@@ -381,6 +381,12 @@ export default function JobDetail() {
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {!cancelled && <Btn variant="outline" onClick={() => setTaskModal(true)}><CheckSquare size={15} /> Task for office</Btn>}
+            {!cancelled && (
+              <Btn variant="outline" onClick={async () => {
+                try { const { data } = await api.post('/installations', { from_job_id: job.id }); toast.success(data.already ? 'Opening installation project' : 'Installation project created'); navigate(`/installations/${data.id}`); }
+                catch (e) { toast.error(e.response?.data?.error || 'Could not create project'); }
+              }}><HardHat size={15} /> Installation project</Btn>
+            )}
             {/* Technician field tools (also shown to admins flagged as technicians) */}
             {canTech && (
               <>

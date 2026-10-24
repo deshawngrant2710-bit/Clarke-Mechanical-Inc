@@ -1,0 +1,461 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clarke Mechanical — Ad Preview (9:16)</title>
+<style>
+  :root{
+    --navy-0:#040814; --navy-1:#071023; --navy-2:#0b1c3f; --navy-3:#0d3c82;
+    --blue:#1e88e5; --blue-bright:#4dd0e1; --ink:#eaf2ff; --amber:#ffb300;
+    --safe: 7%;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%; background:#000; font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; overflow:hidden}
+  .wrap{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:10px}
+  /* 9:16 stage, letterboxed to fit */
+  .stage{
+    position:relative; aspect-ratio:9/16; height:min(92vh, calc((100vw - 20px) * 16/9));
+    max-width:100%; border-radius:18px; overflow:hidden;
+    background:radial-gradient(130% 90% at 50% 18%, #0b1f44 0%, #071023 42%, #040814 100%);
+    box-shadow:0 30px 90px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.04);
+    isolation:isolate;
+  }
+  canvas.fx{position:absolute; inset:0; width:100%; height:100%; z-index:1}
+  .vignette{position:absolute; inset:0; z-index:6; pointer-events:none;
+    background:radial-gradient(120% 80% at 50% 40%, transparent 55%, rgba(0,0,0,.55) 100%)}
+  .grain{position:absolute; inset:0; z-index:7; pointer-events:none; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+
+  /* glowing moving light blooms */
+  .bloom{position:absolute; border-radius:50%; filter:blur(60px); z-index:2; mix-blend-mode:screen; will-change:transform,opacity}
+  #bloomA{width:62%; aspect-ratio:1; background:radial-gradient(circle,#1e88e5,transparent 65%)}
+  #bloomB{width:52%; aspect-ratio:1; background:radial-gradient(circle,#4dd0e1,transparent 65%)}
+  #bloomC{width:48%; aspect-ratio:1; background:radial-gradient(circle,#f4511e,transparent 68%); opacity:0}
+
+  .scene{position:absolute; inset:0; z-index:4; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; will-change:opacity,transform; opacity:0; pointer-events:none}
+
+  /* ---------- Phone ---------- */
+  .phoneWrap{position:absolute; z-index:4; left:50%; top:50%; transform-style:preserve-3d; will-change:transform,opacity; perspective:1400px}
+  .phone{position:relative; width:min(54vmin,300px); aspect-ratio:9/19.5; transform-style:preserve-3d;
+    border-radius:38px; background:linear-gradient(145deg,#2b3550,#0d1526);
+    padding:9px; box-shadow:0 40px 80px rgba(0,0,0,.55), 0 0 0 2px rgba(120,160,255,.18),
+      inset 0 2px 6px rgba(255,255,255,.12), inset 0 -3px 10px rgba(0,0,0,.6);}
+  .phone::after{content:""; position:absolute; left:0; top:0; right:0; bottom:0; border-radius:38px;
+    background:linear-gradient(120deg, rgba(255,255,255,.28), transparent 35%); pointer-events:none}
+  .notch{position:absolute; z-index:5; top:12px; left:50%; transform:translateX(-50%);
+    width:34%; height:20px; background:#05080f; border-radius:0 0 14px 14px}
+  .screen{position:relative; width:100%; height:100%; border-radius:30px; overflow:hidden; background:#f4f7fc}
+  .screen > .appscreen{position:absolute; inset:0; opacity:0; will-change:opacity,transform}
+
+  .reflong{position:absolute; z-index:5; inset:9px; border-radius:30px; pointer-events:none;
+    background:linear-gradient(115deg, rgba(255,255,255,.22) 0%, transparent 22%, transparent 78%, rgba(255,255,255,.08) 100%)}
+
+  /* ---------- App screen mock (placeholder) ---------- */
+  .appscreen{font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; color:#0b1220}
+  .sbar{height:34px; display:flex; align-items:center; justify-content:space-between; padding:0 16px 0 18px; font-size:11px; font-weight:700; color:#0b1220}
+  .ph-head{padding:8px 16px 10px; background:linear-gradient(135deg,#0d3c82,#1e88e5); color:#fff}
+  .ph-head .t{font-size:16px; font-weight:800; letter-spacing:.2px}
+  .ph-head .s{font-size:10px; opacity:.85; margin-top:2px}
+  .ph-body{padding:12px 14px; display:flex; flex-direction:column; gap:10px}
+  .card{background:#fff; border:1px solid #e7edf6; border-radius:14px; padding:12px; box-shadow:0 8px 20px rgba(15,40,90,.06)}
+  .card .ct{font-size:12.5px; font-weight:800}
+  .card .cs{font-size:10.5px; color:#5a6b86; margin-top:3px; line-height:1.4}
+  .pill{display:inline-block; font-size:9px; font-weight:800; padding:3px 8px; border-radius:999px}
+  .blue{background:#e7f0ff; color:#1d4ed8}
+  .amber{background:#fff2d6; color:#b7791f}
+  .red{background:#ffe3e1; color:#d13b33}
+  .green{background:#dcfce7; color:#157f4a}
+  .btn{margin-top:4px; background:linear-gradient(135deg,#1e88e5,#0d3c82); color:#fff; text-align:center;
+    font-size:12px; font-weight:800; padding:11px; border-radius:12px; box-shadow:0 10px 22px rgba(30,100,220,.35)}
+  .cal{display:grid; grid-template-columns:repeat(7,1fr); gap:5px}
+  .cal .d{aspect-ratio:1; border-radius:8px; background:#f0f4fb; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#39506f}
+  .cal .d.on{background:linear-gradient(135deg,#1e88e5,#0d3c82); color:#fff}
+  .slots{display:flex; gap:7px; flex-wrap:wrap; margin-top:2px}
+  .slot{font-size:10px; font-weight:700; padding:8px 10px; border-radius:10px; background:#eef3fb; color:#2c466b}
+  .slot.on{background:linear-gradient(135deg,#1e88e5,#0d3c82); color:#fff}
+  .ph-hero{height:40%; background:linear-gradient(140deg,#0b1c3f,#0d3c82 60%,#1e88e5);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; text-align:center; padding:0 18px}
+  .ph-hero .logomark{width:54px; height:54px; margin-bottom:10px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
+  .ph-hero h3{font-size:18px; font-weight:900; letter-spacing:.3px}
+  .ph-hero p{font-size:10.5px; opacity:.85; margin-top:5px}
+  .ph-placeholder-tag{position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+    font-size:8px; letter-spacing:.6px; color:#8fa6c8; background:rgba(8,16,34,.55); padding:2px 8px; border-radius:6px; white-space:nowrap}
+
+  /* ---------- Typography overlays ---------- */
+  .cap{position:absolute; left:var(--safe); right:var(--safe); z-index:5; text-align:center; color:var(--ink); will-change:opacity,transform}
+  .kicker{font-size:13px; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#8fd0ff}
+  .headline{font-size:clamp(26px,6.2vmin,46px); font-weight:900; line-height:1.03; letter-spacing:.2px;
+    text-shadow:0 6px 30px rgba(10,30,70,.6)}
+  .sub{font-size:clamp(12px,2.6vmin,17px); font-weight:500; color:#b9cdee; margin-top:10px; line-height:1.4}
+  .word{display:inline-block; will-change:transform,opacity}
+  .accentbar{height:4px; width:64px; margin:14px auto 0; border-radius:3px; background:linear-gradient(90deg,#e53935,#fb8c00)}
+
+  /* intro logo-mark that ignites */
+  #introMark{position:absolute; z-index:5; left:50%; top:50%; width:40%; transform:translate(-50%,-50%); will-change:transform,opacity; filter:drop-shadow(0 0 30px rgba(77,208,225,.0))}
+  #outroLogo{position:absolute; z-index:6; left:var(--safe); right:var(--safe); top:34%; transform:translateY(-50%); text-align:center; will-change:opacity,transform}
+  #outroLogo svg{width:min(78%,440px); height:auto; filter:drop-shadow(0 16px 40px rgba(0,0,0,.5))}
+  .slogan{margin-top:26px; font-size:clamp(15px,3.2vmin,22px); font-weight:800; letter-spacing:.4px; color:#eaf2ff}
+  .appstore{margin-top:22px; display:inline-flex; align-items:center; gap:9px; padding:11px 18px; border-radius:14px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16); color:#fff; font-size:13px; font-weight:700;
+    backdrop-filter:blur(6px)}
+  .url{margin-top:16px; font-size:13px; font-weight:700; letter-spacing:1px; color:#8fd0ff}
+
+  /* edge safe-margin guide (toggle) */
+  .safeguide{position:absolute; inset:var(--safe); z-index:8; border:1px dashed rgba(143,208,255,.35); border-radius:14px; pointer-events:none; display:none}
+  .stage.showsafe .safeguide{display:block}
+
+  /* ---------- Controls ---------- */
+  .controls{width:min(92vw,520px); display:flex; align-items:center; gap:12px; color:#cfe0ff; font-size:12px;
+    background:#0a1324; border:1px solid #16263f; border-radius:14px; padding:10px 14px}
+  .controls button{appearance:none; border:none; cursor:pointer; color:#eaf2ff; background:#16263f; border-radius:9px;
+    width:38px; height:34px; font-size:14px; display:flex; align-items:center; justify-content:center; transition:background .15s}
+  .controls button:hover{background:#1e3a5f}
+  .controls .play{background:linear-gradient(135deg,#1e88e5,#0d3c82); width:46px}
+  #seek{flex:1; accent-color:#1e88e5; height:4px}
+  .time{font-variant-numeric:tabular-nums; min-width:76px; text-align:center; color:#9db8e0}
+  .mini{font-size:10px; color:#6f86ad}
+  .toggle{cursor:pointer; user-select:none; font-size:11px; color:#9db8e0; display:flex; align-items:center; gap:5px}
+  .hint{color:#6f86ad; font-size:11px; text-align:center; max-width:520px; line-height:1.5}
+</style>
+
+<div class="wrap">
+  <div class="stage" id="stage">
+    <canvas class="fx" id="fx"></canvas>
+    <div class="bloom" id="bloomA"></div>
+    <div class="bloom" id="bloomB"></div>
+    <div class="bloom" id="bloomC"></div>
+
+    <!-- INTRO logo mark (ignites) -->
+    <svg id="introMark" viewBox="0 0 200 228" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="i-ring" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4dd0e1"/><stop offset="35%" stop-color="#1e88e5"/><stop offset="100%" stop-color="#0d3c82"/></linearGradient>
+        <linearGradient id="i-redarc" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#e53935"/><stop offset="100%" stop-color="#f57c00"/></linearGradient>
+        <linearGradient id="i-blfl" x1="0.3" y1="0" x2="0.7" y2="1"><stop offset="0%" stop-color="#42a5f5"/><stop offset="100%" stop-color="#1a237e"/></linearGradient>
+        <linearGradient id="i-orgfl" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#fff176"/><stop offset="18%" stop-color="#ffb300"/><stop offset="58%" stop-color="#f4511e"/><stop offset="100%" stop-color="#bf360c"/></linearGradient>
+        <linearGradient id="i-redfl" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#ef5350"/><stop offset="100%" stop-color="#e64a19"/></linearGradient>
+      </defs>
+      <circle cx="104" cy="116" r="84" fill="none" stroke="url(#i-ring)" stroke-width="22"/>
+      <path d="M 104,32 A 84,84 0 0,1 188,116" fill="none" stroke="url(#i-redarc)" stroke-width="22"/>
+      <path d="M 60,172 C 46,142 50,96 68,56 C 74,40 80,20 88,18 C 96,15 100,34 108,62 C 115,84 114,132 108,172 Z" fill="url(#i-blfl)"/>
+      <path d="M 64,188 C 50,150 54,98 74,50 C 84,28 98,4 112,4 C 126,4 140,26 152,56 C 163,84 164,144 150,188 Z" fill="url(#i-orgfl)"/>
+      <path d="M 124,184 C 120,152 127,106 142,68 C 150,46 158,18 167,18 C 176,18 182,40 189,68 C 196,94 195,146 186,184 Z" fill="url(#i-redfl)"/>
+    </svg>
+
+    <!-- PHONE -->
+    <div class="phoneWrap" id="phoneWrap">
+      <div class="phone" id="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <!-- Each .appscreen is a branded PLACEHOLDER to be replaced by a real screenshot -->
+          <div class="appscreen" id="scrWelcome">
+            <div class="ph-hero">
+              <svg class="logomark" viewBox="0 0 200 200"><circle cx="104" cy="116" r="78" fill="none" stroke="#9fe6ef" stroke-width="20"/><path d="M 104,38 A 78,78 0 0,1 182,116" fill="none" stroke="#ff8a3d" stroke-width="20"/><path d="M 64,186 C 50,150 54,100 74,54 C 84,32 98,10 112,10 C 126,10 140,30 152,60 C 163,88 164,146 150,186 Z" fill="#ffb300"/></svg>
+              <h3>Welcome to<br>Clarke Mechanical</h3>
+              <p>Heating • Cooling • Boilers</p>
+            </div>
+            <div class="ph-body">
+              <div class="btn">Get started</div>
+              <div class="card"><div class="ct">Book a visit in seconds</div><div class="cs">Residential & commercial HVAC, on demand.</div></div>
+            </div>
+            <div class="ph-placeholder-tag">PLACEHOLDER · your real Welcome screen goes here</div>
+          </div>
+
+          <div class="appscreen" id="scrBook">
+            <div class="sbar"><span>9:41</span><span>Book</span></div>
+            <div class="ph-head"><div class="t">Book an appointment</div><div class="s">Choose a day & time</div></div>
+            <div class="ph-body">
+              <div class="card">
+                <div class="cal">
+                  <div class="d">M</div><div class="d">T</div><div class="d">W</div><div class="d on">18</div><div class="d">19</div><div class="d">20</div><div class="d">21</div>
+                </div>
+                <div class="slots">
+                  <div class="slot">8:00</div><div class="slot on">10:30</div><div class="slot">1:00</div><div class="slot">3:30</div>
+                </div>
+              </div>
+              <div class="btn">Confirm booking</div>
+            </div>
+            <div class="ph-placeholder-tag">PLACEHOLDER · your real Booking screen goes here</div>
+          </div>
+
+          <div class="appscreen" id="scrServices">
+            <div class="sbar"><span>9:41</span><span>Services</span></div>
+            <div class="ph-head"><div class="t">Our HVAC services</div><div class="s">Homes & businesses</div></div>
+            <div class="ph-body">
+              <div class="card"><span class="pill blue">RESIDENTIAL</span><div class="ct" style="margin-top:6px">Home heating & cooling</div><div class="cs">Furnaces, boilers, AC, mini-splits — repair, maintenance & installs.</div></div>
+              <div class="card"><span class="pill amber">COMMERCIAL</span><div class="ct" style="margin-top:6px">Commercial HVAC</div><div class="cs">Rooftop units, building systems & service agreements.</div></div>
+            </div>
+            <div class="ph-placeholder-tag">PLACEHOLDER · your real Services screen goes here</div>
+          </div>
+
+          <div class="appscreen" id="scrEmergency">
+            <div class="sbar"><span>9:41</span><span>Emergency</span></div>
+            <div class="ph-head" style="background:linear-gradient(135deg,#b71c1c,#f4511e)"><div class="t">Emergency service</div><div class="s">No heat? No cooling? We respond.</div></div>
+            <div class="ph-body">
+              <div class="card"><span class="pill red">24 / 7</span><div class="ct" style="margin-top:6px">Request urgent help</div><div class="cs">After-hours service available — we'll confirm your window fast.</div></div>
+              <div class="btn" style="background:linear-gradient(135deg,#e53935,#f4511e); box-shadow:0 10px 22px rgba(229,57,53,.4)">Request emergency visit</div>
+            </div>
+            <div class="ph-placeholder-tag">PLACEHOLDER · your real Emergency screen goes here</div>
+          </div>
+
+          <div class="appscreen" id="scrPortal">
+            <div class="sbar"><span>9:41</span><span>Portal</span></div>
+            <div class="ph-head"><div class="t">Your account</div><div class="s">Appointments & invoices</div></div>
+            <div class="ph-body">
+              <div class="card"><span class="pill green">UPCOMING</span><div class="ct" style="margin-top:6px">Tune-up · Fri 10:30 AM</div><div class="cs">Technician will text when en route.</div></div>
+              <div class="card"><span class="pill blue">INVOICE</span><div class="ct" style="margin-top:6px">#1042 · $184.00</div><div class="cs">Pay securely in a tap.</div></div>
+              <div class="btn">Pay invoice</div>
+            </div>
+            <div class="ph-placeholder-tag">PLACEHOLDER · your real Portal screen goes here</div>
+          </div>
+        </div>
+        <div class="reflong"></div>
+      </div>
+    </div>
+
+    <!-- Secondary phone (services + outro) -->
+    <div class="phoneWrap" id="phoneWrapB" style="opacity:0">
+      <div class="phone" style="width:min(46vmin,250px)">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="appscreen" id="scrServicesB" style="opacity:1">
+            <div class="sbar"><span>9:41</span><span>Services</span></div>
+            <div class="ph-head" style="background:linear-gradient(135deg,#7a3b00,#f4511e)"><div class="t">Commercial HVAC</div><div class="s">Built for businesses</div></div>
+            <div class="ph-body">
+              <div class="card"><span class="pill amber">CONTRACTS</span><div class="ct" style="margin-top:6px">Service agreements</div><div class="cs">Keep equipment covered & efficient year-round.</div></div>
+              <div class="card"><div class="ct">Rooftop & building systems</div><div class="cs">Install, repair & scheduled maintenance.</div></div>
+            </div>
+            <div class="ph-placeholder-tag">PLACEHOLDER · Commercial screen</div>
+          </div>
+        </div>
+        <div class="reflong"></div>
+      </div>
+    </div>
+
+    <!-- Caption overlays -->
+    <div class="cap" id="capIntro" style="top:62%">
+      <div class="headline" id="capIntroH"></div>
+      <div class="sub" id="capIntroS">Mechanical expertise, now in your pocket.</div>
+    </div>
+    <div class="cap" id="capApp" style="top:11%">
+      <div class="kicker">Introducing</div>
+      <div class="headline">The Clarke<br>Mechanical app</div>
+    </div>
+    <div class="cap" id="capBook" style="top:11%">
+      <div class="kicker">Appointments</div>
+      <div class="headline">Book in<br>seconds</div>
+      <div class="accentbar"></div>
+    </div>
+    <div class="cap" id="capServices" style="top:10%">
+      <div class="kicker">Full-service HVAC</div>
+      <div class="headline">Residential &<br>Commercial</div>
+    </div>
+    <div class="cap" id="capEmergency" style="top:11%">
+      <div class="kicker" style="color:#ff9f7a">24/7 Response</div>
+      <div class="headline">Emergency<br>requests</div>
+      <div class="accentbar" style="background:linear-gradient(90deg,#e53935,#fb8c00)"></div>
+    </div>
+    <div class="cap" id="capPortal" style="top:11%">
+      <div class="kicker">Customer portal</div>
+      <div class="headline">Your account,<br>in your pocket</div>
+    </div>
+
+    <!-- OUTRO lockup -->
+    <div id="outroLogo">
+      <svg viewBox="0 0 545 228" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="o-ring" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4dd0e1"/><stop offset="35%" stop-color="#1e88e5"/><stop offset="100%" stop-color="#0d3c82"/></linearGradient>
+          <linearGradient id="o-redarc" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#e53935"/><stop offset="100%" stop-color="#f57c00"/></linearGradient>
+          <linearGradient id="o-blfl" x1="0.3" y1="0" x2="0.7" y2="1"><stop offset="0%" stop-color="#42a5f5"/><stop offset="100%" stop-color="#1a237e"/></linearGradient>
+          <linearGradient id="o-orgfl" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#fff176"/><stop offset="18%" stop-color="#ffb300"/><stop offset="58%" stop-color="#f4511e"/><stop offset="100%" stop-color="#bf360c"/></linearGradient>
+          <linearGradient id="o-redfl" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#ef5350"/><stop offset="100%" stop-color="#e64a19"/></linearGradient>
+          <linearGradient id="o-div" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#e53935"/><stop offset="100%" stop-color="#fb8c00"/></linearGradient>
+        </defs>
+        <circle cx="104" cy="116" r="84" fill="none" stroke="url(#o-ring)" stroke-width="22"/>
+        <path d="M 104,32 A 84,84 0 0,1 188,116" fill="none" stroke="url(#o-redarc)" stroke-width="22"/>
+        <path d="M 60,172 C 46,142 50,96 68,56 C 74,40 80,20 88,18 C 96,15 100,34 108,62 C 115,84 114,132 108,172 Z" fill="url(#o-blfl)"/>
+        <path d="M 64,188 C 50,150 54,98 74,50 C 84,28 98,4 112,4 C 126,4 140,26 152,56 C 163,84 164,144 150,188 Z" fill="url(#o-orgfl)"/>
+        <path d="M 124,184 C 120,152 127,106 142,68 C 150,46 158,18 167,18 C 176,18 182,40 189,68 C 196,94 195,146 186,184 Z" fill="url(#o-redfl)"/>
+        <text x="228" y="95" font-family="Arial Black,Impact,sans-serif" font-size="76" font-weight="900" fill="#ffffff">CLARKE</text>
+        <rect x="228" y="102" width="310" height="3.5" fill="url(#o-div)" rx="1"/>
+        <text x="228" y="148" font-family="Arial Black,Impact,sans-serif" font-size="44" font-weight="900" fill="#ffffff">MECHANICAL</text>
+        <text x="456" y="127" font-family="Arial Black,Impact,sans-serif" font-size="22" font-weight="900" fill="#ffffff">INC.</text>
+        <text x="230" y="178" font-family="Arial,sans-serif" font-size="17.5" fill="#9db8e0" letter-spacing="2.2">HVAC • HEATING • VENTILATION</text>
+      </svg>
+      <div class="slogan">“Mechanical Expertise You Can Trust”</div>
+      <div class="appstore">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M16.5 1.3c.1 1-.3 2-1 2.8-.7.8-1.7 1.4-2.7 1.3-.1-1 .4-2 1-2.7.7-.8 1.8-1.4 2.7-1.4zM19.6 17c-.5 1.1-.7 1.6-1.3 2.6-.9 1.4-2.1 3.1-3.6 3.1-1.3 0-1.7-.9-3.5-.8-1.8 0-2.2.8-3.5.8-1.5 0-2.7-1.6-3.6-3C1.3 16.3.9 11.3 2.9 8.7c1-1.3 2.4-2 3.8-2 1.4 0 2.3.9 3.5.9 1.1 0 1.8-.9 3.5-.9 1.2 0 2.5.7 3.4 1.8-3 1.6-2.5 5.9.5 7.4z"/></svg>
+        Available soon on the App Store
+      </div>
+      <div class="url">clarkemechanicalinc.org</div>
+    </div>
+
+    <div class="vignette"></div>
+    <div class="grain"></div>
+    <div class="safeguide"></div>
+  </div>
+
+  <div class="controls">
+    <button class="play" id="playBtn" title="Play/Pause">▶</button>
+    <button id="replayBtn" title="Replay">⟲</button>
+    <input type="range" id="seek" min="0" max="35" step="0.01" value="0">
+    <span class="time" id="time">0.0 / 35.0s</span>
+  </div>
+  <div style="display:flex; gap:18px; align-items:center">
+    <label class="toggle"><input type="checkbox" id="loopChk" checked> Loop</label>
+    <label class="toggle"><input type="checkbox" id="safeChk"> Safe margins</label>
+    <span class="mini">9:16 · 35s · preview</span>
+  </div>
+  <div class="hint">Placeholder app screens — send real screenshots and I'll swap them in. Scrub the timeline, then tell me what to adjust.</div>
+</div>
+
+<script>
+const DUR = 35;
+const stage = document.getElementById('stage');
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,u)=>a+(b-a)*u;
+const eOutCubic=u=>1-Math.pow(1-u,3);
+const eInOutCubic=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+const eOutBack=u=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(u-1,3)+c1*Math.pow(u-1,2);};
+const eOutQuint=u=>1-Math.pow(1-u,5);
+// progress 0..1 across [t0,t1]
+const seg=(t,t0,t1,ease=eInOutCubic)=>ease(clamp((t-t0)/(t1-t0),0,1));
+// trapezoid opacity: 0 before in, 1 between, 0 after out
+function band(t,inS,inE,outS,outE){
+  if(t<inS||t>outE) return 0;
+  if(t<inE) return eOutCubic((t-inS)/(inE-inS));
+  if(t<=outS) return 1;
+  return 1-eInOutCubic((t-outS)/(outE-outS));
+}
+const el = id => document.getElementById(id);
+
+// Split headline words for kinetic typography (intro)
+el('capIntroH').innerHTML = 'Clarke Mechanical'.split(' ').map(w=>`<span class="word">${w}</span>`).join(' ');
+function setStyle(node,o,tx=0,ty=0,s=1,extra=''){ node.style.opacity=o; node.style.transform=`translate(-50%,-50%) translate(${tx}px,${ty}px) scale(${s}) ${extra}`; }
+
+// ---- particle field (time-deterministic for scrubbing) ----
+const fx = el('fx'); const ctx = fx.getContext('2d');
+let W=0,H=0,DPR=Math.min(2,window.devicePixelRatio||1);
+function resize(){ const r=stage.getBoundingClientRect(); W=r.width; H=r.height; fx.width=W*DPR; fx.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+new ResizeObserver(resize).observe(stage); resize();
+const N=70, P=[];
+for(let i=0;i<N;i++){ P.push({x:Math.random(), y:Math.random(), r:Math.random()*1.8+0.4, sp:Math.random()*0.02+0.004, ph:Math.random()*Math.PI*2, drift:(Math.random()-.5)*0.04}); }
+function drawParticles(t, intensity){
+  ctx.clearRect(0,0,W,H);
+  for(const p of P){
+    const yy = (p.y - t*p.sp) % 1; const y = (yy<0?yy+1:yy)*H;
+    const x = (p.x + Math.sin(t*0.6+p.ph)*p.drift)*W;
+    const tw = 0.5+0.5*Math.sin(t*2+p.ph);
+    ctx.beginPath(); ctx.arc(x,y,p.r*(1+tw*0.6),0,7);
+    ctx.fillStyle = `rgba(${140+tw*60},${200+tw*30},255,${(0.10+tw*0.25)*intensity})`;
+    ctx.fill();
+  }
+}
+
+function render(t){
+  // background blooms drift
+  const bA=el('bloomA'), bB=el('bloomB'), bC=el('bloomC');
+  bA.style.transform=`translate(${lerp(-10,30,seg(t,0,DUR))}%, ${lerp(-6,14,0.5+0.5*Math.sin(t*0.3))}%)`;
+  bA.style.opacity=0.55;
+  bB.style.transform=`translate(${lerp(60,30,seg(t,0,DUR))}%, ${lerp(70,40,0.5+0.5*Math.cos(t*0.25))}%)`;
+  bB.style.opacity=0.45;
+  // red bloom only around emergency scene
+  bC.style.opacity = band(t,19.5,20.8,24.2,25.2)*0.6;
+  bC.style.transform=`translate(40%, 46%)`;
+  drawParticles(t, 0.7 + 0.3*band(t,0,1.5,33,35));
+
+  // ===== INTRO (0–4.6) =====
+  const introMark=el('introMark');
+  const introOp = band(t,0.1,1.0,3.4,4.3);
+  introMark.style.opacity=introOp;
+  const im = seg(t,0.1,1.6,eOutBack);
+  const imExit = seg(t,3.4,4.4,eInOutCubic);
+  introMark.style.transform=`translate(-50%,-50%) scale(${lerp(0.5,1,im)*lerp(1,1.35,imExit)}) rotate(${lerp(-20,0,im)}deg)`;
+  introMark.style.filter=`drop-shadow(0 0 ${lerp(0,42,im)}px rgba(77,208,225,${0.7*introOp}))`;
+  const capI=el('capIntro');
+  capI.style.opacity = band(t,1.4,2.2,3.5,4.3);
+  [...el('capIntroH').children].forEach((w,i)=>{
+    const u=seg(t,1.5+i*0.18,2.2+i*0.18,eOutQuint);
+    w.style.transform=`translateY(${lerp(26,0,u)}px)`; w.style.opacity=u;
+  });
+  el('capIntroS').style.opacity = band(t,2.1,2.7,3.5,4.2);
+
+  // ===== PHONE (primary) =====
+  const pw=el('phoneWrap');
+  // visible from app-reveal through portal, hidden in intro & outro
+  const phoneOp = band(t,4.2,5.0,29.6,30.4);
+  pw.style.opacity=phoneOp;
+  // camera per scene: entrance spin, then gentle float + scene-specific pose
+  const enter=seg(t,4.3,5.6,eOutCubic);
+  const floatY=Math.sin(t*0.9)*8, floatRot=Math.sin(t*0.6)*3;
+  // scene poses: [tx%, ty%, scale, rotY, rotX]
+  // app(4.6-9) center; book(9-14) left; services(14-20) right+small; emerg(20-25) center; portal(25-29.6) left
+  let tx=0,ty=4,sc=1,ry=0,rx=6;
+  if(t>=9&&t<14){ const u=seg(t,8.8,9.8); tx=lerp(0,-18,u); ty=6; sc=lerp(1,1.04,u); ry=lerp(0,16,u); }
+  else if(t>=14&&t<20){ const u=seg(t,13.8,14.8); tx=lerp(-18,16,u); ty=4; sc=lerp(1.04,0.9,u); ry=lerp(16,-14,u); }
+  else if(t>=20&&t<25){ const u=seg(t,19.8,20.8); tx=lerp(16,0,u); ty=4; sc=lerp(0.9,1.02,u); ry=lerp(-14,0,u); }
+  else if(t>=25){ const u=seg(t,24.8,25.8); tx=lerp(0,-16,u); ty=5; sc=lerp(1.02,1.0,u); ry=lerp(0,14,u); }
+  const spinIn = lerp(-120,0,enter);
+  pw.style.transform=`translate(-50%,-50%) translate(${tx}%, ${ty+floatY/6}%) scale(${sc*lerp(0.7,1,enter)}) rotateX(${rx}deg) rotateY(${ry+spinIn+floatRot}deg)`;
+
+  // app screens crossfade
+  const scr={welcome:el('scrWelcome'),book:el('scrBook'),services:el('scrServices'),emergency:el('scrEmergency'),portal:el('scrPortal')};
+  scr.welcome.style.opacity   = band(t,4.6,5.4,8.6,9.2);
+  scr.book.style.opacity      = band(t,9.0,9.6,13.6,14.2);
+  scr.services.style.opacity  = band(t,14.0,14.6,19.6,20.2);
+  scr.emergency.style.opacity = band(t,20.0,20.6,24.6,25.2);
+  scr.portal.style.opacity    = band(t,25.0,25.6,29.4,30.0);
+  // subtle inner parallax on active screen
+  for(const k in scr){ scr[k].style.transform=`translateY(${lerp(10,0,seg(t, 0, 35))*0}px) scale(${1})`; }
+
+  // secondary phone (services scene + outro cluster)
+  const pwB=el('phoneWrapB');
+  const bOp = band(t,14.6,15.4,19.4,20.0);
+  pwB.style.opacity=bOp;
+  const ub=seg(t,14.6,15.6,eOutCubic);
+  pwB.style.transform=`translate(-50%,-50%) translate(${lerp(40,24,ub)}%, ${lerp(30,18,ub)+Math.sin(t*0.9+1)*1.2}%) scale(${lerp(0.6,0.82,ub)}) rotateX(8deg) rotateY(${lerp(30,-10,ub)}deg)`;
+
+  // ===== captions per scene =====
+  el('capApp').style.opacity       = band(t,5.2,5.9,8.4,9.0);
+  el('capBook').style.opacity      = band(t,9.6,10.3,13.5,14.1);
+  el('capServices').style.opacity  = band(t,14.6,15.3,19.5,20.1);
+  el('capEmergency').style.opacity = band(t,20.6,21.3,24.5,25.1);
+  el('capPortal').style.opacity    = band(t,25.6,26.3,29.3,29.9);
+  // caption rise
+  const rise=(node,t0)=>{ const u=seg(t,t0,t0+0.7,eOutQuint); node.style.transform=`translateY(${lerp(22,0,u)}px)`; };
+  rise(el('capApp'),5.2); rise(el('capBook'),9.6); rise(el('capServices'),14.6); rise(el('capEmergency'),20.6); rise(el('capPortal'),25.6);
+
+  // ===== OUTRO (29.8–35) =====
+  const outro=el('outroLogo');
+  const oOp=band(t,30.0,30.9,34.9,35);
+  outro.style.opacity=oOp;
+  const uo=seg(t,30.0,31.2,eOutCubic);
+  outro.style.transform=`translateY(-50%) scale(${lerp(0.82,1,uo)})`;
+  // reveal slogan / appstore / url staggered (opacity via child order using t)
+  outro.querySelector('.slogan').style.opacity   = band(t,30.8,31.4,34.9,35);
+  outro.querySelector('.appstore').style.opacity = band(t,31.4,32.0,34.9,35);
+  outro.querySelector('.url').style.opacity      = band(t,31.9,32.5,34.9,35);
+  outro.querySelector('.slogan').style.transform   = `translateY(${lerp(16,0,seg(t,30.8,31.6,eOutQuint))}px)`;
+  outro.querySelector('.appstore').style.transform = `translateY(${lerp(16,0,seg(t,31.4,32.2,eOutQuint))}px)`;
+  outro.querySelector('.url').style.transform      = `translateY(${lerp(14,0,seg(t,31.9,32.6,eOutQuint))}px)`;
+}
+
+// ---- transport ----
+let t=0, playing=false, last=0;
+const seek=el('seek'), timeLbl=el('time'), playBtn=el('playBtn');
+function fmt(){ timeLbl.textContent = t.toFixed(1)+' / '+DUR.toFixed(1)+'s'; seek.value=t; }
+function frame(now){
+  if(playing){ const dt=(now-last)/1000; last=now; t+=dt;
+    if(t>=DUR){ if(el('loopChk').checked){ t=0; } else { t=DUR; playing=false; playBtn.textContent='▶'; } }
+  } else { last=now; }
+  render(t); fmt(); requestAnimationFrame(frame);
+}
+function play(){ playing=true; playBtn.textContent='❚❚'; }
+function pause(){ playing=false; playBtn.textContent='▶'; }
+playBtn.onclick=()=>playing?pause():play();
+el('replayBtn').onclick=()=>{ t=0; play(); };
+seek.oninput=()=>{ t=parseFloat(seek.value); pause(); render(t); fmt(); };
+el('safeChk').onchange=e=>stage.classList.toggle('showsafe', e.target.checked);
+stage.onclick=(e)=>{ if(e.target.closest('.controls'))return; playing?pause():play(); };
+render(0); fmt(); requestAnimationFrame(frame);
+// autoplay
+setTimeout(play, 350);
+</script>
