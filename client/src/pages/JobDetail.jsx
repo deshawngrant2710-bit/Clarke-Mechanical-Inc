@@ -58,6 +58,7 @@ export default function JobDetail() {
   const [resign, setResign] = useState(false); // manager correcting an existing sign-off
   const [approving, setApproving] = useState(false);
   const [bizPhone, setBizPhone] = useState('');
+  const [biz, setBiz] = useState({});
   const [taskModal, setTaskModal] = useState(false);
   const [signName, setSignName] = useState('');
   const [signing, setSigning] = useState(false);
@@ -175,7 +176,7 @@ export default function JobDetail() {
     } catch (e) { toast.error(e.response?.data?.error || 'Could not start inspection'); }
   }
   useEffect(load, [id]);
-  useEffect(() => { api.get('/auth/public-info').then(r => setBizPhone(r.data.business_phone || '')).catch(() => {}); }, []);
+  useEffect(() => { api.get('/auth/public-info').then(r => { setBiz(r.data || {}); setBizPhone(r.data.business_phone || ''); }).catch(() => {}); }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -315,25 +316,141 @@ export default function JobDetail() {
   }
   function printWorkOrder() {
     const e = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const parts = (job.parts || []).map(p => `<tr><td>${e(p.name)}</td><td style="text-align:right">${p.quantity}</td></tr>`).join('') || '<tr><td colspan="2" style="color:#94a3b8">None logged</td></tr>';
-    const row = (label, val) => val ? `<tr><td style="color:#64748b;padding:4px 12px 4px 0;white-space:nowrap">${label}</td><td style="padding:4px 0">${e(val)}</td></tr>` : '';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Work Order</title>
-    <style>*{box-sizing:border-box}body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#1e293b;margin:0;padding:40px;font-size:14px}
-    h1{color:#1d4ed8;font-size:24px;letter-spacing:2px;margin:0 0 4px}.sub{color:#64748b;margin-bottom:24px}
-    .box{border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px}.h{font-weight:700;margin-bottom:8px;color:#0f172a}
-    table{width:100%;border-collapse:collapse}.notes{white-space:pre-wrap;color:#334155}
-    .sign{margin-top:40px;display:flex;justify-content:space-between;gap:40px}.line{border-top:1px solid #94a3b8;padding-top:6px;color:#64748b;font-size:12px;flex:1}
-    @media print{body{padding:24px}}</style></head><body>
-    <h1>WORK ORDER</h1><div class="sub">Job #${e(id.slice(0, 8).toUpperCase())} · ${e(new Date().toLocaleDateString('en-US'))}</div>
-    <div class="box"><div class="h">${e(job.title)}</div><table>
-      ${row('Customer', job.customer_name)}${row('Phone', job.customer_phone)}${row('Address', job.address)}
-      ${row('Scheduled', [job.scheduled_date, job.scheduled_time].filter(Boolean).join(' '))}${row('Technician', job.technician_name)}${row('Type', job.job_type)}
-    </table></div>
-    ${job.description ? `<div class="box"><div class="h">Work to perform</div><div class="notes">${e(job.description)}</div></div>` : ''}
-    <div class="box"><div class="h">Parts &amp; materials</div><table><thead><tr><th style="text-align:left;color:#94a3b8;font-size:11px;text-transform:uppercase">Item</th><th style="text-align:right;color:#94a3b8;font-size:11px;text-transform:uppercase">Qty</th></tr></thead><tbody>${parts}</tbody></table></div>
-    <div class="box"><div class="h">Notes / findings</div><div style="min-height:60px"></div></div>
-    <div class="sign"><div class="line">Technician signature</div><div class="line">Customer signature</div></div>
-    <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+    const name = e(biz.business_name || 'Clarke Mechanical Inc.');
+    const phone = e(biz.business_phone || '(516) 206-6256');
+    const email = e(biz.business_email || 'clarkemechanical@gmail.com');
+    const web = e(biz.business_website || 'clarkemechanicalinc.org');
+    const addr = e(biz.business_address || '');
+    const jtype = (job.job_type || '').toLowerCase();
+    const cb = (label, checked) => `<span class="cb">${checked ? '☑' : '☐'} ${e(label)}</span>`;
+    const checks = (arr) => `<div class="checks">${arr.map(l => cb(l, jtype && l.toLowerCase().split(' ').some(w => w.length > 3 && jtype.includes(w)))).join('')}</div>`;
+    const blankChecks = (arr) => `<div class="checks">${arr.map(l => cb(l, false)).join('')}</div>`;
+    const fld = (label, val, w = '1fr') => `<div class="fld" style="grid-column:span 1"><span class="lb">${e(label)}</span><span class="vl">${val ? e(val) : ''}</span></div>`;
+    const readingRow = (m) => `<tr><td>${e(m)}</td><td></td><td></td></tr>`;
+    const billRow = (d, bold) => `<tr><td class="${bold ? 'b' : ''}">${e(d)}</td><td class="amt ${bold ? 'b' : ''}"></td></tr>`;
+    const partRows = (job.parts || []).length
+      ? (job.parts || []).map(p => `<tr><td class="c">${e(String(p.quantity ?? ''))}</td><td>${e(p.name)}</td><td></td></tr>`).join('')
+      : `<tr><td class="c"></td><td></td><td></td></tr><tr><td class="c"></td><td></td><td></td></tr>`;
+    const extraPartRows = Array(Math.max(0, 4 - (job.parts || []).length)).fill('<tr><td class="c"></td><td></td><td></td></tr>').join('');
+
+    const SERVICE_TYPES = ['Service / Diagnostic', 'Preventive Maintenance', 'Emergency', 'Repair / Parts', 'Start-Up / Commissioning', 'Inspection / Combustion', 'No Heat / No Hot Water', 'Installation / Replacement', 'Warranty / Callback'];
+    const EQUIP = ['Gas Boiler', 'Oil Boiler', 'Steam Boiler', 'Hot Water Boiler', 'Scotch Marine / Firetube', 'Gas / Oil Furnace', 'Rooftop Unit (RTU)', 'Central AC / Heat Pump', 'Water Heater', 'Industrial Gas Burner', 'Industrial Oil Burner', 'Dual-Fuel Burner'];
+    const ARRIVAL = ['Operating Normally', 'Not Operating', 'Lockout / Safety Trip', 'Intermittent', 'No Heat / Hot Water', 'Water Leak', 'Fuel / Gas Concern', 'Noise / Vibration', 'Pressure Issue'];
+    const DIAG = ['Thermostat / Controls', 'Electrical / Wiring', 'Safety / Limit Controls', 'Flame Safeguard', 'Gas Pressure / Supply', 'Oil Pump / Nozzle / Filter', 'Ignition / Pilot', 'Flame Scanner / Cad Cell', 'Combustion Air / Ventilation', 'Draft / Venting', 'Boiler Water Level / Pressure', 'Pumps / Valves', 'Heat Exchanger / Fireside', 'Condenser / Evaporator Coils'];
+    const WORK = ['Control Repair / Reset', 'Cleaned Burner / Combustion Assembly', 'Ignition Components', 'Oil Nozzle / Filter / Pump', 'Gas Train / Fuel System', 'Electrical / Controls', 'Heat Exchanger / Fireside', 'Boiler Maintenance', 'Coil Cleaning', 'Burner Adjustment / Combustion', 'Leak Check', 'Safety Controls Test'];
+    const READINGS = ['O₂ (%)', 'CO₂ (%)', 'CO (ppm)', 'Flue Gas Temp. (°F)', 'Stack Draft (in. w.c.)', 'Overfire Draft (in. w.c.)', 'Gas Inlet Pressure (in. w.c.)', 'Gas Manifold Pressure (in. w.c.)', 'Oil Pump Pressure (PSI)', 'Smoke Spot Number (oil)', 'Boiler Operating Pressure', 'Boiler Water Temp. (°F)', 'Supply / Return Temp. (°F)'];
+    const SAFETY = ['Fuel Connections Checked', 'Applicable Leak Test', 'Ignition Sequence Verified', 'Flame Detection Verified', 'Operating Controls Tested', 'Limit Controls Tested', 'Flame Safeguard / Shutdown Tested', 'Venting / Draft Checked', 'Combustion Air Checked', 'CO Screening as Applicable', 'Operating Sequence Verified', 'Final Conditions Recorded'];
+    const FINAL = ['Operational — Tested', 'Operating; Recommendations', 'Temporary Operation / Follow-Up', 'Out of Service', 'Shut Down for Safety', 'Unable to Complete'];
+    const BILL = ['Service Call / Diagnostic Fee', 'Labor', 'Parts / Materials', 'Additional Services', 'Emergency / After-Hours Charges'];
+
+    const logo = `<svg viewBox="0 0 200 228" width="54" height="62" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="wr" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4dd0e1"/><stop offset="35%" stop-color="#1e88e5"/><stop offset="100%" stop-color="#0d3c82"/></linearGradient><linearGradient id="wa" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#e53935"/><stop offset="100%" stop-color="#f57c00"/></linearGradient><linearGradient id="wo" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#fff176"/><stop offset="18%" stop-color="#ffb300"/><stop offset="58%" stop-color="#f4511e"/><stop offset="100%" stop-color="#bf360c"/></linearGradient><linearGradient id="wb" x1="0.3" y1="0" x2="0.7" y2="1"><stop offset="0%" stop-color="#42a5f5"/><stop offset="100%" stop-color="#1a237e"/></linearGradient><linearGradient id="wrr" x1="0.5" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#ef5350"/><stop offset="100%" stop-color="#e64a19"/></linearGradient></defs><circle cx="104" cy="116" r="84" fill="none" stroke="url(#wr)" stroke-width="22"/><path d="M 104,32 A 84,84 0 0,1 188,116" fill="none" stroke="url(#wa)" stroke-width="22"/><path d="M 60,172 C 46,142 50,96 68,56 C 74,40 80,20 88,18 C 96,15 100,34 108,62 C 115,84 114,132 108,172 Z" fill="url(#wb)"/><path d="M 64,188 C 50,150 54,98 74,50 C 84,28 98,4 112,4 C 126,4 140,26 152,56 C 163,84 164,144 150,188 Z" fill="url(#wo)"/><path d="M 124,184 C 120,152 127,106 142,68 C 150,46 158,18 167,18 C 176,18 182,40 189,68 C 196,94 195,146 186,184 Z" fill="url(#wrr)"/></svg>`;
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Work Order ${e(id.slice(0, 8).toUpperCase())}</title>
+    <style>
+    @page{size:letter;margin:12mm}
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#15233b;margin:0;font-size:10.5px;line-height:1.35}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0d3c82;padding-bottom:10px}
+    .brand{display:flex;gap:12px;align-items:center}
+    .brand .nm{font-size:19px;font-weight:900;color:#0d3c82;letter-spacing:.5px;line-height:1}
+    .brand .tg{font-size:9px;color:#5a6b86;letter-spacing:2px;margin-top:3px}
+    .co{text-align:right;font-size:9.5px;color:#41506a;line-height:1.5}
+    .title{display:flex;justify-content:space-between;align-items:center;background:#0d3c82;color:#fff;padding:7px 12px;border-radius:5px;margin:12px 0 10px}
+    .title h1{font-size:15px;letter-spacing:2px;margin:0;font-weight:800}
+    .title .meta{font-size:10px;text-align:right;opacity:.95}
+    h2{font-size:9.5px;letter-spacing:.6px;color:#fff;background:#1e5aa8;padding:4px 8px;border-radius:4px;margin:12px 0 7px;text-transform:uppercase;font-weight:800}
+    .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px 14px}
+    .grid.two{grid-template-columns:1fr 1fr}
+    .fld{display:flex;flex-direction:column;border-bottom:1px solid #c7d2e3;padding-bottom:1px;min-height:26px}
+    .fld .lb{font-size:8px;color:#6a7a94;text-transform:uppercase;letter-spacing:.3px}
+    .fld .vl{font-size:11px;color:#15233b;font-weight:600;min-height:14px;padding-top:1px}
+    .checks{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px 12px;font-size:10px;margin-top:2px}
+    .cb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .box{border:1px solid #c7d2e3;border-radius:5px;min-height:34px;padding:5px 7px;margin-top:3px}
+    .lbl{font-size:8px;color:#6a7a94;text-transform:uppercase;letter-spacing:.3px;margin-top:8px;margin-bottom:1px;display:block}
+    table{width:100%;border-collapse:collapse;margin-top:3px}
+    th{background:#eef3fb;color:#41506a;font-size:8px;text-transform:uppercase;letter-spacing:.3px;text-align:left;padding:4px 6px;border:1px solid #c7d2e3}
+    td{border:1px solid #c7d2e3;padding:5px 6px;font-size:10px;height:20px}
+    td.c{text-align:center;width:40px} td.amt{text-align:right;width:120px} td.b,.b{font-weight:800;background:#f3f7fd}
+    .reads td:nth-child(2),.reads td:nth-child(3){text-align:center;width:120px}
+    .page{page-break-before:always}
+    .sign{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:10px}
+    .sigline{border-top:1px solid #15233b;margin-top:26px;padding-top:4px;font-size:8.5px;color:#6a7a94}
+    .cert{font-size:8.5px;color:#41506a;border:1px solid #c7d2e3;border-radius:5px;padding:6px 8px;background:#fafcff}
+    .foot{margin-top:14px;text-align:center;font-size:9px;letter-spacing:3px;color:#6a7a94;border-top:1px solid #c7d2e3;padding-top:6px}
+    .small{font-size:8.5px;color:#6a7a94}
+    </style></head><body>
+
+    <div class="hdr">
+      <div class="brand">${logo}<div><div class="nm">${name}</div><div class="tg">HVAC • HEATING • VENTILATION</div></div></div>
+      <div class="co">${addr ? addr + '<br>' : ''}${phone}<br>${email}<br>${web}</div>
+    </div>
+    <div class="title"><h1>SERVICE CALL WORK ORDER</h1><div class="meta">WO# ${e(id.slice(0, 8).toUpperCase())}<br>${e(new Date().toLocaleDateString('en-US'))}</div></div>
+
+    <h2>1 · Customer &amp; Job Information</h2>
+    <div class="grid">
+      ${fld('Customer / Company', job.customer_name)}${fld('Contact Person', job.customer_name)}${fld('Phone', job.customer_phone || bizPhone === job.customer_phone ? job.customer_phone : job.customer_phone)}
+      ${fld('Service Address', job.address)}${fld('Email', job.customer_email)}${fld('PO No.', '')}
+      ${fld('Date', [job.scheduled_date].filter(Boolean).join(' '))}${fld('Arrival Time', job.scheduled_time || '')}${fld('Departure Time', '')}
+      ${fld('Technician(s)', job.technician_name)}${fld('Contract No.', '')}${fld('Job Type', job.job_type)}
+    </div>
+    <span class="lbl">Service Type</span>${checks(SERVICE_TYPES)}
+
+    <h2>2 · Property &amp; System Classification</h2>
+    <span class="lbl">Property Type</span>${blankChecks(['Residential', 'Commercial', 'Industrial'])}
+    <span class="lbl">Equipment Type</span>${blankChecks(EQUIP)}
+    <div class="grid" style="margin-top:7px">${fld('Other Equipment', '')}${fld('Equipment Location', '')}${fld('No. of Units', '')}</div>
+
+    <div class="page"></div>
+    <h2>3 · Equipment Identification</h2>
+    <div class="grid">${fld('Manufacturer', '')}${fld('Model', '')}${fld('Serial No.', '')}${fld('Boiler / Furnace / Burner Size', '')}${fld('Fuel Type', '')}${fld('Primary Control', '')}${fld('Burner Mfr / Model', '')}${fld('Flame Safeguard / Control', '')}${fld('Operating Hours / Cycles', '')}</div>
+
+    <h2>4 · Customer Reported Problem</h2>
+    <span class="lbl">Reason for Service / Customer Complaint</span><div class="box">${e(job.description || '')}</div>
+    <span class="lbl">Condition Upon Arrival</span>${blankChecks(ARRIVAL)}
+
+    <h2>5 · Diagnostic Findings</h2>${blankChecks(DIAG)}
+    <span class="lbl">Fault Codes / Diagnostic Readings</span><div class="box"></div>
+    <span class="lbl">Cause of Failure / Technician Findings</span><div class="box"></div>
+
+    <h2>6 · Work Performed</h2>${blankChecks(WORK)}
+    <span class="lbl">Detailed Description of Work Completed</span><div class="box" style="min-height:48px"></div>
+
+    <div class="page"></div>
+    <h2>7 · Combustion &amp; Operating Readings</h2>
+    <table class="reads"><thead><tr><th>Measurement</th><th style="text-align:center">Before Service</th><th style="text-align:center">After Service</th></tr></thead><tbody>${READINGS.map(readingRow).join('')}</tbody></table>
+    <div class="grid two" style="margin-top:7px">${fld('Analyzer Make / Model', '')}${fld('Calibration / Due Date', '')}</div>
+    <span class="lbl">Combustion Test Result</span>${blankChecks(['Acceptable', 'Adjustment Required', 'Not Tested'])}
+    <span class="lbl">Additional Measurements / Notes</span><div class="box"></div>
+
+    <h2>8 · Safety &amp; Operational Checklist</h2>${blankChecks(SAFETY)}
+    <span class="lbl">Outstanding Defects / Safety Concerns</span><div class="box"></div>
+
+    <h2>9 · Final Equipment Status</h2>${blankChecks(FINAL)}
+    <span class="lbl">Status Explanation / Recommended Follow-Up</span><div class="box"></div>
+    <div class="grid" style="margin-top:7px">${fld('Parts Required?', '')}${fld('Return Visit Needed?', '')}${fld('Return Visit Date', '')}</div>
+
+    <div class="page"></div>
+    <h2>10 · Parts / Materials Installed</h2>
+    <table><thead><tr><th class="c" style="text-align:center">Qty</th><th>Part Description</th><th style="width:150px">Part / Model No.</th></tr></thead><tbody>${partRows}${extraPartRows}</tbody></table>
+    <span class="lbl">Additional Labor / Subcontractor Work</span><div class="box"></div>
+
+    <h2>11 · Customer Approval &amp; Billing</h2>
+    <table><thead><tr><th>Description</th><th class="amt" style="text-align:right">Amount ($)</th></tr></thead><tbody>${BILL.map(b => billRow(b)).join('')}${billRow('Subtotal', true)}${billRow('Applicable Tax', true)}${billRow('TOTAL AMOUNT DUE', true)}</tbody></table>
+    <span class="lbl">Payment Method</span>${blankChecks(['Cash', 'Check', 'Credit Card', 'Invoice / PO'])}
+    <div class="grid two" style="margin-top:7px">${fld('Payment Status', '')}${fld('Customer PO / Invoice Reference', '')}</div>
+
+    <h2>12 · Technician Certification</h2>
+    <div class="cert">I certify that the work described above was performed to the best of my knowledge and that the recorded readings reflect measurements taken during this visit. Outstanding deficiencies and recommendations have been documented.</div>
+    <div class="sign"><div><div class="vl" style="font-weight:600;min-height:16px">${e(job.technician_name || '')}</div><div class="sigline">Technician name &amp; signature</div></div><div><div class="sigline" style="margin-top:34px">Date</div></div></div>
+
+    <h2>13 · Customer Acknowledgment</h2>
+    <div class="cert">I acknowledge the service visit and receipt of the service information. Any work authorization and applicable rights or warranties remain subject to the service agreement and applicable law.</div>
+    <div class="sign"><div><div class="vl" style="min-height:16px">&nbsp;</div><div class="sigline">Customer / authorized representative &amp; signature</div></div><div><div class="sigline" style="margin-top:34px">Title &amp; date</div></div></div>
+    <span class="lbl">Additional Notes</span><div class="box"></div>
+    <div class="foot">CUSTOMER COPY · COMPANY COPY</div>
+
+    <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
     printHtml(html);
   }
   async function notify(type, label) {
