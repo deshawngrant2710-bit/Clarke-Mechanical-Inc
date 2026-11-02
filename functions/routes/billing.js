@@ -398,6 +398,15 @@ router.post('/receipts/:id/email', async (req, res) => {
   res.json({ success: true });
 });
 
+// DELETE /billing/receipts/:id — remove a receipt record. The underlying payment
+// (if any) is left untouched; only the receipt document is deleted.
+router.delete('/receipts/:id', async (req, res) => {
+  const r = await getById('receipts', req.params.id);
+  if (!r) return res.status(404).json({ error: 'Receipt not found' });
+  await remove('receipts', req.params.id);
+  res.json({ success: true });
+});
+
 // GET /billing/payments — all recorded payments (for reconciliation), newest first.
 router.get('/payments', async (req, res) => {
   const [payments, invoices, customers] = await Promise.all([list('payments'), list('invoices'), list('customers')]);

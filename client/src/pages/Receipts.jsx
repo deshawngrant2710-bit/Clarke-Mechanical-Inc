@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, StatCard, Empty, Spinner, Btn, SearchInput, Modal, Input, Select, Textarea } from '../components/UI';
-import { Receipt, DollarSign, Search, Printer, Share2, Mail, Download, FileText, Plus, MessageCircle } from 'lucide-react';
+import { Receipt, DollarSign, Search, Printer, Share2, Mail, Download, FileText, Plus, MessageCircle, Trash2 } from 'lucide-react';
 import { printDocument, sharePdf } from '../lib/printDoc';
 import toast from 'react-hot-toast';
 
@@ -140,6 +140,15 @@ export default function Receipts() {
     finally { setBusy(''); }
   }
 
+  async function del(e, r) {
+    e.stopPropagation();
+    if (!window.confirm(`Delete receipt ${r.receipt_number}? This removes the receipt record (the payment itself is kept).`)) return;
+    setBusy(r.id);
+    try { await api.delete(`/billing/receipts/${r.id}`); toast.success('Receipt deleted'); load(); }
+    catch (err) { toast.error(err.response?.data?.error || 'Could not delete'); }
+    finally { setBusy(''); }
+  }
+
   // CSV of what's on screen — hand this straight to the bookkeeper.
   function exportCsv() {
     const head = ['Receipt #', 'Date', 'Customer', 'Invoice #', 'Method', 'Reference', 'Amount', 'Balance After'];
@@ -235,6 +244,8 @@ export default function Receipts() {
                           className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-40"><Share2 size={15} /></button>
                         <button onClick={e => print(e, r)} disabled={busy === r.id} title="Print / Download PDF"
                           className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-40"><Printer size={15} /></button>
+                        <button onClick={e => del(e, r)} disabled={busy === r.id} title="Delete receipt"
+                          className="text-slate-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"><Trash2 size={15} /></button>
                         {r.invoice_id && (
                           <button onClick={e => { e.stopPropagation(); navigate(`/invoices/${r.invoice_id}`); }} title="Open invoice"
                             className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><FileText size={15} /></button>
