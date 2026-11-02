@@ -45,27 +45,23 @@ export default function Receipts() {
     } catch (e) { toast.error(e.response?.data?.error || 'Could not create receipt'); } finally { setSaving(false); }
   }
 
-  // Open WhatsApp with a ready-to-send receipt message (opens the user's own
-  // WhatsApp; nothing is sent until they hit send there).
+  // Send to WhatsApp as a PDF. On a phone the native share sheet includes
+  // WhatsApp (sends the actual PDF). On desktop the PDF downloads and we open
+  // WhatsApp so the file can be attached.
   async function whatsapp(e, r) {
     e.stopPropagation();
     setBusy(r.id);
     try {
-      const { data } = await api.get(`/billing/receipts/${r.id}`);
-      const biz = (await api.get('/auth/public-info').catch(() => ({ data: {} }))).data || {};
-      const phone = telDigits(data.customer?.phone);
-      const name = (biz.business_name || 'Clarke Mechanical Inc.');
-      const lines = [
-        `${name}`,
-        `Receipt ${r.receipt_number}`,
-        `Amount: ${money(r.amount)}${r.method ? ` (${String(r.method).replace(/_/g, ' ')})` : ''}`,
-        r.description ? `For: ${r.description}` : (r.invoice_number ? `Invoice: ${r.invoice_number}` : ''),
-        `Date: ${fmtDate(r.paid_at)}`,
-        r.balance_after > 0 ? `Balance remaining: ${money(r.balance_after)}` : 'Paid — thank you!',
-      ].filter(Boolean);
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`;
-      window.open(url, '_blank', 'noopener');
-    } catch { toast.error('Could not open WhatsApp'); } finally { setBusy(''); }
+      const full = await loadFull(r);
+      const res = await sharePdf(full);
+      if (res.method === 'download') {
+        toast.success('Receipt PDF downloaded — attach it in WhatsApp');
+        const phone = telDigits(full.customer?.phone);
+        window.open(`https://wa.me/${phone}`, '_blank', 'noopener');
+      } else if (res.method === 'print') {
+        toast('Save the PDF, then attach it in WhatsApp', { icon: '📄' });
+      }
+    } catch { toast.error('Could not prepare the receipt PDF'); } finally { setBusy(''); }
   }
 
   const months = useMemo(() => {
@@ -94,9 +90,20 @@ export default function Receipts() {
       api.get('/auth/public-info').catch(() => ({ data: {} })),
     ]);
     const b = biz.data || {};
+    // Manual receipts have no invoice — build a one-line doc from the receipt so
+    // the PDF shows WHAT it was for (description), not just the total.
+    const rec = data.receipt || r;
+    const amt = Number(rec.amount) || 0;
+    const desc = rec.description || r.description || 'Payment received';
+    const manualDoc = {
+      invoice_number: rec.invoice_number || null,
+      total: amt, subtotal: amt,
+      items: [{ description: desc, quantity: 1, unit_price: amt, total: amt }],
+      notes: rec.description || r.description || null,
+    };
     return {
       kind: 'receipt',
-      doc: data.invoice || { invoice_number: r.invoice_number, total: r.invoice_total, items: [] },
+      doc: data.invoice || manualDoc,
       receipt: data.receipt,
       business: { name: b.business_name, phone: b.business_phone, email: b.business_email, address: b.business_address, website: b.business_website },
       customer: {
@@ -220,7 +227,7 @@ export default function Receipts() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={e => whatsapp(e, r)} disabled={busy === r.id} title="Send via WhatsApp"
+                        <button onClick={e => whatsapp(e, r)} disabled={busy === r.id} title="Send PDF via WhatsApp"
                           className="text-slate-400 hover:text-green-600 p-1.5 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-40"><MessageCircle size={15} /></button>
                         <button onClick={e => resend(e, r)} disabled={busy === r.id} title="Email receipt to customer"
                           className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"><Mail size={15} /></button>
