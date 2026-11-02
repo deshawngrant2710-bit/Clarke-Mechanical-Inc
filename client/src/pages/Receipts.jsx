@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
-import { Card, CardHeader, StatCard, Empty, Spinner, Btn, SearchInput } from '../components/UI';
-import { Receipt, DollarSign, Search, Printer, Share2, Mail, Download, FileText } from 'lucide-react';
+import { Card, CardHeader, StatCard, Empty, Spinner, Btn, SearchInput, Modal, Input, Select, Textarea } from '../components/UI';
+import { Receipt, DollarSign, Search, Printer, Share2, Mail, Download, FileText, Plus, MessageCircle } from 'lucide-react';
 import { printDocument, sharePdf } from '../lib/printDoc';
 import toast from 'react-hot-toast';
+
+const telDigits = (p) => { let d = String(p || '').replace(/[^\d]/g, ''); if (d.length === 10) d = '1' + d; return d; };
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
@@ -22,9 +24,49 @@ export default function Receipts() {
   const [q, setQ] = useState('');
   const [month, setMonth] = useState('all');
   const [busy, setBusy] = useState('');
+  const [customers, setCustomers] = useState([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(null);
 
   function load() { api.get('/billing/receipts').then(r => setRows(r.data)).catch(() => setRows([])); }
   useEffect(load, []);
+  useEffect(() => { api.get('/customers').then(r => setCustomers(r.data)).catch(() => {}); }, []);
+
+  const openCreate = () => { setForm({ customer_id: '', customer_name: '', amount: '', method: 'cash', reference: '', description: '', paid_at: new Date().toISOString().slice(0, 10) }); setCreateOpen(true); };
+  async function createReceipt() {
+    if (!(Number(form.amount) > 0)) return toast.error('Enter an amount greater than zero');
+    if (!form.customer_id && !form.customer_name.trim()) return toast.error('Choose a customer or type a name');
+    setSaving(true);
+    try {
+      await api.post('/billing/receipts', { ...form, paid_at: form.paid_at ? new Date(form.paid_at + 'T12:00:00').toISOString() : undefined });
+      toast.success('Receipt created — not sent. Use Email or WhatsApp to send it.');
+      setCreateOpen(false); load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Could not create receipt'); } finally { setSaving(false); }
+  }
+
+  // Open WhatsApp with a ready-to-send receipt message (opens the user's own
+  // WhatsApp; nothing is sent until they hit send there).
+  async function whatsapp(e, r) {
+    e.stopPropagation();
+    setBusy(r.id);
+    try {
+      const { data } = await api.get(`/billing/receipts/${r.id}`);
+      const biz = (await api.get('/auth/public-info').catch(() => ({ data: {} }))).data || {};
+      const phone = telDigits(data.customer?.phone);
+      const name = (biz.business_name || 'Clarke Mechanical Inc.');
+      const lines = [
+        `${name}`,
+        `Receipt ${r.receipt_number}`,
+        `Amount: ${money(r.amount)}${r.method ? ` (${String(r.method).replace(/_/g, ' ')})` : ''}`,
+        r.description ? `For: ${r.description}` : (r.invoice_number ? `Invoice: ${r.invoice_number}` : ''),
+        `Date: ${fmtDate(r.paid_at)}`,
+        r.balance_after > 0 ? `Balance remaining: ${money(r.balance_after)}` : 'Paid — thank you!',
+      ].filter(Boolean);
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`;
+      window.open(url, '_blank', 'noopener');
+    } catch { toast.error('Could not open WhatsApp'); } finally { setBusy(''); }
+  }
 
   const months = useMemo(() => {
     if (!rows) return [];
@@ -116,6 +158,7 @@ export default function Receipts() {
     <div className="animate-fade-in">
       <PageHeader title="Receipts" subtitle={`${rows.length} issued`} icon={<Receipt size={20} />}>
         <Btn variant="outline" onClick={exportCsv} disabled={!filtered.length}><Download size={15} /> Export CSV</Btn>
+        <Btn onClick={openCreate}><Plus size={15} /> Create receipt</Btn>
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -137,7 +180,8 @@ export default function Receipts() {
         <CardHeader title="Issued Receipts" icon={<Receipt size={15} />} />
         {filtered.length === 0 ? (
           <Empty icon={<Receipt size={22} />} title={q || month !== 'all' ? 'No matching receipts' : 'No receipts yet'}
-            message={q || month !== 'all' ? 'Try a different search or month.' : 'A receipt is issued automatically each time you record a payment.'} />
+            message={q || month !== 'all' ? 'Try a different search or month.' : 'A receipt is issued automatically on each payment — or create one by hand with “Create receipt”.'}
+            action={!(q || month !== 'all') ? <Btn onClick={openCreate}><Plus size={15} /> Create receipt</Btn> : null} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -176,12 +220,14 @@ export default function Receipts() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={e => share(e, r)} disabled={busy === r.id} title="Send as PDF (WhatsApp, etc.)"
+                        <button onClick={e => whatsapp(e, r)} disabled={busy === r.id} title="Send via WhatsApp"
+                          className="text-slate-400 hover:text-green-600 p-1.5 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-40"><MessageCircle size={15} /></button>
+                        <button onClick={e => resend(e, r)} disabled={busy === r.id} title="Email receipt to customer"
+                          className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"><Mail size={15} /></button>
+                        <button onClick={e => share(e, r)} disabled={busy === r.id} title="Download / share as PDF"
                           className="text-slate-400 hover:text-emerald-600 p-1.5 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-40"><Share2 size={15} /></button>
                         <button onClick={e => print(e, r)} disabled={busy === r.id} title="Print / Download PDF"
                           className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-40"><Printer size={15} /></button>
-                        <button onClick={e => resend(e, r)} disabled={busy === r.id} title="Email receipt to customer"
-                          className="text-slate-400 hover:text-blue-600 p-1.5 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"><Mail size={15} /></button>
                         {r.invoice_id && (
                           <button onClick={e => { e.stopPropagation(); navigate(`/invoices/${r.invoice_id}`); }} title="Open invoice"
                             className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><FileText size={15} /></button>
@@ -195,6 +241,28 @@ export default function Receipts() {
           </div>
         )}
       </Card>
+
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create a receipt" subtitle="Nothing is sent — you send it after with Email or WhatsApp"
+        footer={<><Btn variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Btn><Btn onClick={createReceipt} loading={saving}>Create receipt</Btn></>}>
+        {form && (
+          <div className="space-y-3">
+            <Select label="Customer" value={form.customer_id} onChange={e => setForm(f => ({ ...f, customer_id: e.target.value }))}>
+              <option value="">Walk-in / type a name…</option>
+              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            {!form.customer_id && <Input label="Or name on receipt" value={form.customer_name} onChange={e => setForm(f => ({ ...f, customer_name: e.target.value }))} placeholder="Customer / company name" />}
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Amount" type="number" step="0.01" min="0" inputMode="decimal" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+              <Select label="Method" value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))}>
+                <option value="cash">Cash</option><option value="check">Check</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="zelle">Zelle</option><option value="other">Other</option>
+              </Select>
+              <Input label="Date" type="date" value={form.paid_at} onChange={e => setForm(f => ({ ...f, paid_at: e.target.value }))} />
+              <Input label="Reference / check #" value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))} placeholder="Optional" />
+            </div>
+            <Textarea label="For (what the payment is for)" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="e.g. Boiler tune-up — 123 Main St" />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

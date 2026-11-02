@@ -164,14 +164,16 @@ const templates = {
     const bal = Number(inv.balance_after) || 0;
     const partial = bal > 0;
     const paidOn = inv.paid_at ? new Date(inv.paid_at) : new Date();
-    return { subject: `Payment received${inv.receipt_number ? ` — Receipt ${inv.receipt_number}` : ''} — Invoice ${inv.invoice_number}`,
+    return { subject: `Payment received${inv.receipt_number ? ` — Receipt ${inv.receipt_number}` : ''}${inv.invoice_number ? ` — Invoice ${inv.invoice_number}` : ''}`,
       html: shell(b, { accent: GREEN, heading: 'Payment received &mdash; thank you!',
         // The full message reads first, uninterrupted — the receipt follows below it.
         body: p(`Hi ${inv.customer_name || 'there'},`) +
           p(`Thank you for your payment. We truly appreciate your business and the trust you&rsquo;ve placed in ${b.name}.`) +
-          p(partial
-            ? `We've received your payment toward invoice <strong>${inv.invoice_number}</strong>. Your receipt is below, along with the balance remaining on the account.`
-            : `We've received your payment for invoice <strong>${inv.invoice_number}</strong> and your account is now paid in full. Your receipt is below for your records.`) +
+          p(inv.invoice_number
+            ? (partial
+              ? `We've received your payment toward invoice <strong>${inv.invoice_number}</strong>. Your receipt is below, along with the balance remaining on the account.`
+              : `We've received your payment for invoice <strong>${inv.invoice_number}</strong> and your account is now paid in full. Your receipt is below for your records.`)
+            : `We've received your payment${partial ? ', with the balance remaining shown below' : ' in full'}. Your receipt is below for your records.`) +
           p('If you have any questions about this payment, the work carried out, or anything regarding your HVAC system, please don&rsquo;t hesitate to reach out. We&rsquo;re always happy to assist.') +
           p('Thank you again for your support!') +
           signature(b) +
@@ -181,7 +183,8 @@ const templates = {
            </div>` +
           detailBox('Payment summary', [
             ...(inv.receipt_number ? [{ icon: '&#129534;', label: 'Receipt', value: inv.receipt_number }] : []),
-            { icon: '&#128196;', label: 'Invoice', value: inv.invoice_number },
+            ...(inv.invoice_number ? [{ icon: '&#128196;', label: 'Invoice', value: inv.invoice_number }] : []),
+            ...(inv.description ? [{ icon: '&#128221;', label: 'For', value: inv.description }] : []),
             { icon: '&#128197;', label: 'Date', value: paidOn.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) },
             ...(inv.payment_method ? [{ icon: '&#128179;', label: 'Method', value: String(inv.payment_method).replace(/_/g, ' ') }] : []),
             { icon: '&#9989;', label: 'Amount paid', value: `<span style="color:${GREEN};">${money(inv.lastPayment || inv.total)}</span>` },

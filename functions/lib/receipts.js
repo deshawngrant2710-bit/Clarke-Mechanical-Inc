@@ -39,6 +39,30 @@ async function createForPayment({ invoice, payment, balanceAfter }) {
   return saved;
 }
 
+// Create a stand-alone receipt by hand (not tied to an invoice/payment) — e.g. a
+// cash walk-in. Never auto-sends; the office sends it from the Receipts page.
+async function createManual({ customer_id, customer_name, amount, method, reference, description, paid_at }) {
+  const id = uuid();
+  const receipt_number = await nextReceiptNumber();
+  return create('receipts', id, {
+    receipt_number,
+    invoice_id: null,
+    invoice_number: null,
+    customer_id: customer_id || null,
+    customer_name: (customer_name || '').trim() || null, // snapshot for walk-ins without a customer record
+    payment_id: null,
+    amount: Math.round((Number(amount) || 0) * 100) / 100,
+    method: method || 'cash',
+    reference: (reference || '').trim() || null,
+    description: (description || '').trim() || null,
+    paid_at: paid_at || new Date().toISOString(),
+    invoice_total: Math.round((Number(amount) || 0) * 100) / 100,
+    balance_after: 0,
+    source: 'manual',
+    emailed_at: null,
+  });
+}
+
 // Everything needed to render/print one receipt: the receipt, its invoice and
 // the customer it belongs to.
 async function loadFull(receiptId) {
@@ -51,4 +75,4 @@ async function loadFull(receiptId) {
   return { receipt, invoice, customer };
 }
 
-module.exports = { createForPayment, nextReceiptNumber, loadFull, START_NUMBER };
+module.exports = { createForPayment, createManual, nextReceiptNumber, loadFull, START_NUMBER };

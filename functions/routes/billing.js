@@ -256,35 +256,46 @@ router.post('/quotes/:id/convert-to-job', async (req, res) => {
 // Emails a receipt to the customer right after a payment is recorded. Runs in the
 // background — the office never waits on it, and a failure is logged, not thrown.
 // Turn it off with the `receipts_autosend_enabled` setting.
-async function emailReceipt(receipt, invoice) {
+// Email a receipt. Works for payment receipts (with an invoice) and manual,
+// stand-alone receipts (no invoice). `opts.force` sends even when auto-send is
+// off (used by the "Email" button). Returns { ok, reason }.
+async function emailReceipt(receipt, invoice, opts = {}) {
   try {
-    if ((await settings.get('receipts_autosend_enabled')) === '0') return;
-    if (!invoice.customer_id) return;
-    const customer = await getById('customers', invoice.customer_id);
-    if (!customer?.email) return;
+    if (!opts.force && (await settings.get('receipts_autosend_enabled')) === '0') return { ok: false, reason: 'autosend_off' };
+    const customerId = invoice?.customer_id || receipt.customer_id || null;
+    const customer = customerId ? await getById('customers', customerId) : null;
+    if (!customer?.email) return { ok: false, reason: 'no_email' };
 
     const entity = {
-      ...invoice,
+      ...(invoice || {}),
       customer_name: customer.name,
       receipt_number: receipt.receipt_number,
+      invoice_number: invoice?.invoice_number || null,
+      description: receipt.description || null,
       lastPayment: receipt.amount,
       amountPaid: receipt.amount,
-      balance_after: receipt.balance_after,
+      balance_after: receipt.balance_after || 0,
       paid_at: receipt.paid_at,
       payment_method: receipt.method,
+      total: invoice?.total || receipt.amount,
+      items: invoice?.items || (receipt.description ? [{ description: receipt.description, total: receipt.amount }] : []),
+      customer_id: customerId,
     };
     const { subject, html } = await render('receipt', entity);
-    const attachments = await buildAttachment('receipt', { ...invoice, customer_id: invoice.customer_id }, { receipt });
+    let attachments = [];
+    try { attachments = await buildAttachment('receipt', { ...entity, customer_id: customerId }, { receipt }); }
+    catch (e) { console.error('[billing] receipt attachment:', e.message); }
     await sendMail({
       type: 'receipt', to: customer.email, toName: customer.name, subject, html,
-      relatedId: receipt.id, customerId: invoice.customer_id, sentBy: 'Automated', attachments,
+      relatedId: receipt.id, customerId, sentBy: opts.sentBy || 'Automated', attachments,
     });
     await update('receipts', receipt.id, { emailed_at: new Date().toISOString() });
 
     const biz = (await settings.get('business_name')) || 'Clarke Mechanical';
     await notifyCustomerBySms(customer,
       `${biz}: payment of ${money(receipt.amount)} received — thank you. Receipt ${receipt.receipt_number}.${receipt.balance_after > 0 ? ` Balance remaining ${money(receipt.balance_after)}.` : ''} Reply STOP to opt out.`);
-  } catch (e) { console.error('[billing] receipt email failed:', e.message); }
+    return { ok: true };
+  } catch (e) { console.error('[billing] receipt email failed:', e.message); return { ok: false, reason: e.message }; }
 }
 
 /* ---------------- PAYMENTS ---------------- */
@@ -343,6 +354,23 @@ router.delete('/payments/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /billing/receipts — create a receipt by hand (cash walk-in, etc.).
+// Deliberately does NOT send anything — the office sends it later from the
+// Receipts page (Email / WhatsApp), only when they choose to.
+router.post('/receipts', async (req, res) => {
+  const b = req.body || {};
+  if (!(Number(b.amount) > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+  let customer_name = b.customer_name;
+  if (b.customer_id) { const c = await getById('customers', b.customer_id); if (c) customer_name = c.name; }
+  if (!b.customer_id && !(customer_name || '').trim()) return res.status(400).json({ error: 'Choose a customer or type a name' });
+  const receipt = await receipts.createManual({
+    customer_id: b.customer_id || null, customer_name,
+    amount: b.amount, method: b.method, reference: b.reference,
+    description: b.description, paid_at: b.paid_at,
+  });
+  res.status(201).json(receipt);
+});
+
 // GET /billing/receipts — every receipt issued, newest first (Receipts page + CSV).
 router.get('/receipts', async (req, res) => {
   const [rows, customers] = await Promise.all([list('receipts'), nameMap('customers')]);
@@ -359,12 +387,14 @@ router.get('/receipts/:id', async (req, res) => {
   res.json(full);
 });
 
-// POST /billing/receipts/:id/email — re-send a receipt on request.
+// POST /billing/receipts/:id/email — send (or re-send) a receipt on request.
+// Works for payment receipts and manual ones; always sends (force), since the
+// office explicitly asked for it.
 router.post('/receipts/:id/email', async (req, res) => {
   const full = await receipts.loadFull(req.params.id);
   if (!full) return res.status(404).json({ error: 'Receipt not found' });
-  if (!full.invoice) return res.status(400).json({ error: 'The linked invoice no longer exists' });
-  await emailReceipt(full.receipt, full.invoice);
+  const r = await emailReceipt(full.receipt, full.invoice, { force: true, sentBy: req.user?.name || 'Office' });
+  if (!r?.ok) return res.status(400).json({ error: r?.reason === 'no_email' ? 'This customer has no email address on file.' : 'Could not send the receipt email.' });
   res.json({ success: true });
 });
 
