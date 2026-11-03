@@ -26,42 +26,47 @@ async function matchCustomer(num) {
   return c ? { customer_id: c.id, customer_name: c.business_name || c.name || null } : {};
 }
 
-// ---- Normalizers (tolerant of Quo/OpenPhone envelope variations) ----
-function normMessage(obj, type) {
-  const dir = String(obj.direction || '').toLowerCase();
+// ---- Normalizers. Quo nests the item in data.resource and carries the phone
+// numbers as data.senderIdentifier + data.recipientIdentifiers[]. We also accept
+// the older data.object / from / to shape, to be safe. ----
+const senderOf = (data, r) => e164(data.senderIdentifier || r.from || r.participant);
+const recipientOf = (data, r) => e164((Array.isArray(data.recipientIdentifiers) && data.recipientIdentifiers[0]) || (Array.isArray(r.to) ? r.to[0] : r.to));
+
+function normMessage(data, r, type) {
+  const dir = String(r.direction || data.direction || '').toLowerCase();
   const direction = dir.includes('out') ? 'out' : dir.includes('in') ? 'in' : (type.includes('received') ? 'in' : 'out');
-  const from = e164(obj.from);
-  const toArr = Array.isArray(obj.to) ? obj.to : [obj.to];
-  const to = e164(toArr[0]);
-  const contact = direction === 'in' ? from : to;
+  const sender = senderOf(data, r);
+  const recipient = recipientOf(data, r);
   return {
-    quo_id: obj.id || null, direction, contact, from, to,
-    body: obj.text || obj.body || obj.content || '',
-    status: obj.status || (direction === 'in' ? 'received' : 'sent'),
-    at: obj.createdAt || obj.created_at || nowISO(),
+    quo_id: r.id || data.id || null, direction,
+    contact: direction === 'in' ? sender : recipient,
+    from: sender, to: recipient,
+    body: r.text || r.body || r.content || '',
+    status: r.status || (direction === 'in' ? 'received' : 'sent'),
+    at: r.createdAt || data.createdAt || nowISO(),
   };
 }
-function callStatus(obj) {
-  const s = String(obj.status || '').toLowerCase();
-  if (obj.voicemailUrl || obj.voicemail_url || s.includes('voicemail')) return 'voicemail';
-  if (/missed|no-?answer|unanswered|declined|rejected/.test(s)) return 'missed';
-  if (String(obj.direction || '').toLowerCase().includes('in') && (Number(obj.duration) || 0) === 0 && s && s !== 'completed') return 'missed';
+function callStatus(r) {
+  const s = String(r.status || '').toLowerCase();
+  if (r.voicemailUrl || r.voicemail_url || s.includes('voicemail')) return 'voicemail';
+  if (/missed|no-?answer|unanswered|declined|rejected|busy/.test(s)) return 'missed';
+  if (String(r.direction || '').toLowerCase().includes('in') && (Number(r.duration) || 0) === 0 && s && s !== 'completed') return 'missed';
   return 'answered';
 }
-function normCall(obj) {
-  const dir = String(obj.direction || '').toLowerCase();
+function normCall(data, r) {
+  const dir = String(r.direction || data.direction || '').toLowerCase();
   const direction = dir.includes('out') ? 'out' : 'in';
-  const from = e164(obj.from);
-  const toArr = Array.isArray(obj.to) ? obj.to : [obj.to];
-  const to = e164(toArr[0]);
-  const contact = direction === 'in' ? from : to;
+  const sender = senderOf(data, r);
+  const recipient = recipientOf(data, r);
   return {
-    quo_id: obj.id || null, direction, contact, from, to,
-    status: callStatus(obj),
-    duration: Number(obj.duration || obj.completedDuration || 0) || 0,
-    recording_url: obj.recordingUrl || obj.recording_url || null,
-    voicemail_url: obj.voicemailUrl || obj.voicemail_url || null,
-    at: obj.createdAt || obj.answeredAt || obj.completedAt || nowISO(),
+    quo_id: r.id || data.id || null, direction,
+    contact: direction === 'in' ? sender : recipient,
+    from: sender, to: recipient,
+    status: callStatus(r),
+    duration: Number(r.duration || r.completedDuration || 0) || 0,
+    recording_url: r.recordingUrl || r.recording_url || null,
+    voicemail_url: r.voicemailUrl || r.voicemail_url || null,
+    at: r.createdAt || data.createdAt || r.answeredAt || r.completedAt || nowISO(),
   };
 }
 
@@ -90,9 +95,10 @@ async function handleWebhook(req, res) {
     try { await create('comm_debug', uuid(), { at: nowISO(), raw: JSON.stringify(req.body || {}).slice(0, 6000) }); } catch {}
     const body = req.body || {};
     const type = String(body.type || body.event || '').toLowerCase();
-    const obj = body.data?.object || body.data || body.object || body;
+    const data = body.data || {};
+    const resource = data.resource || data.object || data;
     if (type.startsWith('message')) {
-      const m = normMessage(obj, type);
+      const m = normMessage(data, resource, type);
       if (m.contact) {
         const match = await matchCustomer(m.contact);
         await upsertMessage({ ...m, ...match });
@@ -101,7 +107,7 @@ async function handleWebhook(req, res) {
         }
       }
     } else if (type.startsWith('call')) {
-      const c = normCall(obj);
+      const c = normCall(data, resource);
       if (c.contact) {
         const match = await matchCustomer(c.contact);
         await upsertCall({ ...c, ...match });
