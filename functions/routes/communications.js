@@ -71,11 +71,11 @@ function normCall(data, r) {
 }
 
 async function upsertMessage(m) {
-  if (m.quo_id) { const ex = await findWhere('comm_messages', 'quo_id', m.quo_id); if (ex[0]) return update('comm_messages', ex[0].id, { status: m.status }); }
+  if (m.quo_id) { try { const ex = await findWhere('comm_messages', 'quo_id', m.quo_id); if (ex[0]) return update('comm_messages', ex[0].id, { status: m.status }); } catch {} }
   return create('comm_messages', uuid(), { ...m, read: m.direction === 'out', created_at: nowISO() });
 }
 async function upsertCall(c) {
-  if (c.quo_id) { const ex = await findWhere('comm_calls', 'quo_id', c.quo_id); if (ex[0]) return update('comm_calls', ex[0].id, { status: c.status, duration: c.duration, recording_url: c.recording_url, voicemail_url: c.voicemail_url }); }
+  if (c.quo_id) { try { const ex = await findWhere('comm_calls', 'quo_id', c.quo_id); if (ex[0]) return update('comm_calls', ex[0].id, { status: c.status, duration: c.duration, recording_url: c.recording_url, voicemail_url: c.voicemail_url }); } catch {} }
   return create('comm_calls', uuid(), { ...c, created_at: nowISO() });
 }
 
