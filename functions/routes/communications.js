@@ -96,9 +96,16 @@ async function handleWebhook(req, res) {
     const type = String(body.type || body.event || '').toLowerCase();
     dbg.type = type;
     const data = body.data || {};
-    const resource = data.resource || data.object || data;
+    // Identifiers and the resource can live at data.* or body.* depending on
+    // event — merge so lookups work either way.
+    const ctx = { ...body, ...data };
+    const resource = data.resource || body.resource || data.object || data;
+    dbg.ctxKeys = Object.keys(ctx);
+    dbg.sid = ctx.senderIdentifier;
+    dbg.rid = JSON.stringify(ctx.recipientIdentifiers);
+    dbg.resKeys = Object.keys(resource || {});
     if (type.startsWith('message')) {
-      const m = normMessage(data, resource, type);
+      const m = normMessage(ctx, resource, type);
       dbg.contact = m.contact; dbg.direction = m.direction; dbg.body = (m.body || '').slice(0, 40);
       if (m.contact) {
         const match = await matchCustomer(m.contact);
@@ -109,7 +116,7 @@ async function handleWebhook(req, res) {
         }
       } else { dbg.outcome = 'no_contact'; }
     } else if (type.startsWith('call')) {
-      const c = normCall(data, resource);
+      const c = normCall(ctx, resource);
       dbg.contact = c.contact; dbg.direction = c.direction; dbg.callStatus = c.status;
       if (c.contact) {
         const match = await matchCustomer(c.contact);
