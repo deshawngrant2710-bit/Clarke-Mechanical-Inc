@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award, Landmark, FileStack, HardHat,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award, Landmark, FileStack, HardHat, Phone,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -29,6 +29,7 @@ export const NAV_GROUPS = [
       { to: '/pipeline', label: 'Pipeline', icon: Filter, roles: ['admin', 'office', 'leads'] },
       { to: '/points', label: 'Points', icon: Award, roles: ['admin', 'office', 'leads'] },
       { to: '/support', label: 'Support', icon: MessagesSquare, roles: ['admin', 'office'] },
+      { to: '/messages', label: 'Messages & Calls', icon: Phone, roles: ['admin', 'office'] },
       { to: '/jobs', label: 'Jobs', icon: Briefcase, roles: STAFF },
       { to: '/dispatch', label: 'Dispatch', icon: Columns3, roles: ['admin', 'office'] },
       { to: '/schedule', label: 'Schedule', icon: Calendar, roles: STAFF },
