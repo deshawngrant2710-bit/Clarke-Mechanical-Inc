@@ -75,13 +75,16 @@ async function upsertCall(c) {
 }
 
 /* ============ WEBHOOK (no auth — guarded by shared key) ============ */
-// POST /api/comms/quo-webhook?key=QUO_WEBHOOK_KEY
+// Quo (OpenPhone) doesn't allow a "?query" in webhook URLs, so the key is taken
+// from the PATH: POST /api/comms/quo-webhook/<QUO_WEBHOOK_KEY>
+// (a ?key= / x-quo-key header is still accepted for flexibility).
 // Register in Quo for: message.received, message.delivered, call.completed,
 // call.recording.completed. Always answers 200 so Quo doesn't retry-storm.
-router.post('/quo-webhook', async (req, res) => {
+async function handleWebhook(req, res) {
   const key = process.env.QUO_WEBHOOK_KEY;
   if (!key) return res.status(404).json({ error: 'Not found' });
-  if ((req.query.key || req.headers['x-quo-key'] || '') !== key) return res.status(401).json({ error: 'Unauthorized' });
+  const provided = req.params.key || req.query.key || req.headers['x-quo-key'] || '';
+  if (provided !== key) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const body = req.body || {};
     const type = String(body.type || body.event || '').toLowerCase();
@@ -107,7 +110,9 @@ router.post('/quo-webhook', async (req, res) => {
     }
     res.json({ ok: true });
   } catch (e) { console.error('[comms] webhook:', e.message); res.json({ ok: true }); }
-});
+}
+router.post('/quo-webhook/:key', handleWebhook); // preferred (no query string)
+router.post('/quo-webhook', handleWebhook);       // legacy (?key= / header)
 
 /* ============ APP API (staff auth) ============ */
 router.use(authMiddleware, requireRole('admin', 'office'));
