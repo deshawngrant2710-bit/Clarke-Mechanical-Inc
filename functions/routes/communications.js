@@ -71,12 +71,12 @@ function normCall(data, r) {
 }
 
 async function upsertMessage(m) {
-  if (m.quo_id) { try { const ex = await findWhere('comm_messages', 'quo_id', m.quo_id); if (ex[0]) return update('comm_messages', ex[0].id, { status: m.status }); } catch {} }
-  return create('comm_messages', uuid(), { ...m, read: m.direction === 'out', created_at: nowISO() });
+  if (m.quo_id) { try { const ex = await findWhere('comm_messages', 'quo_id', m.quo_id); if (ex[0]) return { saved: await update('comm_messages', ex[0].id, { status: m.status }), isNew: false }; } catch {} }
+  return { saved: await create('comm_messages', uuid(), { ...m, read: m.direction === 'out', created_at: nowISO() }), isNew: true };
 }
 async function upsertCall(c) {
-  if (c.quo_id) { try { const ex = await findWhere('comm_calls', 'quo_id', c.quo_id); if (ex[0]) return update('comm_calls', ex[0].id, { status: c.status, duration: c.duration, recording_url: c.recording_url, voicemail_url: c.voicemail_url }); } catch {} }
-  return create('comm_calls', uuid(), { ...c, created_at: nowISO() });
+  if (c.quo_id) { try { const ex = await findWhere('comm_calls', 'quo_id', c.quo_id); if (ex[0]) return { saved: await update('comm_calls', ex[0].id, { status: c.status, duration: c.duration, recording_url: c.recording_url, voicemail_url: c.voicemail_url }), isNew: false }; } catch {} }
+  return { saved: await create('comm_calls', uuid(), { ...c, created_at: nowISO() }), isNew: true };
 }
 
 /* ============ WEBHOOK (no auth — guarded by shared key) ============ */
@@ -111,10 +111,10 @@ async function handleWebhook(req, res) {
       dbg.contact = m.contact; dbg.direction = m.direction; dbg.body = (m.body || '').slice(0, 40);
       if (m.contact) {
         const match = await matchCustomer(m.contact);
-        const saved = await upsertMessage({ ...m, ...match });
+        const { saved, isNew } = await upsertMessage({ ...m, ...match });
         dbg.outcome = 'stored_message'; dbg.saved_id = saved?.id || null;
-        if (m.direction === 'in') {
-          try { await notify({ type: 'message', title: `New text — ${match.customer_name || m.contact}`, body: (m.body || '').slice(0, 120), link: '/messages', roles: ['admin', 'office'] }); } catch {}
+        if (m.direction === 'in' && isNew) {
+          try { await notify({ type: 'message', title: `New text — ${match.customer_name || m.contact}`, body: (m.body || '').slice(0, 160), link: '/messages', roles: ['admin', 'office'] }); } catch (e) { console.error('[comms] notify:', e.message); }
         }
       } else { dbg.outcome = 'no_contact'; }
     } else if (type.startsWith('call')) {
@@ -122,10 +122,10 @@ async function handleWebhook(req, res) {
       dbg.contact = c.contact; dbg.direction = c.direction; dbg.callStatus = c.status;
       if (c.contact) {
         const match = await matchCustomer(c.contact);
-        await upsertCall({ ...c, ...match });
+        const { isNew } = await upsertCall({ ...c, ...match });
         dbg.outcome = 'stored_call';
-        if (c.direction === 'in' && c.status === 'missed') {
-          try { await notify({ type: 'call', title: `Missed call — ${match.customer_name || c.contact}`, link: '/messages', roles: ['admin', 'office'] }); } catch {}
+        if (c.direction === 'in' && c.status === 'missed' && isNew) {
+          try { await notify({ type: 'call', title: `Missed call — ${match.customer_name || c.contact}`, body: `Missed call from ${match.customer_name || c.contact}`, link: '/messages', roles: ['admin', 'office'] }); } catch (e) { console.error('[comms] notify:', e.message); }
         }
       } else { dbg.outcome = 'no_contact'; }
     } else { dbg.outcome = 'unhandled_type'; }
