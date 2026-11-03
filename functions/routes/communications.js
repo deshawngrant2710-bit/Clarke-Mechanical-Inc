@@ -90,34 +90,42 @@ async function handleWebhook(req, res) {
   if (!key) return res.status(404).json({ error: 'Not found' });
   const provided = req.params.key || req.query.key || req.headers['x-quo-key'] || '';
   if (provided !== key) return res.status(401).json({ error: 'Unauthorized' });
+  const dbg = { at: nowISO(), outcome: 'init' };
   try {
-    // Keep the last raw payloads for debugging the exact Quo shape.
-    try { await create('comm_debug', uuid(), { at: nowISO(), raw: JSON.stringify(req.body || {}).slice(0, 6000) }); } catch {}
     const body = req.body || {};
     const type = String(body.type || body.event || '').toLowerCase();
+    dbg.type = type;
     const data = body.data || {};
     const resource = data.resource || data.object || data;
     if (type.startsWith('message')) {
       const m = normMessage(data, resource, type);
+      dbg.contact = m.contact; dbg.direction = m.direction; dbg.body = (m.body || '').slice(0, 40);
       if (m.contact) {
         const match = await matchCustomer(m.contact);
-        await upsertMessage({ ...m, ...match });
+        const saved = await upsertMessage({ ...m, ...match });
+        dbg.outcome = 'stored_message'; dbg.saved_id = saved?.id || null;
         if (m.direction === 'in') {
           try { await notify({ type: 'message', title: `New text — ${match.customer_name || m.contact}`, body: (m.body || '').slice(0, 120), link: '/messages', roles: ['admin', 'office'] }); } catch {}
         }
-      }
+      } else { dbg.outcome = 'no_contact'; }
     } else if (type.startsWith('call')) {
       const c = normCall(data, resource);
+      dbg.contact = c.contact; dbg.direction = c.direction; dbg.callStatus = c.status;
       if (c.contact) {
         const match = await matchCustomer(c.contact);
         await upsertCall({ ...c, ...match });
+        dbg.outcome = 'stored_call';
         if (c.direction === 'in' && c.status === 'missed') {
           try { await notify({ type: 'call', title: `Missed call — ${match.customer_name || c.contact}`, link: '/messages', roles: ['admin', 'office'] }); } catch {}
         }
-      }
-    }
-    res.json({ ok: true });
-  } catch (e) { console.error('[comms] webhook:', e.message); res.json({ ok: true }); }
+      } else { dbg.outcome = 'no_contact'; }
+    } else { dbg.outcome = 'unhandled_type'; }
+  } catch (e) {
+    dbg.outcome = 'ERROR'; dbg.error = e.message; dbg.stack = (e.stack || '').split('\n').slice(0, 3).join(' | ');
+    console.error('[comms] webhook:', e.message);
+  }
+  try { await create('comm_debug', uuid(), { at: dbg.at, raw: JSON.stringify(dbg) }); } catch {}
+  res.json({ ok: true });
 }
 router.post('/quo-webhook/:key', handleWebhook); // preferred (no query string)
 router.post('/quo-webhook', handleWebhook);       // legacy (?key= / header)
