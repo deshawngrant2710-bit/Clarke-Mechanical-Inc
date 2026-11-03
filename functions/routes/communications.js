@@ -126,8 +126,15 @@ router.post('/quo-webhook', handleWebhook);       // legacy (?key= / header)
 // opened straight in a browser). Remove later.
 router.get('/quo-webhook-debug/:key', async (req, res) => {
   if (!process.env.QUO_WEBHOOK_KEY || req.params.key !== process.env.QUO_WEBHOOK_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  const rows = (await list('comm_debug')).sort((a, b) => (b.at || '').localeCompare(a.at || '')).slice(0, 10);
-  res.json(rows.map(r => ({ at: r.at, raw: r.raw })));
+  const [dbg, msgs, calls] = await Promise.all([list('comm_debug'), list('comm_messages'), list('comm_calls')]);
+  const recent = (arr) => arr.sort((a, b) => (b.at || b.created_at || '').localeCompare(a.at || a.created_at || '')).slice(0, 8);
+  res.json({
+    stored_messages: msgs.length,
+    stored_calls: calls.length,
+    recent_messages: recent(msgs).map(m => ({ at: m.at, direction: m.direction, contact: m.contact, body: m.body, customer: m.customer_name })),
+    recent_calls: recent(calls).map(c => ({ at: c.at, direction: c.direction, status: c.status, contact: c.contact })),
+    recent_raw: recent(dbg).map(r => ({ at: r.at, raw: r.raw })),
+  });
 });
 
 /* ============ APP API (staff auth) ============ */
