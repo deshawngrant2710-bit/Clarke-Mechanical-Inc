@@ -118,6 +118,7 @@ async function handleWebhook(req, res) {
         }
       } else { dbg.outcome = 'no_contact'; }
     } else if (type.startsWith('call')) {
+      dbg.raw = JSON.stringify(body).slice(0, 3500); // full call payload, to map its fields
       const c = normCall(ctx, resource);
       dbg.contact = c.contact; dbg.direction = c.direction; dbg.callStatus = c.status;
       if (c.contact) {
