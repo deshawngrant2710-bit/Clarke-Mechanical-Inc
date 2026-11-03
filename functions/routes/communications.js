@@ -96,9 +96,11 @@ async function handleWebhook(req, res) {
     const type = String(body.type || body.event || '').toLowerCase();
     dbg.type = type;
     const data = body.data || {};
-    // Identifiers and the resource can live at data.* or body.* depending on
-    // event — merge so lookups work either way.
-    const ctx = { ...body, ...data };
+    // Quo puts the phone numbers in data.context (senderIdentifier /
+    // recipientIdentifiers) and the message/call in data.resource. Merge all
+    // levels so the lookups work regardless of nesting.
+    const context = data.context || {};
+    const ctx = { ...body, ...data, ...context };
     const resource = data.resource || body.resource || data.object || data;
     dbg.ctxKeys = Object.keys(ctx);
     dbg.sid = ctx.senderIdentifier;
