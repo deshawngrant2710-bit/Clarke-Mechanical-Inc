@@ -48,25 +48,31 @@ function normMessage(data, r, type) {
 }
 function callStatus(r) {
   const s = String(r.status || '').toLowerCase();
-  if (r.voicemailUrl || r.voicemail_url || s.includes('voicemail')) return 'voicemail';
-  if (/missed|no-?answer|unanswered|declined|rejected|busy/.test(s)) return 'missed';
-  if (String(r.direction || '').toLowerCase().includes('in') && (Number(r.duration) || 0) === 0 && s && s !== 'completed') return 'missed';
+  if (s === 'answered' || s === 'completed') return 'answered';
+  if (r.hasVoicemail || s.includes('voicemail')) return 'voicemail';
+  if (/missed|no-?answer|unanswered|declined|rejected|busy|cancel/.test(s)) return 'missed';
+  if (String(r.direction || '').toLowerCase().includes('in') && (Number(r.duration) || 0) === 0) return 'missed';
   return 'answered';
 }
-function normCall(data, r) {
-  const dir = String(r.direction || data.direction || '').toLowerCase();
+// For calls, Quo puts the parties in data.context.participants:
+//   external = the outside number (customer), workspace = our Quo number(s).
+function normCall(ctx, r) {
+  const dir = String(r.direction || ctx.direction || '').toLowerCase();
   const direction = dir.includes('out') ? 'out' : 'in';
-  const sender = senderOf(data, r);
-  const recipient = recipientOf(data, r);
+  const p = ctx.participants || {};
+  const external = e164((Array.isArray(p.external) && p.external[0]) || ctx.senderIdentifier || r.from);
+  const workspace = e164((Array.isArray(p.workspace) && p.workspace[0]) || (Array.isArray(ctx.recipientIdentifiers) && ctx.recipientIdentifiers[0]));
+  const rec = Array.isArray(r.recordings) ? r.recordings[0] : null;
   return {
-    quo_id: r.id || data.id || null, direction,
-    contact: direction === 'in' ? sender : recipient,
-    from: sender, to: recipient,
+    quo_id: r.id || ctx.id || null, direction,
+    contact: external,                                   // the customer is always the contact
+    from: direction === 'in' ? external : workspace,
+    to: direction === 'in' ? workspace : external,
     status: callStatus(r),
     duration: Number(r.duration || r.completedDuration || 0) || 0,
-    recording_url: r.recordingUrl || r.recording_url || null,
-    voicemail_url: r.voicemailUrl || r.voicemail_url || null,
-    at: r.createdAt || data.createdAt || r.answeredAt || r.completedAt || nowISO(),
+    recording_url: r.recordingUrl || rec?.url || rec?.recordingUrl || null,
+    voicemail_url: r.voicemailUrl || (r.hasVoicemail ? (ctx.links?.quo || null) : null),
+    at: r.createdAt || r.answeredAt || r.completedAt || nowISO(),
   };
 }
 
@@ -117,19 +123,20 @@ async function handleWebhook(req, res) {
           try { await notify({ type: 'message', title: `New text — ${match.customer_name || m.contact}`, body: (m.body || '').slice(0, 160), link: '/messages', roles: ['admin', 'office'] }); } catch (e) { console.error('[comms] notify:', e.message); }
         }
       } else { dbg.outcome = 'no_contact'; }
-    } else if (type.startsWith('call')) {
-      dbg.raw = JSON.stringify(body).slice(0, 3500); // full call payload, to map its fields
+    } else if (type === 'call.completed' || type === 'call.recording.completed') {
+      // These two carry the call + its recording. Transcript/summary/ringing are
+      // skipped (call.summary is handled by the Sona route).
       const c = normCall(ctx, resource);
       dbg.contact = c.contact; dbg.direction = c.direction; dbg.callStatus = c.status;
       if (c.contact) {
         const match = await matchCustomer(c.contact);
         const { isNew } = await upsertCall({ ...c, ...match });
         dbg.outcome = 'stored_call';
-        if (c.direction === 'in' && c.status === 'missed' && isNew) {
+        if (c.direction === 'in' && (c.status === 'missed' || c.status === 'voicemail') && isNew) {
           try { await notify({ type: 'call', title: `Missed call — ${match.customer_name || c.contact}`, body: `Missed call from ${match.customer_name || c.contact}`, link: '/messages', roles: ['admin', 'office'] }); } catch (e) { console.error('[comms] notify:', e.message); }
         }
       } else { dbg.outcome = 'no_contact'; }
-    } else { dbg.outcome = 'unhandled_type'; }
+    } else { dbg.outcome = 'skipped_' + type; }
   } catch (e) {
     dbg.outcome = 'ERROR'; dbg.error = e.message; dbg.stack = (e.stack || '').split('\n').slice(0, 3).join(' | ');
     console.error('[comms] webhook:', e.message);
