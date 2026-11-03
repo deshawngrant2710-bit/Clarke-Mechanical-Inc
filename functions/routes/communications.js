@@ -86,6 +86,8 @@ async function handleWebhook(req, res) {
   const provided = req.params.key || req.query.key || req.headers['x-quo-key'] || '';
   if (provided !== key) return res.status(401).json({ error: 'Unauthorized' });
   try {
+    // Keep the last raw payloads for debugging the exact Quo shape.
+    try { await create('comm_debug', uuid(), { at: nowISO(), raw: JSON.stringify(req.body || {}).slice(0, 6000) }); } catch {}
     const body = req.body || {};
     const type = String(body.type || body.event || '').toLowerCase();
     const obj = body.data?.object || body.data || body.object || body;
@@ -113,6 +115,14 @@ async function handleWebhook(req, res) {
 }
 router.post('/quo-webhook/:key', handleWebhook); // preferred (no query string)
 router.post('/quo-webhook', handleWebhook);       // legacy (?key= / header)
+
+// Temporary debug: view the last raw payloads Quo sent (key-guarded, so it can be
+// opened straight in a browser). Remove later.
+router.get('/quo-webhook-debug/:key', async (req, res) => {
+  if (!process.env.QUO_WEBHOOK_KEY || req.params.key !== process.env.QUO_WEBHOOK_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  const rows = (await list('comm_debug')).sort((a, b) => (b.at || '').localeCompare(a.at || '')).slice(0, 10);
+  res.json(rows.map(r => ({ at: r.at, raw: r.raw })));
+});
 
 /* ============ APP API (staff auth) ============ */
 router.use(authMiddleware, requireRole('admin', 'office'));
