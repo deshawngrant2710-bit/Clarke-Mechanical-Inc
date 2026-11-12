@@ -10,6 +10,7 @@ import {
 import { Plus, Search, Briefcase, CalendarDays, AlertTriangle, CheckCircle, Clock, Wrench, ChevronRight, Copy, Lock, User, DollarSign, X, Bot } from 'lucide-react';
 
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import { useAuth } from '../context/AuthContext';
 
 // Small badge marking a job that came in through the Sona AI phone agent.
 const AiLead = () => (
@@ -105,6 +106,10 @@ export default function Jobs() {
   const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const { user } = useAuth();
+  // Creating jobs and (re)assigning technicians are office/admin actions.
+  // Technicians can view jobs but shouldn't see these controls.
+  const canManage = ['admin', 'office'].includes(user?.role);
 
   async function duplicateJob(e, job) {
     e.stopPropagation();
@@ -180,7 +185,7 @@ export default function Jobs() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Jobs" subtitle={`${jobs.length} total work orders`} icon={<Briefcase size={20} />}>
-        <Btn onClick={() => setModal(true)}><Plus size={16} /> New Job</Btn>
+        {canManage && <Btn onClick={() => setModal(true)}><Plus size={16} /> New Job</Btn>}
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -209,7 +214,7 @@ export default function Jobs() {
           <Empty icon={<Briefcase size={28} />}
             title={search || statusFilter ? 'No matching jobs' : 'No jobs yet'}
             message={search || statusFilter ? 'Try adjusting your search or filters.' : 'Create your first work order to dispatch a technician.'}
-            action={!search && !statusFilter && <Btn onClick={() => setModal(true)}><Plus size={16} /> New Job</Btn>} />
+            action={canManage && !search && !statusFilter && <Btn onClick={() => setModal(true)}><Plus size={16} /> New Job</Btn>} />
         ) : (
           <>
           {/* Desktop: table */}
@@ -229,11 +234,11 @@ export default function Jobs() {
                 </Cell>
                 <Cell><span className="text-sm text-slate-600">{job.customer_name || <span className="text-slate-300">—</span>}</span></Cell>
                 <Cell>
-                  {job.status === 'completed' ? (
-                    // Technician is locked once the job is completed.
-                    <span className="text-sm text-slate-600 inline-flex items-center gap-1.5" title="Locked — job completed">
+                  {(job.status === 'completed' || !canManage) ? (
+                    // Locked once completed; technicians see a read-only name (no reassigning).
+                    <span className="text-sm text-slate-600 inline-flex items-center gap-1.5" title={job.status === 'completed' ? 'Locked — job completed' : undefined}>
                       {job.technician_name || employees.find(u => u.id === job.technician_id)?.name || <span className="text-slate-300">—</span>}
-                      <Lock size={11} className="text-slate-300" />
+                      {job.status === 'completed' && <Lock size={11} className="text-slate-300" />}
                     </span>
                   ) : (
                     <div onClick={e => e.stopPropagation()}>
@@ -257,7 +262,7 @@ export default function Jobs() {
                 <Cell align="right"><Badge status={job.status} /></Cell>
                 <Cell align="right">
                   <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                    <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>
+                    {canManage && <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Copy size={15} /></button>}
                     <ChevronRight size={16} className="text-slate-300 inline" />
                   </div>
                 </Cell>
@@ -294,17 +299,17 @@ export default function Jobs() {
                     </div>
                   </div>
 
-                  {/* Technician — tap opens the assignment sheet */}
+                  {/* Technician — office/admin can tap to (re)assign; techs see it read-only */}
                   <div className="mt-2.5 flex items-center gap-2">
                     <button
-                      onClick={() => job.status !== 'completed' && setAssignJob(job)}
-                      disabled={job.status === 'completed'}
+                      onClick={() => canManage && job.status !== 'completed' && setAssignJob(job)}
+                      disabled={!canManage || job.status === 'completed'}
                       className={`flex-1 inline-flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border text-left ${job.technician_name ? 'border-slate-200 text-slate-700' : 'border-dashed border-slate-300 text-amber-600'} disabled:opacity-70`}>
                       <User size={14} className="text-slate-400 shrink-0" />
-                      <span className="truncate">{job.technician_name || employees.find(u => u.id === job.technician_id)?.name || 'Assign technician'}</span>
-                      {job.status === 'completed' ? <Lock size={12} className="text-slate-300 ml-auto shrink-0" /> : <ChevronRight size={14} className="text-slate-300 ml-auto shrink-0" />}
+                      <span className="truncate">{job.technician_name || employees.find(u => u.id === job.technician_id)?.name || (canManage ? 'Assign technician' : 'Unassigned')}</span>
+                      {job.status === 'completed' ? <Lock size={12} className="text-slate-300 ml-auto shrink-0" /> : canManage ? <ChevronRight size={14} className="text-slate-300 ml-auto shrink-0" /> : null}
                     </button>
-                    <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-lg transition-colors shrink-0"><Copy size={16} /></button>
+                    {canManage && <button onClick={e => duplicateJob(e, job)} title="Duplicate" className="text-slate-400 hover:text-slate-700 p-2 hover:bg-slate-100 rounded-lg transition-colors shrink-0"><Copy size={16} /></button>}
                   </div>
                 </div>
               );

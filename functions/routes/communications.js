@@ -96,11 +96,9 @@ async function handleWebhook(req, res) {
   if (!key) return res.status(404).json({ error: 'Not found' });
   const provided = req.params.key || req.query.key || req.headers['x-quo-key'] || '';
   if (provided !== key) return res.status(401).json({ error: 'Unauthorized' });
-  const dbg = { at: nowISO(), outcome: 'init' };
   try {
     const body = req.body || {};
     const type = String(body.type || body.event || '').toLowerCase();
-    dbg.type = type;
     const data = body.data || {};
     // Quo puts the phone numbers in data.context (senderIdentifier /
     // recipientIdentifiers) and the message/call in data.resource. Merge all
@@ -108,59 +106,34 @@ async function handleWebhook(req, res) {
     const context = data.context || {};
     const ctx = { ...body, ...data, ...context };
     const resource = data.resource || body.resource || data.object || data;
-    dbg.ctxKeys = Object.keys(ctx);
-    dbg.sid = ctx.senderIdentifier;
-    dbg.rid = JSON.stringify(ctx.recipientIdentifiers);
-    dbg.resKeys = Object.keys(resource || {});
     if (type.startsWith('message')) {
       const m = normMessage(ctx, resource, type);
-      dbg.contact = m.contact; dbg.direction = m.direction; dbg.body = (m.body || '').slice(0, 40);
       if (m.contact) {
         const match = await matchCustomer(m.contact);
-        const { saved, isNew } = await upsertMessage({ ...m, ...match });
-        dbg.outcome = 'stored_message'; dbg.saved_id = saved?.id || null;
+        const { isNew } = await upsertMessage({ ...m, ...match });
         if (m.direction === 'in' && isNew) {
           try { await notify({ type: 'message', title: `New text — ${match.customer_name || m.contact}`, body: (m.body || '').slice(0, 160), link: '/messages', roles: ['admin', 'office'] }); } catch (e) { console.error('[comms] notify:', e.message); }
         }
-      } else { dbg.outcome = 'no_contact'; }
+      }
     } else if (type === 'call.completed' || type === 'call.recording.completed') {
       // These two carry the call + its recording. Transcript/summary/ringing are
       // skipped (call.summary is handled by the Sona route).
       const c = normCall(ctx, resource);
-      dbg.contact = c.contact; dbg.direction = c.direction; dbg.callStatus = c.status;
       if (c.contact) {
         const match = await matchCustomer(c.contact);
         const { isNew } = await upsertCall({ ...c, ...match });
-        dbg.outcome = 'stored_call';
         if (c.direction === 'in' && (c.status === 'missed' || c.status === 'voicemail') && isNew) {
           try { await notify({ type: 'call', title: `Missed call — ${match.customer_name || c.contact}`, body: `Missed call from ${match.customer_name || c.contact}`, link: '/messages', roles: ['admin', 'office'] }); } catch (e) { console.error('[comms] notify:', e.message); }
         }
-      } else { dbg.outcome = 'no_contact'; }
-    } else { dbg.outcome = 'skipped_' + type; }
+      }
+    }
   } catch (e) {
-    dbg.outcome = 'ERROR'; dbg.error = e.message; dbg.stack = (e.stack || '').split('\n').slice(0, 3).join(' | ');
     console.error('[comms] webhook:', e.message);
   }
-  try { await create('comm_debug', uuid(), { at: dbg.at, raw: JSON.stringify(dbg) }); } catch {}
   res.json({ ok: true });
 }
 router.post('/quo-webhook/:key', handleWebhook); // preferred (no query string)
 router.post('/quo-webhook', handleWebhook);       // legacy (?key= / header)
-
-// Temporary debug: view the last raw payloads Quo sent (key-guarded, so it can be
-// opened straight in a browser). Remove later.
-router.get('/quo-webhook-debug/:key', async (req, res) => {
-  if (!process.env.QUO_WEBHOOK_KEY || req.params.key !== process.env.QUO_WEBHOOK_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  const [dbg, msgs, calls] = await Promise.all([list('comm_debug'), list('comm_messages'), list('comm_calls')]);
-  const recent = (arr) => arr.sort((a, b) => (b.at || b.created_at || '').localeCompare(a.at || a.created_at || '')).slice(0, 8);
-  res.json({
-    stored_messages: msgs.length,
-    stored_calls: calls.length,
-    recent_messages: recent(msgs).map(m => ({ at: m.at, direction: m.direction, contact: m.contact, body: m.body, customer: m.customer_name })),
-    recent_calls: recent(calls).map(c => ({ at: c.at, direction: c.direction, status: c.status, contact: c.contact })),
-    recent_raw: recent(dbg).map(r => ({ at: r.at, raw: r.raw })),
-  });
-});
 
 /* ============ APP API (staff auth) ============ */
 router.use(authMiddleware, requireRole('admin', 'office'));

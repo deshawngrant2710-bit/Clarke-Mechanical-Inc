@@ -186,7 +186,7 @@ router.get('/:id', async (req, res) => {
   });
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('admin', 'office'), async (req, res) => {
   const b = req.body;
   if (!b.title) return res.status(400).json({ error: 'Title is required' });
   const saved = await create('jobs', uuid(), {
@@ -221,8 +221,13 @@ router.put('/:id', async (req, res) => {
 
   const fields = ['title', 'description', 'customer_id', 'technician_id', 'additional_technician_ids', 'status', 'priority',
     'job_type', 'scheduled_date', 'scheduled_time', 'completed_date', 'address', 'notes', 'work_started_at', 'work_ended_at'];
+  // Technicians may only update their own progress fields — never (re)assign a
+  // tech, change the schedule, or move the job to another customer. This mirrors
+  // what Field Mode actually sends, so it changes nothing for the office/admin.
+  const TECH_FIELDS = ['status', 'notes', 'description', 'work_started_at', 'work_ended_at'];
+  const allowedFields = req.user.role === 'technician' ? fields.filter(f => TECH_FIELDS.includes(f)) : fields;
   const patch = {};
-  for (const f of fields) if (f in req.body) patch[f] = req.body[f] ?? null;
+  for (const f of allowedFields) if (f in req.body) patch[f] = req.body[f] ?? null;
   patch.updated_by = req.user.id;
   if (device) patch.updated_by_device = device;
   if ('additional_technician_ids' in patch) patch.additional_technician_ids = Array.isArray(patch.additional_technician_ids) ? patch.additional_technician_ids : [];

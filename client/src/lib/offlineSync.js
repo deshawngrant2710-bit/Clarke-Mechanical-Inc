@@ -244,7 +244,12 @@ export async function processQueue() {
 export async function warmCache() {
   if (!_api || !localStorage.getItem('token')) return { ok: 0, failed: 0 };
   state.warming = true; emit();
-  const core = ['/jobs', '/customers', '/employees', '/inspections', '/pricebook', '/billing/quotes', '/settings'];
+  // Everyone-who-can-go-offline needs these. Quotes + settings are office/admin
+  // only (they 403 for a technician), so only warm them for those roles —
+  // otherwise every technician session spams the console with 403s on launch.
+  const role = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null')?.role || null; } catch { return null; } })();
+  const core = ['/jobs', '/customers', '/employees', '/inspections', '/pricebook'];
+  if (role === 'admin' || role === 'office') core.push('/billing/quotes', '/settings');
   let ok = 0, failed = 0;
   for (const u of core) { try { await _api.get(u); ok++; } catch { failed++; } }
   try {

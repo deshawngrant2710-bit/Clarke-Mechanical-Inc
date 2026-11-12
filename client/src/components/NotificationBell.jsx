@@ -3,6 +3,13 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Check } from 'lucide-react';
 import api from '../api/client';
+import { useAuth } from '../context/AuthContext';
+
+// Notifications are only ever sent to admin/office, and the /notifications
+// endpoint is restricted to them. Any other role (technician, leads, customer)
+// would just see an empty bell while generating a 403 on every poll, so the
+// bell is hidden for them entirely.
+const NOTIFY_ROLES = ['admin', 'office'];
 
 function timeAgo(iso) {
   if (!iso) return '';
@@ -20,8 +27,11 @@ export default function NotificationBell({ variant = 'light' }) {
   const [pos, setPos] = useState({ top: 60, left: 12 });
   const btnRef = useRef(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const allowed = NOTIFY_ROLES.includes(user?.role);
 
   async function load() {
+    if (!allowed) return;                                           // role has no notification access
     if (typeof document !== 'undefined' && document.hidden) return; // don't poll a hidden tab
     try {
       const { data } = await api.get('/notifications');
@@ -30,10 +40,11 @@ export default function NotificationBell({ variant = 'light' }) {
     } catch { /* ignore (e.g. role without access) */ }
   }
   useEffect(() => {
+    if (!allowed) return;
     load();
     const iv = setInterval(load, 120000); // every 2 min (keeps DB reads low)
     return () => clearInterval(iv);
-  }, []);
+  }, [allowed]);
 
   function toggle() {
     if (!open && btnRef.current) {
@@ -61,6 +72,8 @@ export default function NotificationBell({ variant = 'light' }) {
   }
 
   const btnColor = variant === 'dark' ? 'text-slate-300 hover:bg-slate-800 hover:text-white' : 'text-slate-600 hover:bg-slate-100';
+
+  if (!allowed) return null; // technicians / leads / customers don't receive notifications
 
   return (
     <>
