@@ -23,9 +23,11 @@ const forgotLimiter = requestLimiter({ windowMs: 15 * 60 * 1000, max: 5, keyPref
 
 // Sign the session token + shape the user object returned to the client.
 function issueToken(user) {
+  // Effectively never expires (10 years) so staff stay logged in; the app also
+  // silently refreshes the token on launch (see /auth/refresh) to keep sliding it.
   const token = jwt.sign(
     { id: user.id, name: user.name, email: user.email, role: user.role },
-    JWT_SECRET, { expiresIn: '7d' }
+    JWT_SECRET, { expiresIn: '3650d' }
   );
   return { token, user: {
     id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone,
@@ -159,7 +161,7 @@ router.post('/register', async (req, res) => {
       } catch (e) { console.error('[auth] referral record failed:', e.message); }
     }
 
-    const token = jwt.sign({ id, name, email, role }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id, name, email, role }, JWT_SECRET, { expiresIn: '3650d' });
     res.json({ token, user: { id, name, email, role, phone } });
   } catch (e) {
     console.error(e);
@@ -392,6 +394,18 @@ router.get('/me', authMiddleware, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Could not load your account' });
   }
+});
+
+// POST /api/auth/refresh — swap a valid token for a fresh one (slides the long
+// expiry). The app calls this on launch so sessions effectively never expire.
+// Re-reads the user so a role change takes effect, and fails if the account is gone.
+router.post('/refresh', authMiddleware, async (req, res) => {
+  try {
+    const u = await getById('users', req.user.id);
+    if (!u) return res.status(401).json({ error: 'Account no longer exists' });
+    const { token, user } = issueToken(u);
+    res.json({ token, user });
+  } catch (e) { res.status(500).json({ error: 'Could not refresh session' }); }
 });
 
 // POST /api/auth/set-initial-password — a signed-in user with a one-time password
