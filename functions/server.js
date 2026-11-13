@@ -19,4 +19,12 @@ app.listen(PORT, async () => {
   const tick = () => runReminders().then(s => console.log('[reminders]', s)).catch(e => console.error('[reminders]', e.message));
   setTimeout(tick, 15_000);
   setInterval(tick, 60 * 60 * 1000);
+
+  // Claude Mechanical Bot — automatic health sweep. The call self-gates to once
+  // every ~2 days, so checking every 6 hours just means it fires on schedule
+  // even if the process restarts in between. Alerts admins on any failure.
+  const { runScheduledSweep } = require('./lib/diagnostics');
+  const sweepTick = () => runScheduledSweep().then(s => console.log('[health-sweep]', s)).catch(e => console.error('[health-sweep]', e.message));
+  setTimeout(sweepTick, 90_000);
+  setInterval(sweepTick, 6 * 60 * 60 * 1000);
 });

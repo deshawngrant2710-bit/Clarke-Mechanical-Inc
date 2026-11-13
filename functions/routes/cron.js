@@ -156,4 +156,21 @@ async function vendorInvoices(req, res) {
 router.get('/vendor-invoices', vendorInvoices);
 router.post('/vendor-invoices', vendorInvoices);
 
+// GET or POST /api/cron/health-sweep — Claude Mechanical Bot's scheduled sweep.
+// Self-gates to once every ~2 days; pass ?force=1 to run regardless. Alerts
+// admins on failure. Point any scheduler (or Render Cron) here daily.
+async function healthSweep(req, res) {
+  try {
+    const force = req.query.force === '1' || req.body?.force === true;
+    const { runScheduledSweep } = require('../lib/diagnostics');
+    const result = await runScheduledSweep({ force });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[cron] health-sweep failed:', e.message);
+    res.status(500).json({ error: 'Health sweep failed', detail: e.message });
+  }
+}
+router.get('/health-sweep', healthSweep);
+router.post('/health-sweep', healthSweep);
+
 module.exports = router;

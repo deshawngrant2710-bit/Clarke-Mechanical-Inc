@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Briefcase, Calendar, FileText,
-  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award, Landmark, FileStack, HardHat, Phone,
+  Package, UserCog, ClipboardList, Settings, LayoutList, Clock, ClipboardCheck, MessagesSquare, BarChart3, Columns3, CreditCard, Sparkles, Map, BookOpen, Wallet, ShoppingCart, CheckSquare, UserCircle, Smartphone, RefreshCw, Filter, Receipt, Mail, FileSignature, Flame, Award, Landmark, FileStack, HardHat, Phone, Bot,
 } from 'lucide-react';
 
 export const STAFF = ['admin', 'office', 'technician'];
@@ -67,7 +67,10 @@ export const NAV_GROUPS = [
   },
   {
     label: 'System',
-    items: [{ to: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] }],
+    items: [
+      { to: '/system-check', label: 'Claude Mechanical Bot', icon: Bot, roles: ['admin'] },
+      { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
+    ],
   },
   {
     label: 'My Account',

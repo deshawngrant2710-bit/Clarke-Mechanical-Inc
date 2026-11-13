@@ -58,6 +58,7 @@ app.use('/api/places', require('./routes/places'));
 app.use('/api/pay', require('./routes/pay'));
 app.use('/api/installations', require('./routes/installations'));
 app.use('/api/comms', require('./routes/communications'));
+app.use('/api/diagnostics', require('./routes/diagnostics'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

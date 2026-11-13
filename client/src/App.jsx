@@ -61,6 +61,7 @@ import Payables from './pages/Payables';
 import Installations from './pages/Installations';
 import InstallationDetail from './pages/InstallationDetail';
 import Messages from './pages/Messages';
+import SystemCheck from './pages/SystemCheck';
 import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
@@ -236,6 +237,7 @@ export default function App() {
             <Route path="/messages" element={<Messages />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/system-check" element={<SystemCheck />} />
             <Route path="/support" element={<Support />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/dispatch" element={<Dispatch />} />
