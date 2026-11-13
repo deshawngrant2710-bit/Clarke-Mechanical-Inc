@@ -222,9 +222,11 @@ async function portalChecks() {
   // Every role can authenticate (their portal loads).
   for (const role of ['admin', 'office', 'technician', 'leads', 'customer']) {
     const r = await timed(async () => {
+      // The bot's test logins are synthetic (no user record), so /auth/me answers
+      // 404 "user not found" AFTER the token is accepted. 401 = login rejected.
       const s = await apiStatus('/api/auth/me', role);
-      return s === 200 ? { status: 'pass', detail: `${role} authenticates (200)` }
-        : { status: 'fail', detail: `${role} could not authenticate (got ${s})` };
+      return (s === 200 || s === 404) ? { status: 'pass', detail: `${role} sign-in token accepted` }
+        : { status: 'fail', detail: `${role} sign-in rejected (got ${s})` };
     });
     out.push(row('Portals', `${role[0].toUpperCase() + role.slice(1)} portal signs in`, r.status, r.detail, r.ms));
   }

@@ -106,7 +106,9 @@ function CreateFab({ navigate }) {
 // out-of-date payload degrades to empty sections instead of a blank screen.
 const DASH_LISTS = ['todaysSchedule', 'upcomingJobs', 'technicians', 'recentReviews', 'jobsByStatus', 'recentJobs', 'recentInvoices', 'myJobs'];
 function normalizeDash(d) {
-  if (!d || typeof d !== 'object') return d;
+  // Anything that isn't a real data object (e.g. an HTML page returned by a
+  // misrouted request) is treated as "no data yet" instead of crashing.
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
   const out = { ...d };
   for (const k of DASH_LISTS) if (!Array.isArray(out[k])) out[k] = [];
   return out;
