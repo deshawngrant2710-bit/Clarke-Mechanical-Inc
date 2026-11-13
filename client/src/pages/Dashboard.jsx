@@ -227,7 +227,7 @@ export default function Dashboard() {
                     <TrendingUp size={14} /> {money(data.totalRevenue)}
                   </span>
                 </div>
-                <AreaChart data={data.revenueByMonth} />
+                <AreaChart data={data.revenueByMonth || []} />
               </Card>
               <Card className="p-5">
                 <h2 className="text-card-title text-slate-800 mb-4">Jobs by Status</h2>
@@ -316,7 +316,7 @@ export default function Dashboard() {
         <CardHeader title="Customer Reviews" icon={<Star size={16} />}
           action={data.reviewCount > 0 && (
             <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-              <Star size={15} className="fill-amber-400 text-amber-400" /> {data.avgRating.toFixed(1)}
+              <Star size={15} className="fill-amber-400 text-amber-400" /> {(data.avgRating || 0).toFixed(1)}
               <span className="text-slate-400 font-normal">· {data.reviewCount} review{data.reviewCount !== 1 ? 's' : ''}</span>
             </span>
           )} />
