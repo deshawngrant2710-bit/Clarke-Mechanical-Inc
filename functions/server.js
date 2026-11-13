@@ -20,7 +20,7 @@ app.listen(PORT, async () => {
   setTimeout(tick, 15_000);
   setInterval(tick, 60 * 60 * 1000);
 
-  // Claude Mechanical Bot — automatic health sweep. The call self-gates to once
+  // Clarke Mechanical Bot — automatic health sweep. The call self-gates to once
   // every ~2 days, so checking every 6 hours just means it fires on schedule
   // even if the process restarts in between. Alerts admins on any failure.
   const { runScheduledSweep } = require('./lib/diagnostics');

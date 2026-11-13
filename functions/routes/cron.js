@@ -156,7 +156,7 @@ async function vendorInvoices(req, res) {
 router.get('/vendor-invoices', vendorInvoices);
 router.post('/vendor-invoices', vendorInvoices);
 
-// GET or POST /api/cron/health-sweep — Claude Mechanical Bot's scheduled sweep.
+// GET or POST /api/cron/health-sweep — Clarke Mechanical Bot's scheduled sweep.
 // Self-gates to once every ~2 days; pass ?force=1 to run regardless. Alerts
 // admins on failure. Point any scheduler (or Render Cron) here daily.
 async function healthSweep(req, res) {

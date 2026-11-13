@@ -68,7 +68,7 @@ export const NAV_GROUPS = [
   {
     label: 'System',
     items: [
-      { to: '/system-check', label: 'Claude Mechanical Bot', icon: Bot, roles: ['admin'] },
+      { to: '/system-check', label: 'Clarke Mechanical Bot', icon: Bot, roles: ['admin'] },
       { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
     ],
   },

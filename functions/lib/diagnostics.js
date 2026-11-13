@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-//  Claude Mechanical Bot — in-app health sweep.
+//  Clarke Mechanical Bot — in-app health sweep.
 //
 //  Runs a battery of self-tests against the live system and returns a single
 //  structured report (overall pass/fail + a row per check). It exercises the
@@ -113,10 +113,10 @@ async function persistenceChecks() {
     {
       const r = await timed(async () => {
         const id = uuid();
-        await create('customers', id, { [TAG]: true, name: '⚙︎ Claude Bot Test Customer', created_at: new Date().toISOString() });
+        await create('customers', id, { [TAG]: true, name: '⚙︎ Clarke Bot Test Customer', created_at: new Date().toISOString() });
         made.customers.push(id); customerId = id;
         const back = await getById('customers', id);
-        if (!back || back.name !== '⚙︎ Claude Bot Test Customer') return { status: 'fail', detail: 'Customer did not save' };
+        if (!back || back.name !== '⚙︎ Clarke Bot Test Customer') return { status: 'fail', detail: 'Customer did not save' };
         return { status: 'pass', detail: 'Customer created and read back' };
       });
       out.push(row('Persistence', 'Customer saves & stays', r.status, r.detail, r.ms));
@@ -126,7 +126,7 @@ async function persistenceChecks() {
     {
       const r = await timed(async () => {
         const id = uuid();
-        await create('jobs', id, { [TAG]: true, title: '⚙︎ Claude Bot Test Job', customer_id: customerId, status: 'pending', created_at: new Date().toISOString() });
+        await create('jobs', id, { [TAG]: true, title: '⚙︎ Clarke Bot Test Job', customer_id: customerId, status: 'pending', created_at: new Date().toISOString() });
         made.jobs.push(id); jobId = id;
         const back = await getById('jobs', id);
         if (!back) return { status: 'fail', detail: 'Job did not save' };
@@ -371,7 +371,7 @@ const GATE_MS = SWEEP_INTERVAL_MS - 3 * 60 * 60 * 1000; // 47h, so a daily/2-day
 // Email + notify the admins when a scheduled sweep finds a failure.
 async function alertFailure(report) {
   const failed = report.checks.filter(c => c.status === 'fail');
-  const title = `Claude Mechanical Bot found ${failed.length} problem${failed.length === 1 ? '' : 's'}`;
+  const title = `Clarke Mechanical Bot found ${failed.length} problem${failed.length === 1 ? '' : 's'}`;
   const body = failed.slice(0, 6).map(c => `${c.name} — ${c.detail}`).join(' · ');
 
   // In-app bell for admins.
@@ -391,10 +391,10 @@ async function alertFailure(report) {
           <h2 style="color:#b91c1c;margin:0 0 4px">⚠︎ ${title}</h2>
           <p style="color:#475569;margin:0 0 16px">The automatic system sweep on ${new Date(report.at).toLocaleString('en-US')} completed with failures. Passed ${report.summary.passed}/${report.summary.total}; ${report.summary.failed} failed, ${report.summary.warned} warning(s).</p>
           <table style="border-collapse:collapse;width:100%;font-size:14px"><thead><tr style="background:#f8fafc"><th style="text-align:left;padding:6px 10px">Area</th><th style="text-align:left;padding:6px 10px">Check</th><th style="text-align:left;padding:6px 10px">Detail</th></tr></thead><tbody>${rows}</tbody></table>
-          <p style="color:#64748b;margin:16px 0 0;font-size:13px">Open the app → Claude Mechanical Bot to run a fresh sweep and see everything.</p>
+          <p style="color:#64748b;margin:16px 0 0;font-size:13px">Open the app → Clarke Mechanical Bot to run a fresh sweep and see everything.</p>
         </div>`;
       for (const a of admins) {
-        try { await sendMail({ type: 'diagnostic_alert', to: a.email, toName: a.name, subject: `⚠︎ ${title} — Clarke Mechanical`, html, sentBy: 'Claude Mechanical Bot' }); }
+        try { await sendMail({ type: 'diagnostic_alert', to: a.email, toName: a.name, subject: `⚠︎ ${title} — Clarke Mechanical`, html, sentBy: 'Clarke Mechanical Bot' }); }
         catch (e) { console.error('[diagnostics] email to', a.email, 'failed:', e.message); }
       }
     }

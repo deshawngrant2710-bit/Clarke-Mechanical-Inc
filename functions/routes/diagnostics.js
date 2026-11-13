@@ -1,4 +1,4 @@
-// Claude Mechanical Bot — admin API.
+// Clarke Mechanical Bot — admin API.
 // Run a health sweep on demand, and read the latest report + history.
 const express = require('express');
 const { authMiddleware, requireRole } = require('../middleware/auth');

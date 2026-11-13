@@ -44,7 +44,7 @@ export default function SystemCheck() {
 
   async function runSweep() {
     setRunning(true);
-    const t = toast.loading('Claude Mechanical Bot is sweeping the app…');
+    const t = toast.loading('Clarke Mechanical Bot is sweeping the app…');
     try {
       const { data } = await api.post('/diagnostics/run');
       setReport(data);
@@ -72,7 +72,7 @@ export default function SystemCheck() {
 
   return (
     <div className="animate-fade-in max-w-4xl mx-auto pb-8">
-      <PageHeader title="Claude Mechanical Bot" subtitle="Automatic health checks across the whole app" icon={<Bot size={20} />}>
+      <PageHeader title="Clarke Mechanical Bot" subtitle="Automatic health checks across the whole app" icon={<Bot size={20} />}>
         <Btn onClick={runSweep} loading={running} disabled={running}>
           {running ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} />}
           {running ? 'Sweeping…' : 'Run sweep now'}
