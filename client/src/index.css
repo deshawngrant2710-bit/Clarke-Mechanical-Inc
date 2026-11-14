@@ -120,6 +120,37 @@ html.native-app .app-content select, html.native-app .app-content .rich-input,
 html.native-app .modal-surface input, html.native-app .modal-surface textarea,
 html.native-app .modal-surface select, html.native-app .modal-surface .rich-input { font-size: 16px; }
 
+/* ------------------------------------------------------------------ */
+/*  Phone BROWSERS (the website on a phone) — not just the iOS app.    */
+/*  Fixes "I had to zoom out to see anything":                         */
+/*   1. iPhone Safari zooms in on any text box under 16px when tapped  */
+/*      and leaves the page zoomed. Force 16px on EVERY field on every */
+/*      page (login, reset, pay, portal link…), beating Tailwind's     */
+/*      text-sm/text-xs on the element.                                */
+/*   2. Nothing may make the page wider than the screen (which lets    */
+/*      the site be pinched/shrunk sideways). Clip sideways overflow   */
+/*      and keep media and long words inside the screen.               */
+/* ------------------------------------------------------------------ */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (max-width: 1023px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select, textarea, .rich-input { font-size: 16px !important; }
+
+  html, body, #root { max-width: 100%; overflow-x: hidden; }
+  @supports (overflow-x: clip) { html, body, #root { overflow-x: clip; } } /* clip keeps sticky headers working */
+
+  img, video, iframe, canvas { max-width: 100%; height: auto; }
+  .leaflet-container img { max-width: none !important; max-height: none !important; } /* map tiles keep their size */
+
+  /* Long emails, invoice numbers and links wrap instead of pushing the page wide. */
+  body { overflow-wrap: break-word; }
+  td, th { overflow-wrap: anywhere; }
+
+  /* Any table that isn't already in a scroll box scrolls on its own, not the page. */
+  .app-content table, .modal-surface table { max-width: 100%; }
+  .app-content pre, .modal-surface pre { white-space: pre-wrap; }
+}
+
 
 /* ------------------------------------------------------------------ */
 /*  Native mobile app only (class added at runtime in main.jsx).       */

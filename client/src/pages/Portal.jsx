@@ -721,7 +721,7 @@ function ProfileModal({ open, onClose, profile, onDone }) {
         <AddressAutocomplete label="Address" icon={<MapPin size={15} />} value={form.address}
           onChange={v => setForm(f => ({ ...f, address: v }))}
           onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))} />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
           <Input label="State" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} />
           <Input label="ZIP" value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} />

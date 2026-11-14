@@ -53,7 +53,7 @@ export default function ServiceAddresses() {
             onChange={v => setForm(f => ({ ...f, address: v }))}
             onSelect={a => setForm(f => ({ ...f, address: a.address, city: a.city || f.city, state: a.state || f.state, zip: a.zip || f.zip }))}
           />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="col-span-1">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">City</label>
               <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} className={field} />
