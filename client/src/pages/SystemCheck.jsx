@@ -5,7 +5,7 @@ import { Card, Btn, Empty, SkeletonPage } from '../components/UI';
 import {
   Bot, Play, CheckCircle2, XCircle, AlertTriangle, MinusCircle,
   RefreshCw, Clock, ShieldCheck, Database, Image as ImageIcon, Plug, ListChecks,
-  Briefcase, ShieldAlert, Smartphone, Sparkles,
+  Briefcase, ShieldAlert, Smartphone, Sparkles, Download,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -33,19 +33,57 @@ function when(iso) {
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+// Save a text log: share sheet on phones (Files, Mail, AirDrop…), normal download on computers.
+async function saveText(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain' });
+  try {
+    const file = new File([blob], filename, { type: 'text/plain' });
+    const touch = typeof navigator !== 'undefined' && /iPhone|iPad|Android/i.test(navigator.userAgent || '');
+    if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+  } catch (e) { if (e?.name === 'AbortError') return; }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+const fileFrom = (res, fallback) => (/filename="([^"]+)"/.exec(res.headers?.['content-disposition'] || '') || [])[1] || fallback;
+
 export default function SystemCheck() {
   const [report, setReport] = useState(null);
   const [hist, setHist] = useState([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [saving, setSaving] = useState(null);
 
-  function loadHistory() { api.get('/diagnostics/history').then(r => setHist(r.data || [])).catch(() => {}); }
+  function loadHistory() { api.get('/diagnostics/history', { params: { limit: 168 } }).then(r => setHist(r.data || [])).catch(() => {}); }
   useEffect(() => {
     Promise.all([
       api.get('/diagnostics/latest').then(r => setReport(r.data)).catch(() => {}),
-      api.get('/diagnostics/history').then(r => setHist(r.data || [])).catch(() => {}),
+      api.get('/diagnostics/history', { params: { limit: 168 } }).then(r => setHist(r.data || [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, []);
+
+  // Download one run's log, or every stored run (optionally only failed / all-good).
+  async function downloadLog(id) {
+    setSaving(id);
+    try {
+      const res = await api.get(`/diagnostics/report/${id}/log`, { responseType: 'text', transformResponse: x => x });
+      await saveText(res.data, fileFrom(res, 'clarke-health-log.txt'));
+    } catch { toast.error('Could not download that log'); }
+    finally { setSaving(null); }
+  }
+  async function downloadAll(status) {
+    setSaving('all-' + (status || ''));
+    try {
+      const res = await api.get('/diagnostics/logs', { params: { days: 14, ...(status ? { status } : {}) }, responseType: 'text', transformResponse: x => x });
+      await saveText(res.data, fileFrom(res, 'clarke-health-logs.txt'));
+    } catch { toast.error('Could not download the logs'); }
+    finally { setSaving(null); }
+  }
 
   async function runSweep() {
     setRunning(true);
@@ -104,6 +142,9 @@ export default function SystemCheck() {
                 <span>{(report.durationMs / 1000).toFixed(1)}s</span>
               </div>
             </div>
+            <Btn size="sm" variant="outline" className="shrink-0 whitespace-nowrap" loading={saving === report.id} onClick={() => downloadLog(report.id)}>
+              <Download size={14} /> <span className="sm:hidden">Log</span><span className="hidden sm:inline">Download log</span>
+            </Btn>
           </div>
 
           {/* Summary counts */}
@@ -151,26 +192,44 @@ export default function SystemCheck() {
             );
           })}
 
-          {/* History */}
+          {/* History — every run (failed or all good) can be downloaded as a log */}
           {hist.length > 0 && (
             <div className="mt-8">
-              <h3 className="text-sm font-bold text-slate-700 mb-2 px-1">Recent sweeps</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
+                <h3 className="text-sm font-bold text-slate-700">Recent sweeps <span className="font-normal text-slate-400">· last 2 weeks</span></h3>
+                <div className="flex flex-wrap gap-2">
+                  <Btn size="sm" variant="outline" className="whitespace-nowrap" loading={saving === 'all-'} onClick={() => downloadAll()}><Download size={14} /> All logs</Btn>
+                  <Btn size="sm" variant="outline" className="whitespace-nowrap" loading={saving === 'all-fail'} onClick={() => downloadAll('fail')}><Download size={14} /> Failed only</Btn>
+                  <Btn size="sm" variant="outline" className="whitespace-nowrap" loading={saving === 'all-pass'} onClick={() => downloadAll('pass')}><Download size={14} /> All good only</Btn>
+                </div>
+              </div>
               <Card className="divide-y divide-slate-100 overflow-hidden">
-                {hist.map(h => {
+                {(showAll ? hist : hist.slice(0, 20)).map(h => {
                   const s = STATUS[h.status] || STATUS.skip;
                   const Icon = s.icon;
                   return (
-                    <button key={h.id} onClick={() => openReport(h.id)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-slate-50">
-                      <Icon size={16} className={`${s.color} shrink-0`} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-slate-700">{when(h.at)}</p>
-                        <p className="text-xs text-slate-400">{h.trigger === 'scheduled' ? 'Automatic' : 'Manual'} · {h.summary.passed}/{h.summary.total} passed{h.summary.failed ? ` · ${h.summary.failed} failed` : ''}</p>
-                      </div>
-                      <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full ${s.bg} ${s.color}`}>{s.label}</span>
-                    </button>
+                    <div key={h.id} className={`flex items-center gap-1 ${report?.id === h.id ? 'bg-slate-50' : ''}`}>
+                      <button onClick={() => openReport(h.id)} className="min-w-0 flex-1 flex items-center gap-3 p-3 text-left hover:bg-slate-50">
+                        <Icon size={16} className={`${s.color} shrink-0`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-slate-700">{when(h.at)}</p>
+                          <p className="text-xs text-slate-400">{h.trigger === 'scheduled' ? 'Automatic' : 'Manual'} · {h.summary.passed}/{h.summary.total} passed{h.summary.failed ? ` · ${h.summary.failed} failed` : ''}</p>
+                        </div>
+                        <span className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full ${s.bg} ${s.color} shrink-0`}>{s.label}</span>
+                      </button>
+                      <button onClick={() => downloadLog(h.id)} disabled={saving === h.id} aria-label={`Download log for ${when(h.at)}`}
+                        className="shrink-0 w-11 h-11 mr-1 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-40">
+                        {saving === h.id ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                      </button>
+                    </div>
                   );
                 })}
               </Card>
+              {hist.length > 20 && (
+                <button onClick={() => setShowAll(v => !v)} className="mt-2 w-full min-h-[44px] text-sm font-medium text-slate-600 hover:text-slate-900">
+                  {showAll ? 'Show fewer' : `Show all ${hist.length} runs`}
+                </button>
+              )}
             </div>
           )}
         </>

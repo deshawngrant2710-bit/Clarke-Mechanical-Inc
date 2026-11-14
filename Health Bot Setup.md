@@ -51,6 +51,11 @@ The bot now checks the whole app **every 2 hours** and alerts you every time it 
 - If anything fails, every admin gets an **in-app alert and an email**: "Clarke Mechanical Bot: N problems need fixing". The email lists exactly what broke. You'll get it after every 2-hour check until the problem is fixed.
 - If the whole app is down, the bot on the server can't run. In that case **GitHub emails you** that the "Clarke Mechanical Bot" workflow failed.
 - See every result in the app under **Clarke Mechanical Bot**, the System Check page. You can also tap **Run sweep now** there at any time.
+- **Log files:** every alert email has the full log attached as a `.txt` file. In the app, the last 2 weeks of runs, failed and all-good, can be downloaded:
+  - **Download log** on the current report;
+  - the **download icon** next to any run in "Recent sweeps";
+  - **All logs**, **Failed only** or **All good only** to get every run in one file.
+  - On a phone, the share sheet opens so you can save it to Files, AirDrop it or email it.
 
 ## One-time setup (about 3 minutes)
 

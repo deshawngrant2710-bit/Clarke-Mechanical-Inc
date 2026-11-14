@@ -3,7 +3,7 @@
 const express = require('express');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { getById } = require('../lib/db');
-const { runAndStore, latestReport, history } = require('../lib/diagnostics');
+const { runAndStore, latestReport, history, buildLog, logFilename } = require('../lib/diagnostics');
 
 const router = express.Router();
 
@@ -23,7 +23,7 @@ function botKeyGuard(req, res, next) {
   next();
 }
 const W = () => require('../lib/botWorld');
-const UI_MAX_REPORTS = 40;
+const UI_MAX_REPORTS = 168;   // 2 weeks, matching the sweep logs
 const clip = (v, n) => String(v ?? '').slice(0, n);
 
 // POST /api/diagnostics/ui/begin — build the bot's test world and hand out short-lived
@@ -128,6 +128,44 @@ router.get('/report/:id', async (req, res) => {
     const r = await getById('diagnostic_reports', req.params.id);
     if (!r) return res.status(404).json({ error: 'Report not found' });
     res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/diagnostics/report/:id/log — download one sweep as a text log file.
+router.get('/report/:id/log', async (req, res) => {
+  try {
+    const r = await getById('diagnostic_reports', req.params.id);
+    if (!r) return res.status(404).json({ error: 'Report not found' });
+    const text = await buildLog(r);
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${logFilename(r)}"`);
+    res.send(text);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/diagnostics/logs?days=14&status=fail|warn|pass — every stored sweep in one file.
+router.get('/logs', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(Number(req.query.days) || 14, 1), 31);
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const want = ['fail', 'warn', 'pass'].includes(req.query.status) ? req.query.status : null;
+    const all = (await list('diagnostic_reports'))
+      .filter(r => (r.at || '') >= since && (!want || r.status === want))
+      .sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+    const head = [
+      'CLARKE MECHANICAL BOT — ALL HEALTH CHECK LOGS',
+      `${all.length} run(s) from the last ${days} day(s)${want ? ` (${want === 'fail' ? 'failed only' : want === 'warn' ? 'warnings only' : 'all-good only'})` : ''}, newest first`,
+      `Failed: ${all.filter(r => r.status === 'fail').length} · Warnings: ${all.filter(r => r.status === 'warn').length} · All good: ${all.filter(r => r.status === 'pass').length}`,
+      '',
+      ...all.map(r => `  ${r.status === 'fail' ? 'FAIL' : r.status === 'warn' ? 'WARN' : 'PASS'}  ${new Date(r.at).toLocaleString('en-US', { timeZone: 'America/New_York' })}  ${r.summary?.passed || 0}/${r.summary?.total || 0} passed${r.summary?.failed ? `, ${r.summary.failed} failed` : ''}`),
+      '', '',
+    ].join('\n');
+    const bodies = [];
+    for (const r of all) bodies.push(await buildLog(r));
+    const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD, New York
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="clarke-health-logs-${stamp}${want ? `-${want}` : ''}.txt"`);
+    res.send(head + bodies.join('\n\n' + '#'.repeat(70) + '\n\n'));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

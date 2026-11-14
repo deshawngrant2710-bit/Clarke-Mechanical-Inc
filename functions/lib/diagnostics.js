@@ -249,10 +249,18 @@ async function integrityChecks() {
 // --- browser (screens & buttons) results ------------------------------------
 // The real-browser checks run on GitHub Actions every 2 hours and post their
 // results to /api/diagnostics/ui/report. Each sweep folds the latest in.
+// The newest browser report at (or before) a given time.
+async function uiReportAt(iso) {
+  try {
+    return (await list('diagnostic_ui_reports'))
+      .filter(r => !iso || (r.at || '') <= iso)
+      .sort((a, b) => (b.at || '').localeCompare(a.at || ''))[0] || null;
+  } catch { return null; }
+}
+
 async function browserChecks() {
   const G = 'Screens & buttons';
-  let latest = null;
-  try { latest = (await list('diagnostic_ui_reports')).sort((a, b) => (b.at || '').localeCompare(a.at || ''))[0] || null; } catch { /* none */ }
+  const latest = await uiReportAt();
   if (!latest) return [row(G, 'Phone + desktop screen checks', 'warn', 'No browser results yet — finish the GitHub Actions setup (see Health Bot Setup.md)')];
   const ageH = (Date.now() - new Date(latest.at).getTime()) / 3600000;
   const out = [];
@@ -308,6 +316,7 @@ async function runSweep({ trigger = 'manual' } = {}) {
     checks.push(...integrationChecks());
     checks.push(...(await integrityChecks()));
     checks.push(...(await browserChecks()));
+    const ui = await uiReportAt();
 
     // Keep the security log bounded (14 days).
     try {
@@ -328,11 +337,12 @@ async function runSweep({ trigger = 'manual' } = {}) {
       status: summary.failed > 0 ? 'fail' : (summary.warned > 0 ? 'warn' : 'pass'),
       summary, leftoversCleaned: leftovers, checks,
       security_snapshot: sec.snapshot,
+      ui_report_id: ui?.id || null,
     };
   } finally { running = false; }
 }
 
-const MAX_REPORTS = 40;
+const MAX_REPORTS = 168;   // 2 weeks of 2-hour runs — every one downloadable as a log
 async function saveReport(report) {
   try {
     await create('diagnostic_reports', report.id, report);
@@ -355,6 +365,93 @@ async function runAndStore({ trigger = 'manual' } = {}) {
   const report = await runSweep({ trigger });
   await saveReport(report);
   return report;
+}
+
+
+// --- downloadable log file ----------------------------------------------------
+const TZ = 'America/New_York';
+const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' (New York time)' : '—');
+const TAG_TXT = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', skip: 'SKIP' };
+
+function logFilename(report) {
+  const d = new Date(report.at);
+  const p = (n) => String(n).padStart(2, '0');
+  const local = new Date(d.toLocaleString('en-US', { timeZone: TZ }));
+  const stamp = `${local.getFullYear()}-${p(local.getMonth() + 1)}-${p(local.getDate())}_${p(local.getHours())}${p(local.getMinutes())}`;
+  return `clarke-health-${stamp}-${report.status === 'fail' ? 'FAILED' : report.status === 'warn' ? 'warnings' : 'all-good'}.txt`;
+}
+
+// Plain-text log of one sweep (plus the browser screen/button results it used).
+async function buildLog(report) {
+  const L = [];
+  const line = (s = '') => L.push(s);
+  const s = report.summary || {};
+  const result = report.status === 'fail' ? 'PROBLEMS FOUND' : report.status === 'warn' ? 'OK, WITH WARNINGS' : 'ALL GOOD';
+  line('CLARKE MECHANICAL BOT — HEALTH CHECK LOG');
+  line('='.repeat(60));
+  line(`Run:        ${fmtTime(report.at)}`);
+  line(`Result:     ${result}`);
+  line(`Trigger:    ${report.trigger === 'scheduled' ? 'Automatic 2-hour run' : report.trigger === 'manual' ? 'Manual run (Run sweep now)' : report.trigger || '—'}`);
+  line(`Duration:   ${((report.durationMs || 0) / 1000).toFixed(1)}s`);
+  line(`Summary:    ${s.passed || 0} passed · ${s.failed || 0} failed · ${s.warned || 0} warnings · ${s.skipped || 0} skipped · ${s.total || 0} total`);
+  line(`Report ID:  ${report.id}`);
+  line();
+  const checks = report.checks || [];
+  const fails = checks.filter(c => c.status === 'fail');
+  const warns = checks.filter(c => c.status === 'warn');
+  line(`PROBLEMS (${fails.length})`);
+  line('-'.repeat(60));
+  if (!fails.length) line('  none');
+  for (const c of fails) line(`  [FAIL] ${c.group} › ${c.name}${c.detail ? `\n         ${c.detail}` : ''}`);
+  line();
+  line(`WARNINGS (${warns.length})`);
+  line('-'.repeat(60));
+  if (!warns.length) line('  none');
+  for (const c of warns) line(`  [WARN] ${c.group} › ${c.name}${c.detail ? `\n         ${c.detail}` : ''}`);
+  line();
+  line('FULL RESULTS');
+  line('='.repeat(60));
+  for (const g of [...new Set(checks.map(c => c.group))]) {
+    line();
+    line(`--- ${g} ---`);
+    for (const c of checks.filter(x => x.group === g)) {
+      line(`  [${TAG_TXT[c.status] || c.status}] ${c.name}${c.ms ? `  (${c.ms} ms)` : ''}`);
+      if (c.detail) line(`         ${c.detail}`);
+    }
+  }
+
+  // Browser (screens & buttons) detail
+  let ui = null;
+  try { ui = report.ui_report_id ? await getById('diagnostic_ui_reports', report.ui_report_id) : await uiReportAt(report.at); } catch { /* none */ }
+  line();
+  line('SCREENS & BUTTONS — REAL BROWSER CHECK');
+  line('='.repeat(60));
+  if (!ui) line('  No browser results were available for this run.');
+  else {
+    const u = ui.summary || {};
+    line(`Browser run: ${fmtTime(ui.at)}`);
+    line(`Covered:     ${u.pages || 0} screens × ${u.viewports || 0} sizes · ${u.buttons || 0} buttons checked`);
+    line(`Result:      ${u.failures || 0} problem(s) · ${u.warnings || 0} warning(s)`);
+    if (ui.run_url) line(`GitHub run:  ${ui.run_url}`);
+    const order = { fail: 0, warn: 1, pass: 2 };
+    const its = [...(ui.items || [])].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+    let last = null;
+    for (const i of its) {
+      if (i.status !== last) { line(); line(i.status === 'fail' ? 'Problems:' : i.status === 'warn' ? 'Warnings:' : 'Passed:'); last = i.status; }
+      line(`  [${TAG_TXT[i.status] || i.status}] ${i.portal} · ${i.viewport} · ${i.page} — ${i.check}${i.detail ? `: ${i.detail}` : ''}`);
+    }
+  }
+
+  const staff = report.security_snapshot?.staff;
+  if (Array.isArray(staff)) {
+    line();
+    line('ADMIN / OFFICE ACCOUNTS AT THE TIME OF THIS RUN');
+    line('='.repeat(60));
+    for (const u of staff) line(`  ${u.name} (${u.role})`);
+  }
+  line();
+  line('— end of log —');
+  return L.join('\n');
 }
 
 // --- scheduled run + alert-on-failure --------------------------------------
@@ -388,10 +485,13 @@ async function alertFailure(report) {
           <h2 style="color:#b91c1c;margin:0 0 4px">⚠︎ ${title}</h2>
           <p style="color:#475569;margin:0 0 16px">The 2-hour health check at ${new Date(report.at).toLocaleString('en-US', { timeZone: 'America/New_York' })} found problems. Passed ${report.summary.passed}/${report.summary.total}; ${report.summary.failed} failed, ${report.summary.warned} warning(s). You'll get this alert after every 2-hour check until it's fixed.</p>
           <table style="border-collapse:collapse;width:100%;font-size:14px"><thead><tr style="background:#f8fafc"><th style="text-align:left;padding:6px 10px">Area</th><th style="text-align:left;padding:6px 10px">Check</th><th style="text-align:left;padding:6px 10px">Detail</th></tr></thead><tbody>${rows}</tbody></table>
-          <p style="color:#64748b;margin:16px 0 0;font-size:13px">Open the app → Clarke Mechanical Bot to run a fresh sweep and see everything.</p>
+          <p style="color:#64748b;margin:16px 0 0;font-size:13px">The full log is attached. Open the app → Clarke Mechanical Bot to run a fresh sweep, see everything, or download any earlier log.</p>
         </div>`;
+      // Attach the full log so you can read every detail straight from the email.
+      let attachments;
+      try { attachments = [{ filename: logFilename(report), content: Buffer.from(await buildLog(report), 'utf8'), contentType: 'text/plain' }]; } catch { attachments = undefined; }
       for (const a of admins) {
-        try { await sendMail({ type: 'diagnostic_alert', to: a.email, toName: a.name, subject: `⚠︎ ${title} — Clarke Mechanical`, html, sentBy: 'Clarke Mechanical Bot' }); }
+        try { await sendMail({ type: 'diagnostic_alert', to: a.email, toName: a.name, subject: `⚠︎ ${title} — Clarke Mechanical`, html, sentBy: 'Clarke Mechanical Bot', attachments }); }
         catch (e) { console.error('[diagnostics] email to', a.email, 'failed:', e.message); }
       }
     }
@@ -419,4 +519,4 @@ async function runScheduledSweep({ force = false } = {}) {
   }
 }
 
-module.exports = { runSweep, runAndStore, saveReport, latestReport, history, runScheduledSweep, alertFailure, SWEEP_INTERVAL_MS, MAX_REPORTS };
+module.exports = { runSweep, runAndStore, saveReport, latestReport, history, runScheduledSweep, alertFailure, buildLog, logFilename, SWEEP_INTERVAL_MS, MAX_REPORTS };
