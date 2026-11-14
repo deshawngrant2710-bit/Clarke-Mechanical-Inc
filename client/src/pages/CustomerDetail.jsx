@@ -8,6 +8,7 @@ import { directionsLink } from '../lib/geo';
 import { buildStatementHtml, printHtml } from '../lib/printDoc';
 import { TaskModal } from './Tasks';
 import TempPasswordModal from '../components/TempPasswordModal';
+import PortalLinkCard from '../components/PortalLinkCard';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -203,6 +204,7 @@ export default function CustomerDetail() {
               )}
             </div>
           </Card>
+          {canManage && <PortalLinkCard customer={customer} />}
           {customer.notes && (
             <Card>
               <CardHeader title="Notes" icon={<StickyNote size={15} />} />

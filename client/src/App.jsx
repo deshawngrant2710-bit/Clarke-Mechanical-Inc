@@ -63,6 +63,7 @@ import Installations from './pages/Installations';
 import InstallationDetail from './pages/InstallationDetail';
 import Messages from './pages/Messages';
 import SystemCheck from './pages/SystemCheck';
+import PortalLinkLanding from './pages/PortalLinkLanding';
 import Tasks from './pages/Tasks';
 import SearchResults from './pages/SearchResults';
 import AdminAssistant from './pages/AdminAssistant';
@@ -217,6 +218,7 @@ export default function App() {
             <Route path="/login" element={<Login />} />
           </Route>
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/link/:token" element={<PortalLinkLanding />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/pay/:token" element={<PayLink />} />
           <Route path="/pay-invoice/:id" element={<CheckoutEmbed />} />

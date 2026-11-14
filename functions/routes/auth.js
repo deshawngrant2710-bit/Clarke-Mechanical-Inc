@@ -26,7 +26,8 @@ function issueToken(user) {
   // Effectively never expires (10 years) so staff stay logged in; the app also
   // silently refreshes the token on launch (see /auth/refresh) to keep sliding it.
   const token = jwt.sign(
-    { id: user.id, name: user.name, email: user.email, role: user.role },
+    // customer_id lets the portal find a customer who has no email (portal-link logins).
+    { id: user.id, name: user.name, email: user.email, role: user.role, ...(user.customer_id ? { customer_id: user.customer_id } : {}) },
     JWT_SECRET, { expiresIn: '3650d' }
   );
   return { token, user: {

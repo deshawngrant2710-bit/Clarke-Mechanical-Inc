@@ -43,9 +43,21 @@ router.use(async (req, res, next) => {
 // Find the customer record(s) linked to the logged-in user by email → their ids.
 async function myCustomerIds(req) {
   const email = (req.user?.email || '').toLowerCase();
-  if (!email) return { ids: [], records: [] };
-  const records = await findWhere('customers', 'email', email);
+  const records = email ? await findWhere('customers', 'email', email) : [];
+  // Portal-link logins carry the customer record directly (works with no email).
+  if (req.user?.customer_id && !records.some(r => r.id === req.user.customer_id)) {
+    const c = await getById('customers', req.user.customer_id);
+    if (c) records.push(c);
+  }
   return { ids: records.map(r => r.id), records };
+}
+
+// A support chat belongs to this user if it was opened by their account, or (for
+// older chats) by their email. Never match on a missing email.
+function ownsChat(chat, user) {
+  if (!chat || !user) return false;
+  if (chat.customer_user_id && chat.customer_user_id === user.id) return true;
+  return !!user.email && chat.customer_email === user.email;
 }
 
 const byCreated = (a, b) => (b.created_at || '').localeCompare(a.created_at || '');
@@ -1047,7 +1059,8 @@ router.post('/support/escalate', async (req, res) => {
   await create('support_chats', chatId, {
     customer_id: customer?.id || null,
     customer_name: req.user.name,
-    customer_email: req.user.email,
+    customer_email: req.user.email || null,
+    customer_user_id: req.user.id,
     status: 'waiting',
     assigned_to: null,
     department: null,
@@ -1088,7 +1101,7 @@ router.post('/support/escalate', async (req, res) => {
 // GET /portal/support/:chatId — the customer polls their own chat for new messages.
 router.get('/support/:chatId', async (req, res) => {
   const chat = await getById('support_chats', req.params.chatId);
-  if (!chat || chat.customer_email !== req.user.email) return res.status(404).json({ error: 'Chat not found' });
+  if (!ownsChat(chat, req.user)) return res.status(404).json({ error: 'Chat not found' });
   const messages = (await findWhere('support_messages', 'chat_id', req.params.chatId))
     .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
   res.json({ id: chat.id, status: chat.status, assigned_to: chat.assigned_to || null, messages });
@@ -1097,7 +1110,7 @@ router.get('/support/:chatId', async (req, res) => {
 // POST /portal/support/:chatId/messages — the customer sends a message to the agent.
 router.post('/support/:chatId/messages', async (req, res) => {
   const chat = await getById('support_chats', req.params.chatId);
-  if (!chat || chat.customer_email !== req.user.email) return res.status(404).json({ error: 'Chat not found' });
+  if (!ownsChat(chat, req.user)) return res.status(404).json({ error: 'Chat not found' });
   if (chat.status === 'closed') return res.status(400).json({ error: 'This chat has been closed.' });
   const text = (req.body?.text || '').toString().trim();
   if (!text) return res.status(400).json({ error: 'Message is required' });
@@ -1112,7 +1125,7 @@ router.post('/support/:chatId/messages', async (req, res) => {
 // POST /portal/support/:chatId/leave — the customer ends the chat.
 router.post('/support/:chatId/leave', async (req, res) => {
   const chat = await getById('support_chats', req.params.chatId);
-  if (!chat || chat.customer_email !== req.user.email) return res.status(404).json({ error: 'Chat not found' });
+  if (!ownsChat(chat, req.user)) return res.status(404).json({ error: 'Chat not found' });
   const now = new Date().toISOString();
   await update('support_chats', chat.id, { status: 'closed', updated_at: now, last_message_at: now });
   await create('support_messages', uuid(), {
