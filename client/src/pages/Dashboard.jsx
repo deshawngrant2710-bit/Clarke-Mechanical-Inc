@@ -40,7 +40,7 @@ function ToDoWidget({ user, navigate }) {
     <Card className="p-5 mb-6">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2"><CheckSquare size={16} className="text-blue-500" /><h2 className="text-card-title text-slate-800">Your to-do</h2></div>
-        <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">Open list <ArrowRight size={12} /></button>
+        <button onClick={() => navigate('/tasks')} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 py-2.5 -my-2.5 px-1.5 -mx-1.5">Open list <ArrowRight size={12} /></button>
       </div>
       {mine.length === 0 ? (
         <p className="text-sm text-slate-400">You're all caught up. Nothing on your list right now.</p>
@@ -262,7 +262,7 @@ export default function Dashboard() {
         {/* Today's schedule */}
         <Card>
           <CardHeader title="Today's Schedule" icon={<CalendarDays size={16} />}
-            action={<button onClick={() => navigate('/schedule')} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">View calendar <ArrowRight size={12} /></button>} />
+            action={<button onClick={() => navigate('/schedule')} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 py-2.5 -my-2.5 px-1.5 -mx-1.5">View calendar <ArrowRight size={12} /></button>} />
           <div className="divide-y divide-slate-100">
             {data.todaysSchedule.length === 0 && (
               <p className="text-sm text-slate-400 p-6 text-center">No jobs scheduled for today</p>

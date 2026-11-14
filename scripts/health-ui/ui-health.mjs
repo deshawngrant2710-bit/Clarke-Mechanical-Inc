@@ -140,7 +140,7 @@ function probeLayout() {
     if (r.right <= 0 || r.left >= vw) continue;                // parked off-screen on purpose (closed drawer)
     const sc = scroller(el);
     if (!sc && (r.left < -1 || r.right > vw + 1)) cut.push(desc(el));
-    if (r.width < 18 || r.height < 18) tiny.push(desc(el));
+    if ((r.width < 18 || r.height < 18) && !el.closest('.leaflet-control-container')) tiny.push(desc(el));  // map credits aren't ours
     if (r.top >= 0 && r.bottom <= vh && !sc) {
       const x = Math.min(Math.max(r.left + r.width / 2, 1), vw - 1), y = r.top + r.height / 2;
       const hit = document.elementFromPoint(x, y);
@@ -159,7 +159,9 @@ function probeLayout() {
     overflowBy, wide, buttons: els.length,
     cut: cut.slice(0, 4), cutN: cut.length, covered: covered.slice(0, 3), coveredN: covered.length,
     tiny: tiny.slice(0, 3), tinyN: tiny.length,
-    hasBack: els.some(el => /^\s*back\s*$/i.test(el.innerText || '') || /go back|^back$/i.test(el.getAttribute('aria-label') || '')),
+    // "Back", "Back to jobs", "Go back", or an arrow-left control ("← All inspections").
+    hasBack: els.some(el => /^\s*(go )?back\b/i.test(el.innerText || '') || /\bback\b/i.test(el.getAttribute('aria-label') || '')
+      || !!el.querySelector('svg.lucide-arrow-left, svg.lucide-chevron-left')),
     modal: !!document.querySelector('.modal-surface'),
   };
 }
@@ -175,6 +177,7 @@ async function runSession(browser, site, role, vp, sess, routes, clickSlot) {
     try { localStorage.setItem('token', token); localStorage.setItem('user', user); } catch { /* ignore */ }
   }, [sess.token, JSON.stringify(sess.user)]);
   await ctx.route(BLOCK, r => r.abort());
+  try { await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: site }); } catch { /* not supported */ }
   const page = await ctx.newPage();
   page.on('dialog', d => d.dismiss().catch(() => {}));
   page.on('popup', p => p.close().catch(() => {}));
@@ -237,7 +240,8 @@ async function runSession(browser, site, role, vp, sess, routes, clickSlot) {
 
     // Back button actually goes back (phone only — one check per page is enough).
     if (vp.primary && path !== HOME[role] && L.hasBack) {
-      const back = page.getByRole('button', { name: /^(back|go back)$/i }).first();
+      const back = page.locator('main').locator('button:has(svg.lucide-arrow-left), a:has(svg.lucide-arrow-left)')
+        .or(page.getByRole('button', { name: /^(go )?back\b/i })).first();
       try {
         await back.click({ timeout: 4000 });
         await sleep(600);
@@ -285,7 +289,15 @@ async function tapSweep(page, open, path, portal, V, label) {
       await sleep(900);
       const st = await page.evaluate(() => ({ muts: window.__muts || 0, url: location.pathname + location.search }));
       buttonsChecked++;
-      if (st.muts === 0 && st.url === before) add('warn', portal, V, label, 'Button did nothing when tapped', `"${name}"`);
+      if (st.muts === 0 && st.url === before) {
+        // Tapping the tab/filter that's already selected rightly does nothing — not a dead button.
+        const selected = await loc.evaluate(el => {
+          if (['true', 'page'].includes(el.getAttribute('aria-pressed') || el.getAttribute('aria-selected') || el.getAttribute('aria-current') || '')) return true;
+          const sibs = [...(el.parentElement?.children || [])].filter(c => c !== el && c.tagName === el.tagName);
+          return sibs.length > 0 && sibs.every(c => c.className !== el.className);
+        }).catch(() => false);
+        if (!selected) add('warn', portal, V, label, 'Button did nothing when tapped', `"${name}"`);
+      }
       // reset for the next tap
       if (st.url !== before || await page.locator('.modal-surface').count()) await open(path);
     } catch (e) {
@@ -340,8 +352,9 @@ async function keyFlows(browser, site, vp, sessions, ids) {
     return n === 0 || 'a paid invoice still offers Pay';
   });
   await step('Customer portal', 'Billing', 'Estimate shows Accept / Decline', async () => {
+    await c.getByRole('button', { name: /^Estimates/ }).first().click({ timeout: 6000 }); await sleep(500);
     const est = c.getByText('BOT-EST').first();
-    if (!(await est.count())) return 'estimate BOT-EST not listed (check the Estimates tab)';
+    if (!(await est.count())) return 'estimate BOT-EST not listed on the Estimates tab';
     await est.click({ timeout: 6000 }); await sleep(500);
     const a = await c.getByRole('button', { name: /Accept Estimate/ }).first().isVisible();
     const d = await c.getByRole('button', { name: /^Decline$/ }).first().isVisible();

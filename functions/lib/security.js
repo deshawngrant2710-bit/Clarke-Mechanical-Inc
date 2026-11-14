@@ -14,8 +14,11 @@ const MAX_WRITES_PER_MIN = 60;
 let windowStart = Date.now(), writes = 0;
 const authFails = new Map(); // ip -> { n, since, flagged }
 
+// Real visitor IP. Render sits behind Cloudflare, so req.ip is a Cloudflare edge
+// address (e.g. 172.68.x.x) shared by many visitors — use Cloudflare's header first.
 function clientIp(req) {
-  return (req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').toString().split(',')[0].trim();
+  return (req.headers['cf-connecting-ip'] || req.headers['true-client-ip']
+    || String(req.headers['x-forwarded-for'] || '').split(',')[0] || req.ip || req.socket?.remoteAddress || '').toString().trim();
 }
 
 async function record(type, data = {}) {
@@ -28,17 +31,29 @@ async function record(type, data = {}) {
   } catch (e) { console.error('[security] record failed:', e.message); }
 }
 
+function isBotToken(req) {
+  try {
+    const h = req.headers.authorization || '';
+    const p = h.startsWith('Bearer ') ? require('jsonwebtoken').verify(h.slice(7), require('../middleware/auth').JWT_SECRET) : null;
+    return !!p && String(p.id || '').startsWith('__diagnostic');
+  } catch { return false; }
+}
+
 // Express middleware: watches every request/response.
 function monitor() {
   return (req, res, next) => {
     const url = req.originalUrl || req.url || '';
-    if (PROBE_RE.test(decodeURIComponent(url).slice(0, 500))) {
+    let decoded = url;
+    try { decoded = decodeURIComponent(url); } catch { /* malformed escapes are themselves a probe sign */ }
+    if (PROBE_RE.test(decoded.slice(0, 500))) {
       record('probe', { ip: clientIp(req), method: req.method, path: url.slice(0, 200), ua: String(req.headers['user-agent'] || '').slice(0, 120) });
     }
     res.on('finish', () => {
       const s = res.statusCode;
       if (s >= 500) record('server_error', { status: s, method: req.method, path: (req.baseUrl || '') + (req.path || url).slice(0, 160) });
-      if (s === 401 || s === 403) {
+      // The health bot's own refused writes (403 with a bot login) aren't an attack.
+      const botRefusal = s === 403 && isBotToken(req);
+      if ((s === 401 || s === 403) && !botRefusal) {
         const ip = clientIp(req), now = Date.now();
         const e = authFails.get(ip) || { n: 0, since: now, flagged: false };
         if (now - e.since > 10 * 60000) { e.n = 0; e.since = now; e.flagged = false; }

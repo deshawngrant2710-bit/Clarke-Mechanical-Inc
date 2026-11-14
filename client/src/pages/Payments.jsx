@@ -71,7 +71,7 @@ export default function Payments() {
                     <td className="px-5 py-3 text-slate-600 capitalize">{p.method}{/pi_/.test(p.reference || '') ? ' (online)' : ''}</td>
                     <td className="px-5 py-3 text-right font-semibold text-emerald-600">{money(p.amount)}</td>
                     <td className="px-5 py-3 text-right">
-                      <button onClick={e => del(e, p)} title="Delete payment" className="text-slate-400 hover:text-red-600"><Trash2 size={14} /></button>
+                      <button onClick={e => del(e, p)} title="Delete payment" aria-label="Delete payment" className="text-slate-400 hover:text-red-600 p-2.5 -m-2.5 rounded-lg"><Trash2 size={14} /></button>
                     </td>
                   </tr>
                 ))}

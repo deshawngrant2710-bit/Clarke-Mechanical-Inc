@@ -480,14 +480,14 @@ export default function Portal() {
                   <Mail size={14} className="text-slate-400" />{me.email}
                   {me.profile?.email_verified
                     ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
-                    : <button onClick={() => setVerifyKind('email')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
+                    : <button onClick={() => setVerifyKind('email')} className="text-xs font-semibold text-blue-600 hover:text-blue-700 py-2.5 -my-2.5 px-2 -mx-2">Verify</button>}
                 </span>
                 {me.profile?.phone && (
                   <span className="flex items-center gap-2">
                     <Phone size={14} className="text-slate-400" />{me.profile.phone}
                     {me.profile?.phone_verified
                       ? <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle size={12} /> Verified</span>
-                      : <button onClick={() => setVerifyKind('phone')} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Verify</button>}
+                      : <button onClick={() => setVerifyKind('phone')} className="text-xs font-semibold text-blue-600 hover:text-blue-700 py-2.5 -my-2.5 px-2 -mx-2">Verify</button>}
                   </span>
                 )}
                 {(me.profile?.address || me.profile?.city) && <span className="flex items-center gap-2"><MapPin size={14} className="text-slate-400" />{[me.profile.address, me.profile.city, me.profile.state].filter(Boolean).join(', ')}</span>}

@@ -177,8 +177,8 @@ export default function ServicePriceBook() {
 
               {canManage && (
                 <div className="mt-2 flex gap-2">
-                  <button onClick={() => setEditItem({ ...it, customer_desc: it.customer_desc || '' })} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"><Pencil size={12} /> Edit</button>
-                  <button onClick={() => toggleActive(it)} className="text-xs font-medium text-slate-500 hover:text-slate-700">{it.active === false ? 'Reactivate' : 'Deactivate'}</button>
+                  <button onClick={() => setEditItem({ ...it, customer_desc: it.customer_desc || '' })} className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1 py-2 -my-2 pr-2"><Pencil size={12} /> Edit</button>
+                  <button onClick={() => toggleActive(it)} className="text-xs font-medium text-slate-500 hover:text-slate-700 py-2 -my-2 px-2">{it.active === false ? 'Reactivate' : 'Deactivate'}</button>
                 </div>
               )}
             </Card>

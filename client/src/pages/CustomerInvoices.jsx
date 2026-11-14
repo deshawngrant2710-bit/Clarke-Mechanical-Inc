@@ -91,6 +91,7 @@ export default function CustomerInvoices() {
       <div className="flex flex-wrap gap-1 mb-4 bg-white border border-slate-200 rounded-lg p-1 w-fit max-w-full">
         {tabs.map(t => (
           <button key={t.id} onClick={() => { setTab(t.id); setExpanded(null); }}
+            aria-pressed={tab === t.id}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
             {t.label}<span className="opacity-70"> ({t.count})</span>
           </button>

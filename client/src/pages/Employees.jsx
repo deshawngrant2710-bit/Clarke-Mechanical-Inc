@@ -230,7 +230,7 @@ export default function Employees() {
                     )}
                     <div className="mt-3 flex flex-col gap-2 items-start">
                       <button onClick={() => resetPassword(u)} disabled={resetting === u.id}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50">
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50 py-2 -my-1">
                         <KeyRound size={13} /> {resetting === u.id ? 'Generating…' : 'Generate one-time password'}
                       </button>
                       {u.twofa_enabled && (

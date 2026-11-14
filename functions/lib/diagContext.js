@@ -59,6 +59,8 @@ function middleware(JWT_SECRET) {
       if (!(await getById('users', payload.id))) return res.status(401).json({ error: 'Bot session ended' });
       if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
         const path = req.path.replace(/\/+$/, '') || '/';
+        // The app refreshes its login on every page load; bot logins just keep theirs.
+        if (path === '/api/auth/refresh') return res.json({});
         let allowed = false;
         for (const r of WRITE_RULES) {
           const m = path.match(r.re);

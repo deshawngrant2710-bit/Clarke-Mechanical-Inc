@@ -159,7 +159,7 @@ export default function MobileDispatch({ jobs, employees, onMove, onAssign, toda
                             {job.scheduled_time ? minToLabel(hm(job.scheduled_time)) : 'Unscheduled'}
                             {travel != null && <span className="inline-flex items-center gap-1 text-slate-400"><Car size={12} /> ~{travel}m from prev</span>}
                           </p>
-                          <button onClick={() => setReassignJob(job)} className="flex items-center gap-1.5 text-left">
+                          <button onClick={() => setReassignJob(job)} className="flex items-center gap-1.5 text-left py-2 -my-2">
                             <User size={13} className="text-slate-400 shrink-0" />
                             <span className={job.technician_name ? 'text-slate-700' : 'text-amber-600'}>
                               {job.technician_name || 'Unassigned — tap to assign'}
