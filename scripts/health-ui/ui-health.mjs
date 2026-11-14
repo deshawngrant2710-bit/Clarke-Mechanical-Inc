@@ -283,11 +283,12 @@ async function tapSweep(page, open, path, portal, V, label) {
         window.__mo?.disconnect();
         window.__mo = new MutationObserver(m => { window.__muts += m.length; });
         window.__mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+        window.__kids = document.body.children.length;
         return location.pathname + location.search;
       });
       await loc.click({ timeout: 4000 });
       await sleep(900);
-      const st = await page.evaluate(() => ({ muts: window.__muts || 0, url: location.pathname + location.search }));
+      const st = await page.evaluate(() => ({ muts: window.__muts || 0, url: location.pathname + location.search, overlay: document.body.children.length !== window.__kids }));
       buttonsChecked++;
       if (st.muts === 0 && st.url === before) {
         // Tapping the tab/filter that's already selected rightly does nothing — not a dead button.
@@ -299,7 +300,8 @@ async function tapSweep(page, open, path, portal, V, label) {
         if (!selected) add('warn', portal, V, label, 'Button did nothing when tapped', `"${name}"`);
       }
       // reset for the next tap
-      if (st.url !== before || await page.locator('.modal-surface').count()) await open(path);
+      // The tap opened something (new page, dialog, or a full-screen preview) — start the page fresh.
+      if (st.url !== before || st.overlay || await page.locator('.modal-surface').count()) await open(path);
     } catch (e) {
       // Only call it broken when something is actually sitting on top of the button.
       const cover = /(<[^>]{1,120}>)[^\n]*intercepts pointer events/.exec(e.message || '');
