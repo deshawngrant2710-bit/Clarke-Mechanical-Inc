@@ -18,6 +18,13 @@ const LINE = [205, 209, 215];
 const PAGE = { w: 612, h: 792, m: 44 };           // US Letter, points
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const plain = (s) => String(s ?? '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+// Like plain(), but keeps paragraph / line breaks (from <br>, </div>, </p> or typed
+// newlines) so multi-line work descriptions don't run together in the PDF.
+const plainLines = (s) => String(s ?? '')
+  .replace(/<\s*br\s*\/?>/gi, '\n').replace(/<\s*(div|p)(\s[^>]*)?>/gi, '\n').replace(/<\s*\/(div|p)\s*>/gi, '')
+  .replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+  .split(/\r?\n/).map(l => l.replace(/[ \t]+/g, ' ').trim()).filter((l, i, a) => l || (i > 0 && a[i - 1]))
+  .join('\n').trim();
 
 function fmtDate(d) {
   if (!d) return '';
@@ -140,7 +147,7 @@ export function renderPdf(jsPDFCtor, opts) {
 
   items.forEach((it) => {
     const desc = plain(it.description);
-    const note = plain(it.note);
+    const note = plainLines(it.note);
     const descLines = pdf.splitTextToSize(desc, cols.qty - cols.desc - 26);
     const noteLines = note ? pdf.splitTextToSize(note, cols.qty - cols.desc - 26) : [];
     const rowH = Math.max(24, 10 + descLines.length * 12 + noteLines.length * 10);
@@ -229,7 +236,7 @@ export function renderPdf(jsPDFCtor, opts) {
       y += lines.length * (size + 3) + (b.heading ? 3 : 2);
     }
   } else {
-    const notes = plain(doc.notes);
+    const notes = plainLines(doc.notes);
     if (notes) {
       if (y > PAGE.h - 160) newPage();
       y += 8;

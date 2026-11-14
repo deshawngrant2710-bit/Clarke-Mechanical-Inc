@@ -197,6 +197,23 @@ export function SearchInput({ value, onChange, placeholder = 'Search…', icon, 
 /*  Modal — animated                                                   */
 /* ================================================================== */
 let _openModalCount = 0;
+
+// Tracks the *visible* viewport (iOS shrinks it when the keyboard opens but leaves
+// the layout viewport alone), so a full-screen sheet's sticky footer — Send Request,
+// Download PDF, Pay — stays above the keyboard and the browser toolbar.
+function useVisibleViewport(active) {
+  const [box, setBox] = useState(null);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!active || !vv) return undefined;
+    const update = () => setBox({ top: Math.max(0, vv.offsetTop), height: vv.height });
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
+  }, [active]);
+  return box;
+}
 export function Modal({ open, onClose, title, subtitle, children, footer, size = 'lg' }) {
   useEffect(() => {
     if (!open) return;
@@ -214,12 +231,14 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
       if (_openModalCount === 0) document.documentElement.classList.remove('modal-open');
     };
   }, [open]);
+  const vbox = useVisibleViewport(open);
   if (!open) return null;
   const sizes = { sm: 'lg:max-w-md', md: 'lg:max-w-lg', lg: 'lg:max-w-2xl', xl: 'lg:max-w-4xl' };
   // Render to <body> so the fixed overlay is positioned against the viewport and is
   // never trapped/collapsed by a transformed ancestor (e.g. a page's fade-in wrapper).
   return createPortal(
-    <div className="fixed inset-0 z-50 flex lg:items-start lg:justify-center lg:p-6">
+    <div className="fixed inset-0 z-50 flex lg:items-start lg:justify-center lg:p-6"
+      style={vbox ? { top: vbox.top, height: vbox.height, bottom: 'auto' } : undefined}>
       <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       {/* Full-screen sheet on phones; centered card on desktop. */}
       <div className={`modal-surface relative bg-white shadow-2xl w-full flex flex-col h-full lg:h-auto lg:max-h-[calc(100dvh-3rem)] lg:rounded-2xl animate-fade-in-scale ${sizes[size]}`}>
@@ -227,7 +246,7 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
         <div className="shrink-0 flex items-start justify-between gap-3 px-4 lg:px-6 py-4 border-b border-slate-100"
           style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-slate-800 truncate">{title}</h2>
+            <h2 className="text-lg font-bold text-slate-800 break-words">{title}</h2>
             {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
           <button onClick={onClose} aria-label="Close" className="shrink-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg w-8 h-8 flex items-center justify-center text-xl leading-none transition-colors">×</button>
@@ -295,17 +314,31 @@ export function SkeletonPage({ stats = 4, rows = 6 }) {
 /* ================================================================== */
 /*  Empty state — premium with illustration + CTA                      */
 /* ================================================================== */
-export function Empty({ title = 'Nothing here yet', message, icon, action }) {
+export function Empty({ title = 'Nothing here yet', message, icon, action, compact = false }) {
+  // compact: a short horizontal row for list cards (e.g. "No upcoming appointments")
+  // so customers reach the next section without scrolling past a big empty block.
+  if (compact) {
+    return (
+      <div className="flex items-center gap-3 px-4 sm:px-5 py-4 animate-fade-in">
+        {icon && <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center text-blue-500 ring-1 ring-slate-200">{icon}</div>}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-slate-800 font-semibold">{title}</p>
+          {message && <p className="text-xs text-slate-500 mt-0.5">{message}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-6 text-center animate-fade-in">
+    <div className="flex flex-col items-center justify-center py-8 sm:py-14 px-5 sm:px-6 text-center animate-fade-in">
       {icon && (
-        <div className="mb-4 w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center text-blue-500 ring-1 ring-slate-200">
+        <div className="mb-3 sm:mb-4 w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-slate-100 flex items-center justify-center text-blue-500 ring-1 ring-slate-200">
           {icon}
         </div>
       )}
       <p className="text-slate-800 font-semibold">{title}</p>
       {message && <p className="text-sm text-slate-500 mt-1 max-w-sm">{message}</p>}
-      {action && <div className="mt-5">{action}</div>}
+      {action && <div className="mt-4 sm:mt-5">{action}</div>}
     </div>
   );
 }

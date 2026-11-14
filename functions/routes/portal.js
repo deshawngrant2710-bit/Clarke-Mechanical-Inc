@@ -8,6 +8,7 @@ const { referralCode } = require('../lib/referral');
 const { smsConfigured, sendSms } = require('../lib/sms');
 const helcim = require('../lib/helcim');
 const stripe = require('../lib/stripe');
+const { eligibility, invoiceEligibility, isIssued } = require('../lib/payable');
 const { notify } = require('../lib/notify');
 const { PACKAGES, residentialTotals, residentialPlanFor } = require('../lib/boilerContract');
 
@@ -130,8 +131,12 @@ router.get('/me', async (req, res) => {
       Promise.all(ids.map(id => findWhere('invoices', 'customer_id', id))).then(a => a.flat()),
     ]);
     openJobs = jobs.filter(j => !['completed', 'cancelled'].includes(j.status)).length;
-    invoiceCount = invoices.length;
-    balanceDue = invoices.filter(i => !['paid', 'cancelled'].includes(i.status)).reduce((s, i) => s + (i.total || 0), 0);
+    // Only issued invoices are the customer's; balance = what's actually still owed
+    // on payable invoices (partial payments subtracted) — same rule as Pay buttons.
+    const issued = invoices.filter(isIssued);
+    invoiceCount = issued.length;
+    const elig = await Promise.all(issued.map(invoiceEligibility));
+    balanceDue = Math.round(elig.reduce((s, e) => s + (e.payable ? e.balance_due : 0), 0) * 100) / 100;
   }
   const cfg = await settings.emailConfig();
   res.json({
@@ -186,12 +191,16 @@ router.get('/jobs/:jobId/photos/:photoId', async (req, res) => {
 router.get('/invoices', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   if (!ids.length) return res.json([]);
-  const invoices = (await Promise.all(ids.map(id => findWhere('invoices', 'customer_id', id)))).flat();
+  // Drafts are unissued (the office hasn't sent them) — customers never see them.
+  const invoices = (await Promise.all(ids.map(id => findWhere('invoices', 'customer_id', id)))).flat().filter(isIssued);
   const paymentsByInvoice = await Promise.all(invoices.map(inv => findWhere('payments', 'invoice_id', inv.id)));
   invoices.forEach((inv, i) => {
     inv.payments = (paymentsByInvoice[i] || [])
       .map(p => ({ amount: p.amount, method: p.method, reference: p.reference || null, paid_at: p.paid_at }))
       .sort((a, b) => (a.paid_at || '').localeCompare(b.paid_at || ''));
+    // Server-computed payment eligibility — the portal UI only ever reads these.
+    const e = eligibility(inv, inv.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0));
+    inv.amount_paid = e.amount_paid; inv.balance_due = e.balance_due; inv.payable = e.payable;
   });
   res.json(invoices.sort(byCreated));
 });
@@ -709,7 +718,7 @@ router.post('/invoices/:id/helcim-initialize', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
-  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!helcim.configured()) return res.status(503).json({ error: 'Online payments are not set up yet.' });
 
   const amount = await invoiceBalanceDollars(invoice);
@@ -785,6 +794,7 @@ router.post('/invoices/:id/pay-link', async (req, res) => {
   const { ids } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   const token = uuid() + uuid().replace(/-/g, '');
   await create('pay_tokens', token, {
     invoice_id: invoice.id, customer_id: invoice.customer_id, used: false,
@@ -817,7 +827,7 @@ router.post('/invoices/:id/pay-saved', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
-  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!helcim.configured()) return res.status(503).json({ error: 'Online payments are not set up yet.' });
   const { paymentMethodId } = req.body || {};
   if (!paymentMethodId) return res.status(400).json({ error: 'Choose a saved card.' });
@@ -859,6 +869,7 @@ router.post('/invoices/:id/pay-cash', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   const customer = records[0];
   const method = (req.body?.method ? String(req.body.method) : 'cash').slice(0, 40);
 
@@ -893,7 +904,7 @@ router.post('/invoices/:id/stripe-checkout', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
-  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Card payments are not available yet.' });
   try {
     const base = stripe.siteBase();
@@ -916,7 +927,7 @@ router.post('/invoices/:id/stripe-embedded', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
-  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Card payments are not available yet.' });
   try {
     const { client_secret, amount } = await stripe.createInvoiceCheckout(invoice, {
@@ -937,7 +948,7 @@ router.post('/invoices/:id/payment-intent', async (req, res) => {
   const { ids, records } = await myCustomerIds(req);
   const invoice = await getById('invoices', req.params.id);
   if (!invoice || !ids.includes(invoice.customer_id)) return res.status(404).json({ error: 'Invoice not found' });
-  if (invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Card payments are not available yet.' });
   try {
     const { client_secret, amount } = await stripe.createInvoicePaymentIntent(invoice, { customer: records[0] });

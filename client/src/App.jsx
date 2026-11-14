@@ -9,6 +9,7 @@ import BottomNav from './components/BottomNav';
 import NotificationBell from './components/NotificationBell';
 import OfflineBanner from './components/OfflineBanner';
 import ErrorBoundary from './components/ErrorBoundary';
+import BackBar from './components/BackBar';
 import Logo from './components/Logo';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
@@ -142,6 +143,7 @@ function Layout() {
         )}
         <main ref={mainRef} className="app-content flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
+            <BackBar />
             <ErrorBoundary key={location.pathname}>
               <Outlet />
             </ErrorBoundary>

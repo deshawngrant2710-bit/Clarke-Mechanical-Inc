@@ -56,18 +56,18 @@ function JobTimeline({ status }) {
   }
   const idx = JOB_STEPS.findIndex(s => s.key === status);
   return (
-    <div className="flex items-center pt-1 pb-2">
+    <div className="flex items-start pt-1 pb-2 min-w-0">
       {JOB_STEPS.map((s, i) => {
         const done = i <= idx;
         return (
-          <div key={s.key} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center">
+          <div key={s.key} className="flex items-start flex-1 last:flex-none min-w-0">
+            <div className="flex flex-col items-center shrink-0 w-11 min-[360px]:w-12 sm:w-auto">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${done ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
                 {done ? <Check size={13} /> : i + 1}
               </div>
-              <span className={`text-[10px] mt-1 ${done ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{s.label}</span>
+              <span className={`text-[9px] min-[360px]:text-[10px] mt-1 text-center leading-tight ${done ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{s.label}</span>
             </div>
-            {i < JOB_STEPS.length - 1 && <div className={`flex-1 h-0.5 mx-1 -mt-4 ${i < idx ? 'bg-blue-600' : 'bg-slate-200'}`} />}
+            {i < JOB_STEPS.length - 1 && <div className={`flex-1 min-w-[0.25rem] h-0.5 mx-0.5 sm:mx-1 mt-3 ${i < idx ? 'bg-blue-600' : 'bg-slate-200'}`} />}
           </div>
         );
       })}
@@ -77,34 +77,37 @@ function JobTimeline({ status }) {
 
 function JobRow({ j, expanded, onToggle, onReschedule, onCancel, onSignoff, onReview }) {
   const editable = ['pending', 'scheduled'].includes(j.status);
+  const statusChips = (<>
+    {j.en_route_at && !['completed', 'cancelled'].includes(j.status) && (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold whitespace-nowrap"><Navigation size={10} /> On the way</span>
+    )}
+    <Badge status={j.status} />
+  </>);
   return (
     <div>
-      <button onClick={() => onToggle(j.id)} className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 text-left">
-        <div className="flex items-center gap-3 min-w-0">
+      <button onClick={() => onToggle(j.id)} aria-expanded={expanded === j.id} className="w-full flex items-start gap-3 px-4 sm:px-5 py-3.5 hover:bg-slate-50 text-left">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${j.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
             {j.status === 'completed' ? <CheckCircle size={15} /> : <Clock size={15} />}
           </span>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-800 truncate">{j.title}</p>
-            <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calendar size={11} />{j.scheduled_date || 'To be scheduled'}{j.scheduled_time ? ` · ${j.scheduled_time}` : ''}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-slate-800 break-words line-clamp-3">{j.title}</p>
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 whitespace-nowrap"><Calendar size={11} className="shrink-0" />{j.scheduled_date || 'To be scheduled'}{j.scheduled_time ? ` · ${j.scheduled_time}` : ''}</p>
+            {/* Phones: status chips under the title so long titles get the full width. */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5 sm:hidden">{statusChips}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {j.en_route_at && !['completed', 'cancelled'].includes(j.status) && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold"><Navigation size={10} /> On the way</span>
-          )}
-          <Badge status={j.status} />
-          <ChevronDown size={16} className={`text-slate-400 transition-transform ${expanded === j.id ? 'rotate-180' : ''}`} />
-        </div>
+        <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">{statusChips}</div>
+        <ChevronDown size={16} className={`mt-1 shrink-0 text-slate-400 transition-transform ${expanded === j.id ? 'rotate-180' : ''}`} />
       </button>
       {expanded === j.id && (
-        <div className="px-5 pb-4 pt-1 bg-slate-50/60 animate-fade-in">
+        <div className="px-4 sm:px-5 pb-4 pt-1 bg-slate-50/60 animate-fade-in">
           <JobTimeline status={j.status} />
-          <div className="text-sm text-slate-600 space-y-1.5 mt-2">
+          <div className="text-sm text-slate-600 space-y-1.5 mt-2 break-words [overflow-wrap:anywhere]">
             {j.job_type && <p><span className="text-slate-400">Type:</span> {j.job_type}</p>}
-            {j.description && <p><span className="text-slate-400">Details:</span> {j.description}</p>}
-            {j.technician_name && <p className="flex items-center gap-1.5"><Wrench size={12} className="text-slate-400" /> Technician: {j.technician_name}{j.additional_technician_names?.length > 0 ? `, ${j.additional_technician_names.join(', ')}` : ''}</p>}
-            {j.address && <p className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400" /> {j.address}</p>}
+            {j.description && <p className="whitespace-pre-line"><span className="text-slate-400">Details:</span> {j.description}</p>}
+            {j.technician_name && <p className="flex items-start gap-1.5"><Wrench size={12} className="text-slate-400 shrink-0 mt-1" /> Technician: {j.technician_name}{j.additional_technician_names?.length > 0 ? `, ${j.additional_technician_names.join(', ')}` : ''}</p>}
+            {j.address && <p className="flex items-start gap-1.5"><MapPin size={12} className="text-slate-400 shrink-0 mt-1" /> <span className="min-w-0">{j.address}</span></p>}
           </div>
           {j.photos?.length > 0 && (
             <div className="mt-3">
@@ -115,7 +118,7 @@ function JobRow({ j, expanded, onToggle, onReschedule, onCancel, onSignoff, onRe
             </div>
           )}
           {editable && (
-            <div className="flex gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3">
               <Btn size="sm" variant="outline" onClick={() => onReschedule(j)}><CalendarClock size={14} /> Reschedule</Btn>
               <Btn size="sm" variant="outline" className="!text-red-600 !border-red-200 hover:!bg-red-50" onClick={() => onCancel(j.id)}><Ban size={14} /> Cancel</Btn>
             </div>
@@ -311,7 +314,7 @@ export default function CustomerJobs({ jobs = [], me, onReload = () => {}, onReq
   const isPast = (j) => ['completed', 'cancelled'].includes(j.status);
   const upcoming = jobs.filter(j => !isPast(j));
   const past = jobs.filter(isPast);
-  const requestBtn = onRequestService && <Btn size="sm" onClick={onRequestService}><Plus size={14} /> Request Service</Btn>;
+  const requestBtn = onRequestService && <Btn size="sm" className="whitespace-nowrap" onClick={onRequestService}><Plus size={14} /> Request<span className="hidden min-[360px]:inline">&nbsp;Service</span></Btn>;
 
   const modals = (
     <>
@@ -327,9 +330,8 @@ export default function CustomerJobs({ jobs = [], me, onReload = () => {}, onReq
         <Card>
           <CardHeader title="Upcoming" icon={<CalendarClock size={15} />} action={requestBtn} />
           {upcoming.length === 0 ? (
-            <Empty icon={<Calendar size={24} />} title="No upcoming appointments"
-              message="Request a service and it'll show up here."
-              action={onRequestService && <Btn onClick={onRequestService}><Plus size={16} /> Request Service</Btn>} />
+            <Empty compact icon={<Calendar size={18} />} title="No upcoming appointments"
+              message="Request a service and it'll show up here." />
           ) : (
             <div className="divide-y divide-slate-100">
               {upcoming.map(j => <JobRow key={j.id} j={j} {...rowProps} />)}
@@ -353,9 +355,8 @@ export default function CustomerJobs({ jobs = [], me, onReload = () => {}, onReq
     <Card>
       <CardHeader title="Service History" icon={<Briefcase size={15} />} action={requestBtn} />
       {jobs.length === 0 ? (
-        <Empty icon={<Briefcase size={24} />} title="No services yet"
-          message="Request your first service and it'll show up here."
-          action={onRequestService && <Btn onClick={onRequestService}><Plus size={16} /> Request Service</Btn>} />
+        <Empty compact icon={<Briefcase size={18} />} title="No services yet"
+          message="Request your first service and it'll show up here." />
       ) : (
         <div className="divide-y divide-slate-100">
           {jobs.map(j => <JobRow key={j.id} j={j} {...rowProps} />)}

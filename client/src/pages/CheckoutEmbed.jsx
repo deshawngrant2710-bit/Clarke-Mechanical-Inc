@@ -91,7 +91,7 @@ export default function CheckoutEmbed() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 pt-6 pb-[calc(7rem+env(safe-area-inset-bottom))]">
         <button onClick={() => navigate('/billing')} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-4">
           <ArrowLeft size={16} /> Back to invoices
         </button>
@@ -100,20 +100,23 @@ export default function CheckoutEmbed() {
           <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-md mx-auto">
             <AlertCircle size={30} className="mx-auto text-red-400 mb-2" />
             <p className="text-sm text-slate-600">{err}</p>
+            <button onClick={() => navigate('/billing')} className="mt-5 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm">
+              <ArrowLeft size={15} /> Back to invoices
+            </button>
           </div>
         ) : status === 'loading' ? (
           <p className="text-slate-400 flex items-center justify-center gap-2 py-20"><Loader2 size={18} className="animate-spin" /> Loading secure checkout…</p>
         ) : (
-          <div className="grid md:grid-cols-5 gap-6 items-start">
+          <div className="grid md:grid-cols-5 gap-6 items-start min-w-0">
             {/* Order summary */}
-            <div className="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-5">
+            <div className="md:col-span-2 min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
               <h2 className="text-card-title text-slate-800 mb-1">Order summary</h2>
-              <p className="text-xs text-slate-400 mb-4">Invoice {inv?.invoice_number}</p>
+              <p className="text-xs text-slate-400 mb-4 break-all">Invoice {inv?.invoice_number}</p>
               <div className="divide-y divide-slate-100">
                 {(inv?.items || []).map((it, i) => (
                   <div key={i} className="flex justify-between gap-3 py-2.5">
                     <div className="min-w-0">
-                      <div className="text-sm text-slate-700">{it.description}</div>
+                      <div className="text-sm text-slate-700 whitespace-pre-line break-words [overflow-wrap:anywhere]">{it.description}</div>
                       <div className="text-xs text-slate-400">{it.quantity} × {money(it.unit_price)}</div>
                     </div>
                     <div className="text-sm font-medium text-slate-800 whitespace-nowrap">{money(it.total)}</div>
@@ -127,12 +130,12 @@ export default function CheckoutEmbed() {
               </div>
               <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between items-center">
                 <span className="text-sm font-semibold text-slate-700">Amount due</span>
-                <span className="text-2xl font-bold text-slate-900">{money(data?.amount_due)}</span>
+                <span className="text-2xl font-bold text-slate-900 tabular-nums break-all text-right">{money(data?.amount_due)}</span>
               </div>
             </div>
 
             {/* Payment */}
-            <form onSubmit={handlePay} className="md:col-span-3 bg-white rounded-2xl border border-slate-200 p-5">
+            <form onSubmit={handlePay} className="md:col-span-3 min-w-0 bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
               <h2 className="text-card-title text-slate-800 mb-4 flex items-center gap-2"><Lock size={15} className="text-slate-400" /> Payment details</h2>
               <div id="payment-element" className="min-h-[220px]" />
               {err && <div className="mt-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{err}</div>}

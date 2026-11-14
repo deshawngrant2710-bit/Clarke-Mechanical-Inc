@@ -12,18 +12,39 @@ const fmtDate = (d) => {
   return isNaN(dt) ? esc(d) : dt.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 };
 // Build the "Payment Method" lines from the office's saved payment details.
-function paymentLines() {
+// Plain-text "how to pay" lines (shared by the branded HTML/PDF and the mobile
+// document preview so their wording never drifts apart).
+export function paymentLinesText() {
   const p = PAYMENT_INFO || {};
   const out = [];
-  if (p.zelle?.enabled && p.zelle.email) out.push(`Zelle: ${esc(p.zelle.email)}`);
+  if (p.zelle?.enabled && p.zelle.email) out.push(`Zelle: ${p.zelle.email}`);
   if (p.bank?.enabled && (p.bank.bankName || p.bank.accountNumber)) {
-    if (p.bank.bankName) out.push(`Bank: ${esc(p.bank.bankName)}`);
-    if (p.bank.accountName) out.push(`Account Name: ${esc(p.bank.accountName)}`);
-    if (p.bank.accountNumber) out.push(`Account Number: ${esc(p.bank.accountNumber)}`);
-    if (p.bank.routingNumber) out.push(`Routing (ACH): ${esc(p.bank.routingNumber)}`);
+    if (p.bank.bankName) out.push(`Bank: ${p.bank.bankName}`);
+    if (p.bank.accountName) out.push(`Account Name: ${p.bank.accountName}`);
+    if (p.bank.accountNumber) out.push(`Account Number: ${p.bank.accountNumber}`);
+    if (p.bank.routingNumber) out.push(`Routing (ACH): ${p.bank.routingNumber}`);
   }
-  if (p.check?.enabled && p.check.payableTo) out.push(`Checks payable to: ${esc(p.check.payableTo)}`);
+  if (p.check?.enabled && p.check.payableTo) out.push(`Checks payable to: ${p.check.payableTo}`);
   return out;
+}
+function paymentLines() { return paymentLinesText().map(esc); }
+
+// Plain-text terms / information lists for invoices and estimates.
+export function docTermsText({ isInv, number, bizName }) {
+  return isInv
+    ? ['Payment is due by the date shown above.', `Please reference invoice ${number} with your payment.`,
+       'All work has been completed to the highest standard and in accordance with industry guidelines.', `Thank you for your business — ${bizName}.`]
+    : ['This estimate is valid until the date shown above.', 'Payment terms will be discussed prior to work commencement.',
+       'All work will be completed to the highest standard and in accordance with industry guidelines.', `Thank you for considering ${bizName}.`];
+}
+export const ESTIMATE_INFO_TEXT = [
+  'This estimate is based on the information provided and on-site conditions at the time of inspection.',
+  'Prices are valid for the period stated above.',
+  'Additional work may be required if unforeseen conditions are discovered.',
+  'This is an estimate only and not a guarantee of the final cost.',
+];
+export function docFooterText(kind) {
+  return kind === 'receipt' ? '' : kind === 'invoice' ? 'PAYMENT IS DUE UPON RECEIPT. THANK YOU!' : 'THIS ESTIMATE IS VALID FOR 30 DAYS.';
 }
 
 // Small inline icons for the footer band (kept as SVG so they render identically

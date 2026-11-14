@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { Modal, Btn } from './UI';
 import { PAYMENT_INFO } from '../lib/paymentInfo';
-import { Banknote, Landmark, Mail as MailIcon, Copy, Check, Send, Smartphone, CreditCard } from 'lucide-react';
+import { isPayable, amountDue } from '../lib/payable';
+import { Banknote, Landmark, Mail as MailIcon, Copy, Check, Send, Smartphone, CreditCard, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const money = (v) => `$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -29,11 +30,14 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid, stripeEnable
   const navigate = useNavigate();
   const [notifying, setNotifying] = useState(null);
   const [paying, setPaying] = useState(false);
-  const amount = Number(invoice?.total || 0);
+  // What's actually owed (total − payments), and whether paying is allowed at all.
+  const amount = amountDue(invoice);
+  const payable = isPayable(invoice);
   const memo = invoice?.invoice_number || '';
 
   // Open the Clarke-branded, on-site card checkout.
   function payByCard() {
+    if (!payable) return;
     setPaying(true);
     navigate(`/pay-invoice/${invoice.id}`);
   }
@@ -57,6 +61,14 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid, stripeEnable
   return (
     <Modal open={!!invoice} onClose={onClose} title={`Pay Invoice ${invoice?.invoice_number || ''}`}
       subtitle={`Amount due: ${money(amount)}`} size="md">
+      {!payable ? (
+        <div className="text-center py-8">
+          <div className="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600"><CheckCircle size={28} /></div>
+          <p className="text-sm font-semibold text-slate-800">{invoice?.status === 'paid' ? 'This invoice is paid' : 'Nothing to pay on this invoice'}</p>
+          <p className="text-xs text-slate-500 mt-1">There's no balance due, so no payment is needed.</p>
+          <Btn variant="outline" className="mt-4" onClick={onClose}>Close</Btn>
+        </div>
+      ) : (
       <div className="space-y-3">
         <p className="text-sm text-slate-600">
           Choose how you'd like to pay. Use <strong>{memo || 'your invoice number'}</strong> as the reference/memo, then tap <strong>I've sent it</strong> so we can match your payment.
@@ -125,6 +137,7 @@ export default function PayInvoiceModal({ invoice, onClose, onPaid, stripeEnable
           </div>
         )}
       </div>
+      )}
     </Modal>
   );
 }

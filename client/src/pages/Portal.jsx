@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import PageHeader from '../components/PageHeader';
 import { Card, CardHeader, Badge, Btn, StatCard, Empty, Spinner, Modal, Input, Textarea, Select } from '../components/UI';
-import { printDocument, buildDocumentHtml } from '../lib/printDoc';
-import { sanitizeRich } from '../lib/richText';
+import { downloadPdf } from '../lib/printDoc';
 import PayInvoiceModal from '../components/PayInvoiceModal';
+import DocumentPreviewModal from '../components/portal/DocumentPreview';
+import { InvoiceList, EstimateList } from '../components/portal/BillingLists';
+import { isPayable, amountDue } from '../lib/payable';
 import ServiceRequestModal from '../components/ServiceRequestModal';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import Logo from '../components/Logo';
@@ -78,10 +80,13 @@ export default function Portal() {
 
   // "Pay Balance" opens the oldest unpaid invoice; if none, just show the invoices tab.
   function payBalance() {
-    const unpaid = invoices.find(i => i.status !== 'paid' && i.status !== 'cancelled');
+    // Oldest payable invoice (same eligibility rule as the server).
+    const unpaid = [...invoices].reverse().find(isPayable);
     if (unpaid) setPayInvoice(unpaid);
     else setTab('invoices');
   }
+
+  const download = (opts) => downloadPdf({ ...opts, business: me?.business, customer: me?.profile });
 
   async function respondQuote(quote, decision) {
     const id = typeof quote === 'string' ? quote : quote.id;
@@ -230,9 +235,9 @@ export default function Portal() {
 
           <div className="w-full">
             <Card className="p-4 mb-6 border-l-4 border-blue-500 bg-blue-50/40">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 shrink-0"><Calendar size={18} /></div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{nextAppt ? 'Next appointment' : 'Appointments'}</p>
                   {nextAppt ? (
                     <>
@@ -261,13 +266,13 @@ export default function Portal() {
             {[
               { label: 'Active Services', value: me.stats.openJobs, icon: <Wrench size={16} />, color: 'text-blue-600 bg-blue-50', onClick: () => navigate('/appointments') },
               { label: 'Open Requests', value: jobs.filter(j => j.status === 'pending').length, icon: <ClipboardList size={16} />, color: 'text-amber-600 bg-amber-50', onClick: () => navigate('/appointments') },
-              { label: 'Balance Due', value: `$${Number(me.stats.balanceDue || 0).toFixed(2)}`, icon: <DollarSign size={16} />, color: me.stats.balanceDue > 0 ? 'text-orange-600 bg-orange-50' : 'text-emerald-600 bg-emerald-50', valueClass: me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600', onClick: () => setTab('invoices') },
+              { label: 'Balance Due', value: money(me.stats.balanceDue), icon: <DollarSign size={16} />, color: me.stats.balanceDue > 0 ? 'text-orange-600 bg-orange-50' : 'text-emerald-600 bg-emerald-50', valueClass: me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600', onClick: () => setTab('invoices') },
               { label: 'Invoices', value: me.stats.invoiceCount, icon: <FileText size={16} />, color: 'text-violet-600 bg-violet-50', onClick: () => setTab('invoices') },
             ].map(s => (
               <button key={s.label} type="button" onClick={s.onClick}
                 className="rounded-xl border border-slate-200 bg-white p-3 flex flex-col items-center gap-1 hover:border-blue-300 active:scale-[0.98] transition-all">
                 <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${s.color}`}>{s.icon}</span>
-                <span className={`text-lg font-bold tabular-nums leading-tight ${s.valueClass || 'text-slate-900'}`}>{s.value}</span>
+                <span className={`text-lg font-bold tabular-nums leading-tight max-w-full break-all text-center ${s.valueClass || 'text-slate-900'}`}>{s.value}</span>
                 <span className="text-[11px] font-medium text-slate-500 text-center leading-tight">{s.label}</span>
               </button>
             ))}
@@ -279,13 +284,13 @@ export default function Portal() {
               <CardHeader title="Active Service Requests" icon={<ClipboardList size={15} />} />
               {(() => {
                 const active = jobs.filter(j => !['completed', 'cancelled'].includes(j.status));
-                if (active.length === 0) return <Empty icon={<ClipboardList size={22} />} title="No active requests" message="Your open service requests will appear here." />;
+                if (active.length === 0) return <Empty compact icon={<ClipboardList size={18} />} title="No active requests" message="Your open service requests will appear here." />;
                 return (
                   <div className="divide-y divide-slate-100">
                     {active.slice(0, 5).map(j => (
-                      <div key={j.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
+                      <div key={j.id} className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3.5">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-800 truncate">{j.job_type || j.title || 'Service request'}</p>
+                          <p className="text-sm font-semibold text-slate-800 break-words [overflow-wrap:anywhere]">{j.job_type || j.title || 'Service request'}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <Badge status={j.status} />
                             {j.scheduled_date && <span className="text-xs text-slate-500">{new Date(j.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
@@ -303,10 +308,10 @@ export default function Portal() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5"><DollarSign size={14} className="text-slate-400" /> Billing</p>
                 <p className="text-xs text-slate-500 mt-4">Balance Due</p>
-                <p className={`text-3xl font-bold tabular-nums leading-tight ${me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>{money(me.stats.balanceDue)}</p>
+                <p className={`text-3xl font-bold tabular-nums leading-tight break-all ${me.stats.balanceDue > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>{money(me.stats.balanceDue)}</p>
               </div>
               <div className="mt-4">
-                {me.stats.balanceDue > 0 ? (
+                {me.stats.balanceDue > 0 && invoices.some(isPayable) ? (
                   <Btn onClick={payBalance} className="w-full justify-center"><CreditCard size={15} /> Pay Balance</Btn>
                 ) : (
                   <p className="text-sm text-emerald-600 font-medium flex items-center gap-1.5"><CheckCircle size={15} /> You're all paid up</p>
@@ -316,7 +321,7 @@ export default function Portal() {
           </div>
           </>)}
 
-          <div className="flex gap-1 mb-4 bg-white border border-slate-200 rounded-lg p-1 w-fit flex-wrap">
+          <div className="flex gap-1 mb-4 bg-white border border-slate-200 rounded-lg p-1 w-fit max-w-full flex-wrap">
             {tabs.map(t => (
               <button key={t.id} onClick={() => { setTab(t.id); setExpanded(null); }}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -325,119 +330,13 @@ export default function Portal() {
             ))}
           </div>
 
-          {/* INVOICES */}
           {tab === 'invoices' && (
-            <Card>
-              <CardHeader title="Invoices" icon={<FileText size={15} />} />
-              {invoices.length === 0 ? <Empty icon={<FileText size={24} />} title="No invoices" message="Your invoices will appear here." /> : (
-                <div className="divide-y divide-slate-100">
-                  {invoices.map(inv => (
-                    <div key={inv.id}>
-                      <button onClick={() => toggle(inv.id)} className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 text-left">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{inv.invoice_number}</p>
-                          <p className="text-xs text-slate-500">Issued {inv.issue_date || 'N/A'} · Due {inv.due_date || 'N/A'}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-semibold text-slate-800">{money(inv.total)}</span>
-                          <Badge status={inv.status} />
-                          <ChevronDown size={16} className={`text-slate-400 transition-transform ${expanded === inv.id ? 'rotate-180' : ''}`} />
-                        </div>
-                      </button>
-                      {expanded === inv.id && (
-                        <div className="px-5 pb-4 pt-1 bg-slate-50/60 animate-fade-in">
-                          <table className="w-full text-sm">
-                            <tbody className="divide-y divide-slate-200/70">
-                              {(inv.items || []).map((it, i) => (
-                                <tr key={i}>
-                                  <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] text-slate-600 mt-0.5" dangerouslySetInnerHTML={{ __html: sanitizeRich(it.note) }} />}</td>
-                                  <td className="py-1.5 text-right text-slate-500 w-16">×{it.quantity}</td>
-                                  <td className="py-1.5 text-right text-slate-800 font-medium w-24">{money(it.total)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <div className="flex items-end justify-between mt-2 pt-2 border-t border-slate-200">
-                            <div className="flex gap-2">
-                              {inv.status !== 'paid' && inv.status !== 'cancelled' && (
-                                <Btn size="sm" onClick={() => setPayInvoice(inv)}><CreditCard size={14} /> Pay now</Btn>
-                              )}
-                              <Btn size="sm" variant="outline" onClick={() => setViewDoc({ kind: 'invoice', doc: inv })}><Eye size={14} /> View</Btn>
-                              {inv.status === 'paid' && (
-                                <Btn size="sm" variant="outline" onClick={() => setViewDoc({ kind: 'receipt', doc: inv })}><Receipt size={14} /> Receipt</Btn>
-                              )}
-                              <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'invoice', doc: inv, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
-                            </div>
-                            <div className="w-48 space-y-0.5 text-sm">
-                              <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{money(inv.subtotal)}</span></div>
-                              {inv.discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>−{money(inv.discount)}</span></div>}
-                              <div className="flex justify-between text-slate-500"><span>Tax</span><span>{money(inv.tax_amount)}</span></div>
-                              <div className="flex justify-between font-bold text-slate-800"><span>Total</span><span>{money(inv.total)}</span></div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
+            <InvoiceList invoices={invoices} expanded={expanded} onToggle={toggle}
+              onPay={setPayInvoice} onView={setViewDoc} onDownload={download} />
           )}
-
-          {/* QUOTES */}
           {tab === 'quotes' && (
-            <Card>
-              <CardHeader title="Estimates" icon={<ClipboardList size={15} />} />
-              {quotes.length === 0 ? <Empty icon={<ClipboardList size={24} />} title="No estimates" message="Estimates we send you will appear here — you can accept or decline them online." /> : (
-                <div className="divide-y divide-slate-100">
-                  {quotes.map(q => {
-                    const pending = ['sent', 'draft'].includes(q.status);
-                    return (
-                      <div key={q.id}>
-                        <button onClick={() => toggle(q.id)} className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 text-left">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-800">{q.quote_number}</p>
-                            <p className="text-xs text-slate-500">Expires {q.expiry_date || 'N/A'}</p>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-semibold text-slate-800">{money(q.total)}</span>
-                            <Badge status={q.status} />
-                            <ChevronDown size={16} className={`text-slate-400 transition-transform ${expanded === q.id ? 'rotate-180' : ''}`} />
-                          </div>
-                        </button>
-                        {expanded === q.id && (
-                          <div className="px-5 pb-4 pt-1 bg-slate-50/60 animate-fade-in">
-                            <table className="w-full text-sm mb-3">
-                              <tbody className="divide-y divide-slate-200/70">
-                                {(q.items || []).map((it, i) => (
-                                  <tr key={i}>
-                                    <td className="py-1.5 text-slate-600">{it.description}{it.note && <div className="text-[11px] text-slate-600 mt-0.5" dangerouslySetInnerHTML={{ __html: sanitizeRich(it.note) }} />}</td>
-                                    <td className="py-1.5 text-right text-slate-500 w-16">×{it.quantity}</td>
-                                    <td className="py-1.5 text-right text-slate-800 font-medium w-24">{money(it.total)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            <div className="flex items-center justify-between gap-3 flex-wrap">
-                              <Btn size="sm" variant="outline" onClick={() => setViewDoc({ kind: 'quote', doc: q })}><Eye size={14} /> View</Btn>
-                              <Btn size="sm" variant="outline" onClick={() => printDocument({ kind: 'quote', doc: q, business: me.business, customer: me.profile })}><Download size={14} /> Download PDF</Btn>
-                              {pending ? (
-                                <div className="flex gap-2">
-                                  <Btn size="sm" variant="outline" onClick={() => respondQuote(q, 'declined')}><X size={14} /> Decline</Btn>
-                                  <Btn size="sm" variant="success" onClick={() => respondQuote(q, 'accepted')}><Check size={14} /> Accept Estimate</Btn>
-                                </div>
-                              ) : (
-                                <p className={`text-sm font-medium ${q.status === 'accepted' ? 'text-emerald-600' : 'text-slate-500'}`}>You {q.status} this estimate.</p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
+            <EstimateList quotes={quotes} expanded={expanded} onToggle={toggle}
+              onView={setViewDoc} onDownload={download} onRespond={respondQuote} />
           )}
 
           {tab === 'help' && me.business && (
@@ -611,20 +510,7 @@ export default function Portal() {
         onPay={(inv) => { setPayBillOpen(false); setPayInvoice(inv); }}
       />
       {payInvoice && <PayInvoiceModal invoice={payInvoice} stripeEnabled={me?.stripe_enabled} onClose={() => setPayInvoice(null)} onPaid={() => { setPayInvoice(null); load(); }} />}
-      {viewDoc && (
-        <Modal open={!!viewDoc} onClose={() => setViewDoc(null)} size="xl"
-          title={`${viewDoc.kind === 'invoice' ? 'Invoice' : viewDoc.kind === 'receipt' ? 'Receipt' : 'Estimate'} ${viewDoc.doc.invoice_number || viewDoc.doc.quote_number || ''}`}>
-          <iframe
-            title="Document preview"
-            srcDoc={buildDocumentHtml({ kind: viewDoc.kind, doc: viewDoc.doc, business: me?.business, customer: me?.profile })}
-            className="w-full h-[68vh] rounded-lg border border-slate-200 bg-white"
-          />
-          <div className="flex justify-end gap-2 mt-4">
-            <Btn variant="outline" onClick={() => setViewDoc(null)}>Close</Btn>
-            <Btn onClick={() => printDocument({ kind: viewDoc.kind, doc: viewDoc.doc, business: me?.business, customer: me?.profile })}><Download size={14} /> Download PDF</Btn>
-          </div>
-        </Modal>
-      )}
+      {viewDoc && <DocumentPreviewModal view={viewDoc} onClose={() => setViewDoc(null)} business={me?.business} customer={me?.profile} />}
     </div>
   );
 }
@@ -751,8 +637,9 @@ function ProfileModal({ open, onClose, profile, onDone }) {
 }
 
 function PayBillModal({ open, onClose, invoices, business, balanceDue, onPay }) {
-  const unpaid = (invoices || []).filter(i => i.status !== 'paid' && i.status !== 'cancelled');
-  const total = balanceDue || unpaid.reduce((s, i) => s + Number(i.balance ?? i.total ?? 0), 0);
+  // Only invoices the customer can actually pay — never $0, paid, cancelled or drafts.
+  const unpaid = (invoices || []).filter(isPayable);
+  const total = unpaid.length ? unpaid.reduce((s, i) => s + amountDue(i), 0) : 0;
 
   return (
     <Modal open={open} onClose={onClose} title="Pay Your Bill" size="md">
@@ -762,7 +649,7 @@ function PayBillModal({ open, onClose, invoices, business, balanceDue, onPay }) 
           <div className="flex items-center gap-2 text-blue-100 text-xs font-semibold uppercase tracking-wide">
             <CreditCard size={14} /> Total balance due
           </div>
-          <p className="text-4xl font-bold tabular-nums mt-1.5">{money(total)}</p>
+          <p className="text-4xl font-bold tabular-nums mt-1.5 break-all">{money(total)}</p>
           {business?.name && <p className="text-xs text-blue-100 mt-2">Payable to {business.name}</p>}
         </div>
 
@@ -780,11 +667,11 @@ function PayBillModal({ open, onClose, invoices, business, balanceDue, onPay }) 
                 {unpaid.map(inv => (
                   <div key={inv.id} className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-800">{inv.invoice_number}</p>
+                      <p className="text-sm font-semibold text-slate-800 break-all">{inv.invoice_number}</p>
                       <p className="text-xs text-slate-500">{inv.due_date ? `Due ${inv.due_date}` : 'Due on receipt'}</p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm font-semibold text-slate-800 tabular-nums">{money(inv.balance ?? inv.total)}</span>
+                      <span className="text-sm font-semibold text-slate-800 tabular-nums">{money(amountDue(inv))}</span>
                       <Btn size="sm" onClick={() => onPay(inv)}><CreditCard size={14} /> Pay</Btn>
                     </div>
                   </div>
@@ -792,7 +679,7 @@ function PayBillModal({ open, onClose, invoices, business, balanceDue, onPay }) 
               </div>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-slate-400">
-              <Lock size={12} /> Pay by Zelle, bank transfer, check, or cash — tap Pay on an invoice for details.
+              <Lock size={12} className="shrink-0" /> Pay by Zelle, bank transfer, check, or cash — tap Pay on an invoice for details.
             </div>
           </>
         )}

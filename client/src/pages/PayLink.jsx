@@ -22,6 +22,8 @@ export default function PayLink() {
       .then(r => {
         setInfo(r.data);
         if (r.data.paid) { setState('done'); return true; }
+        // Same eligibility rule as the server: no payment form for $0 / unissued / cancelled.
+        if (r.data.payable === false) { setState('invalid'); setError(r.data.message || 'There’s nothing to pay on this invoice.'); return true; }
         if (!r.data.enabled && !r.data.stripe_enabled) { setState('invalid'); setError('Online payments aren’t available right now.'); return true; }
         setState('ready');
         return false;

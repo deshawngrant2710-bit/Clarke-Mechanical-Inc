@@ -65,7 +65,13 @@ export default function ServiceRequestModal({ open, onClose, onDone, initial }) 
     finally { setSaving(false); }
   }
   return (
-    <Modal open={open} onClose={onClose} title="Book an Appointment" subtitle="Pick a day and an open arrival window">
+    <Modal open={open} onClose={onClose} title="Book an Appointment" subtitle="Pick a day and an open arrival window"
+      footer={(
+        <div className="flex gap-2 justify-end">
+          <Btn variant="outline" className="shrink-0 justify-center" onClick={onClose}>Cancel</Btn>
+          <Btn className="flex-1 sm:flex-none justify-center whitespace-nowrap" onClick={submit} loading={saving}>{saving ? 'Sending…' : 'Send Request'}</Btn>
+        </div>
+      )}>
       <div className="space-y-3">
         <Input label="What do you need? *" value={form.title} valid={form.title.trim().length > 2}
           onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. AC not cooling, annual tune-up" />
@@ -79,15 +85,15 @@ export default function ServiceRequestModal({ open, onClose, onDone, initial }) 
             {loadingSlots ? (
               <p className="text-sm text-slate-400">Checking availability…</p>
             ) : slots && slots.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2" role="radiogroup" aria-label="Arrival window">
                 {slots.map(s => (
-                  <button key={s.label} type="button" disabled={s.full}
+                  <button key={s.label} type="button" disabled={s.full} role="radio" aria-checked={form.booking_window === s.label}
                     onClick={() => setForm(f => ({ ...f, booking_window: s.label }))}
-                    className={`text-sm rounded-lg px-3 py-2 ring-1 text-left transition-colors ${
+                    className={`min-w-0 text-sm rounded-lg px-3 py-2.5 ring-1 text-left transition-colors ${
                       s.full ? 'bg-slate-50 text-slate-300 ring-slate-200 cursor-not-allowed line-through'
                       : form.booking_window === s.label ? 'bg-blue-600 text-white ring-blue-600'
                       : 'bg-white text-slate-700 ring-slate-200 hover:border-slate-300'}`}>
-                    <span className="block font-medium">{s.label}</span>
+                    <span className="block font-medium break-words">{s.label}</span>
                     <span className={`text-xs ${form.booking_window === s.label ? 'text-blue-100' : 'text-slate-400'}`}>
                       {s.full ? 'Full' : `${s.remaining} left`}
                     </span>
@@ -109,22 +115,18 @@ export default function ServiceRequestModal({ open, onClose, onDone, initial }) 
                     ? <img src={p.proof} alt={p.name} className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
                     : <div className="w-16 h-16 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400"><FileText size={20} /></div>}
                   <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
-                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs flex items-center justify-center shadow hover:bg-red-700" title="Remove">×</button>
+                    type="button" aria-label="Remove photo" className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white text-xs flex items-center justify-center shadow hover:bg-red-700" title="Remove">×</button>
                 </div>
               ))}
             </div>
           )}
           {photos.length < 10 && (
-            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-600 cursor-pointer hover:bg-slate-50">
+            <label className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50">
               <Camera size={15} /> {photos.length ? 'Add more' : 'Add photos'}
               <input type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={pickPhotos} />
             </label>
           )}
           <p className="text-xs text-slate-400 mt-1">Pictures of the unit or problem help us prepare. Up to 10.</p>
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={submit} loading={saving}>{saving ? 'Sending…' : 'Send Request'}</Btn>
         </div>
       </div>
     </Modal>

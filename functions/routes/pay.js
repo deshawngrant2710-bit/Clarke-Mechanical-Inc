@@ -7,6 +7,7 @@ const { getById, findWhere, create, update, remove } = require('../lib/db');
 const helcim = require('../lib/helcim');
 const stripe = require('../lib/stripe');
 const settings = require('../lib/settings');
+const { invoiceEligibility } = require('../lib/payable');
 
 const router = express.Router();
 
@@ -50,6 +51,7 @@ router.get('/:token', async (req, res) => {
     stripe_enabled: stripe.paymentsEnabled(),
     invoice_number: ctx.invoice.invoice_number || '', amount: await balanceDollars(ctx.invoice),
     paid: ctx.invoice.status === 'paid',
+    ...(await (async () => { const e = await invoiceEligibility(ctx.invoice); return { payable: e.payable, reason: e.reason, message: e.message }; })()),
   });
 });
 
@@ -58,7 +60,7 @@ router.get('/:token', async (req, res) => {
 router.post('/:token/stripe', async (req, res) => {
   const ctx = await loadToken(req.params.token);
   if (!ctx) return res.status(404).json({ error: 'This payment link is invalid or has expired.' });
-  if (ctx.invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(ctx.invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!stripe.paymentsEnabled()) return res.status(503).json({ error: 'Stripe payments are not set up yet.' });
   try {
     const customer = ctx.invoice.customer_id ? await getById('customers', ctx.invoice.customer_id) : null;
@@ -80,7 +82,7 @@ router.post('/:token/stripe', async (req, res) => {
 router.post('/:token/initialize', async (req, res) => {
   const ctx = await loadToken(req.params.token);
   if (!ctx) return res.status(404).json({ error: 'This payment link is invalid or has expired.' });
-  if (ctx.invoice.status === 'paid') return res.status(400).json({ error: 'This invoice is already paid.' });
+  { const e = await invoiceEligibility(ctx.invoice); if (!e.payable) return res.status(400).json({ error: e.message, reason: e.reason }); }
   if (!helcim.configured()) return res.status(503).json({ error: 'Online payments are not set up yet.' });
   const amount = await balanceDollars(ctx.invoice);
   if (amount <= 0) return res.status(400).json({ error: 'Nothing left to pay.' });
