@@ -149,7 +149,7 @@ export default function Customers() {
           placeholder="Search by name, phone, email, address…" icon={<Search size={16} />} />
         <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
           {filters.map(f => (
-            <button key={f.id} onClick={() => setFilter(f.id)}
+            <button key={f.id} onClick={() => setFilter(f.id)} aria-pressed={filter === f.id}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${filter === f.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
               {f.label}
             </button>

@@ -90,7 +90,7 @@ const PORTAL_NAME = { customer: 'Customer portal', technician: 'Technician porta
 
 // Taps that could change something real are never pressed (the server would refuse
 // them anyway — this just keeps the bot polite).
-const DANGER = /delete|remove|void|pay\b|pay \$|charge|refund|send|submit|save|clock|sign ?out|log ?out|approve|decline|accept|confirm|complete|close job|mark |cancel|upload|call|text|email|share|download|print|export|whatsapp|archive|reset|disconnect|connect|import|run |run$|start|stop|assign|book|request|convert|duplicate|generate|create|new |add |\+|invite|enable|disable|turn|reply|post|sync now|retry|collect|record|issue|finish|sign/i;
+const DANGER = /follow-up|follow up|delete|remove|void|pay\b|pay \$|charge|refund|send|submit|save|clock|sign ?out|log ?out|approve|decline|accept|confirm|complete|close job|mark |cancel|upload|call|text|email|share|download|print|export|whatsapp|archive|reset|disconnect|connect|import|run |run$|start|stop|assign|book|request|convert|duplicate|generate|create|new |add |\+|invite|enable|disable|turn|reply|post|sync now|retry|collect|record|issue|finish|sign/i;
 
 // Third-party services the bot never loads (costs money / not ours to load-test).
 const BLOCK = /maps\.googleapis|maps\.gstatic|js\.stripe\.com|helcim|tile\.openstreetmap|tiles\.|google-analytics|googletagmanager|facebook|hotjar/i;
@@ -301,7 +301,10 @@ async function tapSweep(page, open, path, portal, V, label) {
       // reset for the next tap
       if (st.url !== before || await page.locator('.modal-surface').count()) await open(path);
     } catch (e) {
-      add('fail', portal, V, label, 'Button can\'t be tapped', `"${name}" — ${e.message.split('\n')[0].slice(0, 160)}`);
+      // Only call it broken when something is actually sitting on top of the button.
+      const cover = /(<[^>]{1,120}>)[^\n]*intercepts pointer events/.exec(e.message || '');
+      if (cover) add('fail', portal, V, label, 'Button is covered and can\'t be tapped', `"${name}" — blocked by ${cover[1].slice(0, 100)}`);
+      else add('warn', portal, V, label, 'Button tap could not be confirmed', `"${name}" — ${String(e.message || '').split('\n')[0].slice(0, 140)}`);
       await open(path);
     }
   }
