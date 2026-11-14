@@ -5,6 +5,7 @@ const { create, list } = require('./db');
 const { sendPush } = require('./push');
 
 async function notify({ type, title, body, link = null, meta = null, roles = ['admin', 'office'] }) {
+  if (require('./diagContext').isDiagnostic()) return; // health-bot activity never alerts staff
   // 1) In-app notification (bell center).
   try {
     await create('notifications', uuid(), {

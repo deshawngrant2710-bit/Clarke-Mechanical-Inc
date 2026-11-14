@@ -28,6 +28,7 @@ function toE164(raw) {
 
 // Low-level send. Throws on failure. `to` may be a raw or E.164 number.
 async function sendSms(to, body) {
+  if (require('./diagContext').isDiagnostic()) return true; // never text for bot activity
   if (!smsConfigured()) throw new Error('SMS not configured');
   const dest = toE164(to);
   if (!dest) throw new Error('Invalid destination number');

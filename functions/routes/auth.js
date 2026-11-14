@@ -180,14 +180,16 @@ router.post('/login', async (req, res) => {
     // Block if this account/IP has too many recent failed attempts.
     const gate = loginGuard.check(req, email);
     if (gate.blocked) {
+      require('../lib/security').record('login_locked', { email, ip: require('../lib/security').clientIp(req) });
       const mins = Math.ceil(gate.retryAfterSec / 60);
       res.set('Retry-After', String(gate.retryAfterSec));
       return res.status(429).json({ error: `Too many sign-in attempts. Please try again in about ${mins} minute${mins === 1 ? '' : 's'}, or reset your password.`, retryAfter: gate.retryAfterSec });
     }
 
     const user = await findOne('users', 'email', email);
-    if (!user || !bcrypt.compareSync(password, user.password)) {
+    if (!user || !user.password || !bcrypt.compareSync(password, user.password)) {
       loginGuard.fail(req, email);
+      require('../lib/security').record('login_failed', { email, ip: require('../lib/security').clientIp(req), known_account: !!user });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     loginGuard.clear(req, email);
@@ -260,6 +262,7 @@ router.post('/login/verify', async (req, res) => {
     }
 
     if (!ok) {
+      require('../lib/security').record('twofa_failed', { user_id: ch.user_id, ip: require('../lib/security').clientIp(req), attempt: (ch.attempts || 0) + 1 });
       await update('twofa_challenges', challenge_id, { attempts: (ch.attempts || 0) + 1 });
       return res.status(401).json({ error: 'That code is not correct. Please try again.' });
     }

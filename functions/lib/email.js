@@ -371,6 +371,7 @@ async function sendViaBrevo(cfg, { to, toName, subject, html, cc, attachments })
 
 // Send + log to Firestore email_log.
 async function sendMail({ type, to, toName, subject, html, relatedId, customerId, sentBy, cc, attachments }) {
+  if (require('./diagContext').isDiagnostic()) return { id: null, status: 'skipped', error: null }; // never email for bot activity
   const id = uuid();
   const cfg = await settings.emailConfig();
   const ccList = Array.isArray(cc) ? cc.filter(Boolean) : [];

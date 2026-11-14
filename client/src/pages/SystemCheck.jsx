@@ -5,6 +5,7 @@ import { Card, Btn, Empty, SkeletonPage } from '../components/UI';
 import {
   Bot, Play, CheckCircle2, XCircle, AlertTriangle, MinusCircle,
   RefreshCw, Clock, ShieldCheck, Database, Image as ImageIcon, Plug, ListChecks,
+  Briefcase, ShieldAlert, Smartphone, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -17,7 +18,11 @@ const STATUS = {
 const GROUP_ICON = {
   System: Database,
   Persistence: ImageIcon,
+  'Job walkthrough': Briefcase,
   Portals: ShieldCheck,
+  Cleanup: Sparkles,
+  Security: ShieldAlert,
+  'Screens & buttons': Smartphone,
   Integrations: Plug,
   Integrity: ListChecks,
 };
@@ -44,7 +49,7 @@ export default function SystemCheck() {
 
   async function runSweep() {
     setRunning(true);
-    const t = toast.loading('Clarke Mechanical Bot is sweeping the app…');
+    const t = toast.loading('Clarke Mechanical Bot is going through the app — this takes a minute or two…');
     try {
       const { data } = await api.post('/diagnostics/run');
       setReport(data);
@@ -72,7 +77,7 @@ export default function SystemCheck() {
 
   return (
     <div className="animate-fade-in max-w-4xl mx-auto pb-8">
-      <PageHeader title="Clarke Mechanical Bot" subtitle="Automatic health checks across the whole app" icon={<Bot size={20} />}>
+      <PageHeader title="Clarke Mechanical Bot" subtitle="Checks the whole app every 2 hours — screens, buttons, jobs, photos, portals and security" icon={<Bot size={20} />}>
         <Btn onClick={runSweep} loading={running} disabled={running}>
           {running ? <RefreshCw size={16} className="animate-spin" /> : <Play size={16} />}
           {running ? 'Sweeping…' : 'Run sweep now'}
@@ -82,7 +87,7 @@ export default function SystemCheck() {
       {!report ? (
         <Card className="p-8">
           <Empty icon={<Bot size={28} />} title="No sweep has run yet"
-            message="Tap “Run sweep now” and the bot will check the database, uploads, every portal, and more — then tell you if anything is wrong. It also runs on its own every 2 days."
+            message="Tap “Run sweep now” and the bot will check the database, uploads, every portal, and more — then tell you if anything is wrong. It also runs on its own every 2 hours and alerts you if anything breaks."
             action={<Btn onClick={runSweep} loading={running}><Play size={16} /> Run the first sweep</Btn>} />
         </Card>
       ) : (
@@ -95,7 +100,7 @@ export default function SystemCheck() {
               <p className={`text-sm ${banner.color} opacity-80`}>{banner.sub}</p>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
                 <span className="inline-flex items-center gap-1"><Clock size={12} /> {when(report.at)}</span>
-                <span>{report.trigger === 'scheduled' ? 'Automatic run' : 'Manual run'}</span>
+                <span>{report.trigger === 'scheduled' ? 'Automatic 2-hour run' : 'Manual run'}</span>
                 <span>{(report.durationMs / 1000).toFixed(1)}s</span>
               </div>
             </div>

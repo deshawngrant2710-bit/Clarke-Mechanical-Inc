@@ -157,12 +157,18 @@ router.get('/vendor-invoices', vendorInvoices);
 router.post('/vendor-invoices', vendorInvoices);
 
 // GET or POST /api/cron/health-sweep — Clarke Mechanical Bot's scheduled sweep.
-// Self-gates to once every ~2 days; pass ?force=1 to run regardless. Alerts
-// admins on failure. Point any scheduler (or Render Cron) here daily.
+// Self-gates to once every ~2 hours; pass ?force=1 to run regardless (GitHub
+// Actions does, right after the browser checks). Alerts admins on every failing run.
 async function healthSweep(req, res) {
   try {
     const force = req.query.force === '1' || req.body?.force === true;
     const { runScheduledSweep } = require('../lib/diagnostics');
+    // ?async=1 answers right away and runs the sweep in the background (keeps the
+    // GitHub Actions job short); results + alerts arrive the same way either way.
+    if (req.query.async === '1') {
+      runScheduledSweep({ force }).then(r => console.log('[health-sweep]', JSON.stringify(r))).catch(e => console.error('[health-sweep]', e.message));
+      return res.status(202).json({ ok: true, started: true });
+    }
     const result = await runScheduledSweep({ force });
     res.json({ ok: true, ...result });
   } catch (e) {

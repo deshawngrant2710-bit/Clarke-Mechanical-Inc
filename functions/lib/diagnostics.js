@@ -62,16 +62,11 @@ async function apiStatus(path, role) {
 
 // Remove any tagged test records left behind by an earlier interrupted run.
 async function cleanupLeftovers() {
-  let removed = 0;
-  for (const coll of TAGGED_COLLECTIONS) {
-    try {
-      const docs = await list(coll);
-      for (const d of docs) {
-        if (d && d[TAG] === true) { try { await remove(coll, d.id); removed++; } catch { /* ignore */ } }
-      }
-    } catch { /* collection may not exist yet */ }
-  }
-  return removed;
+  // Sweep up anything a crashed earlier run left behind — unless the browser checks
+  // are using the test world right now (their logins would die mid-run).
+  const W = require('./botWorld');
+  if (W.worldBusy()) return 0;
+  try { return await W.teardownWorld(); } catch { return 0; }
 }
 
 // --- check groups ----------------------------------------------------------
@@ -209,57 +204,6 @@ async function persistenceChecks() {
   return out;
 }
 
-// Mint a token per role and confirm the portals let the right roles in and keep
-// the wrong roles out. Uses only safe GET endpoints.
-async function portalChecks() {
-  const out = [];
-  // First make sure the local API is reachable at all.
-  const probe = await apiStatus('/api/auth/me', 'admin');
-  if (probe === 0) {
-    out.push(row('Portals', 'Local API reachable', 'warn', 'Could not reach the API from inside the server to test role access — skipping portal checks', 0));
-    return out;
-  }
-  // Every role can authenticate (their portal loads).
-  for (const role of ['admin', 'office', 'technician', 'leads', 'customer']) {
-    const r = await timed(async () => {
-      // The bot's test logins are synthetic (no user record), so /auth/me answers
-      // 404 "user not found" AFTER the token is accepted. 401 = login rejected.
-      const s = await apiStatus('/api/auth/me', role);
-      return (s === 200 || s === 404) ? { status: 'pass', detail: `${role} sign-in token accepted` }
-        : { status: 'fail', detail: `${role} sign-in rejected (got ${s})` };
-    });
-    out.push(row('Portals', `${role[0].toUpperCase() + role.slice(1)} portal signs in`, r.status, r.detail, r.ms));
-  }
-  // Access matrix: [label, path, role, expectation] where expectation is 'allow'(200) or 'deny'(401/403).
-  const matrix = [
-    ['Admin can open Settings', '/api/settings', 'admin', 'allow'],
-    ['Office can open Jobs', '/api/jobs', 'office', 'allow'],
-    ['Technician can open Jobs', '/api/jobs', 'technician', 'allow'],
-    ['Technician blocked from Settings', '/api/settings', 'technician', 'deny'],
-    ['Technician blocked from Billing', '/api/billing/quotes', 'technician', 'deny'],
-    ['Leads agent can open Customers', '/api/customers', 'leads', 'allow'],
-    ['Leads agent blocked from Jobs', '/api/jobs', 'leads', 'deny'],
-    ['Customer blocked from Jobs', '/api/jobs', 'customer', 'deny'],
-    ['Customer blocked from Customers', '/api/customers', 'customer', 'deny'],
-    ['Customer blocked from Settings', '/api/settings', 'customer', 'deny'],
-  ];
-  for (const [label, path, role, expect] of matrix) {
-    const r = await timed(async () => {
-      const s = await apiStatus(path, role);
-      if (s === 0) return { status: 'warn', detail: 'API unreachable' };
-      if (expect === 'allow') {
-        return s === 200 ? { status: 'pass', detail: `allowed (200)` }
-          : { status: 'fail', detail: `should be allowed but got ${s}` };
-      }
-      // deny
-      return (s === 401 || s === 403) ? { status: 'pass', detail: `correctly blocked (${s})` }
-        : { status: 'fail', detail: `should be blocked but got ${s}` };
-    });
-    out.push(row('Portals', label, r.status, r.detail, r.ms));
-  }
-  return out;
-}
-
 function integrationChecks() {
   const out = [];
   const mark = (name, ok, okText, missText) =>
@@ -302,40 +246,90 @@ async function integrityChecks() {
   return out;
 }
 
+// --- browser (screens & buttons) results ------------------------------------
+// The real-browser checks run on GitHub Actions every 2 hours and post their
+// results to /api/diagnostics/ui/report. Each sweep folds the latest in.
+async function browserChecks() {
+  const G = 'Screens & buttons';
+  let latest = null;
+  try { latest = (await list('diagnostic_ui_reports')).sort((a, b) => (b.at || '').localeCompare(a.at || ''))[0] || null; } catch { /* none */ }
+  if (!latest) return [row(G, 'Phone + desktop screen checks', 'warn', 'No browser results yet — finish the GitHub Actions setup (see Health Bot Setup.md)')];
+  const ageH = (Date.now() - new Date(latest.at).getTime()) / 3600000;
+  const out = [];
+  const s = latest.summary || {};
+  if (ageH > 3) out.push(row(G, 'Browser checks are running on time', 'warn', `last browser run was ${ageH.toFixed(1)}h ago — check GitHub Actions`));
+  out.push(row(G, 'Phone + desktop screen checks', s.failures ? 'fail' : s.warnings ? 'warn' : 'pass',
+    `${s.pages || 0} screens × ${s.viewports || 0} sizes · ${s.buttons || 0} buttons checked · ${s.failures || 0} problem(s), ${s.warnings || 0} warning(s)`));
+  for (const it of (latest.items || []).filter(i => i.status === 'fail').slice(0, 20)) out.push(row(G, `${it.portal} · ${it.page} · ${it.viewport}`, 'fail', `${it.check}: ${it.detail}`));
+  for (const it of (latest.items || []).filter(i => i.status === 'warn').slice(0, 10)) out.push(row(G, `${it.portal} · ${it.page} · ${it.viewport}`, 'warn', `${it.check}: ${it.detail}`));
+  return out;
+}
+
 // --- orchestration ---------------------------------------------------------
+let running = false;
 
 async function runSweep({ trigger = 'manual' } = {}) {
-  const startedAt = new Date().toISOString();
-  const t0 = Date.now();
-  const leftovers = await cleanupLeftovers();
+  if (running) { const e = new Error('A health sweep is already running — try again in a minute.'); e.code = 'BUSY'; throw e; }
+  running = true;
+  const W = require('./botWorld');
+  const { scan } = require('./securityScan');
+  try {
+    const startedAt = new Date().toISOString();
+    const t0 = Date.now();
+    const previous = await latestReport();
+    const leftovers = await cleanupLeftovers();
 
-  // Run sequentially so the checks don't contend on the database.
-  const checks = [];
-  checks.push(...(await systemChecks()));
-  checks.push(...(await persistenceChecks()));
-  checks.push(...(await portalChecks()));
-  checks.push(...integrationChecks());
-  checks.push(...(await integrityChecks()));
+    // Run sequentially and deliberately so nothing contends and every step is real.
+    const checks = [];
+    checks.push(...(await systemChecks()));
+    checks.push(...(await persistenceChecks()));
 
-  const summary = {
-    total: checks.length,
-    passed: checks.filter(c => c.status === 'pass').length,
-    failed: checks.filter(c => c.status === 'fail').length,
-    warned: checks.filter(c => c.status === 'warn').length,
-    skipped: checks.filter(c => c.status === 'skip').length,
-  };
-  const report = {
-    id: uuid(),
-    at: startedAt,
-    trigger,                      // 'manual' | 'scheduled'
-    durationMs: Date.now() - t0,
-    ok: summary.failed === 0,     // warnings don't fail the sweep; a fail does
-    status: summary.failed > 0 ? 'fail' : (summary.warned > 0 ? 'warn' : 'pass'),
-    summary,
-    leftoversCleaned: leftovers,
-    checks,
-  };
-  return report;
+    if (W.worldBusy()) {
+      checks.push(row('Job walkthrough', 'Full job walkthrough', 'skip', 'The browser checks are using the test world right now — the walkthrough runs on the next sweep'));
+    } else {
+      W.holdWorld(10 * 60 * 1000);
+      try {
+        await W.setupWorld({ seedDocs: true });
+        checks.push(...(await W.journey()));
+        checks.push(...(await W.portals()));
+      } catch (e) {
+        checks.push(row('Job walkthrough', 'Set up the bot\'s test world', 'fail', e.message));
+      } finally {
+        const removed = await W.teardownWorld();
+        const left = await W.leftoversCount();
+        checks.push(row('Cleanup', 'All bot test data removed', left ? 'fail' : 'pass',
+          left ? `${left} test record(s) were left behind` : `${removed} test record(s) removed — nothing left in the system`));
+        W.releaseWorld();
+      }
+    }
+
+    const sec = await scan({ since: previous?.at, previous });
+    checks.push(...sec.checks);
+    checks.push(...integrationChecks());
+    checks.push(...(await integrityChecks()));
+    checks.push(...(await browserChecks()));
+
+    // Keep the security log bounded (14 days).
+    try {
+      const cutoff = new Date(Date.now() - 14 * 86400000).toISOString();
+      for (const e of (await list('security_events')).filter(e => (e.at || '') < cutoff)) await remove('security_events', e.id);
+    } catch { /* ignore */ }
+
+    const summary = {
+      total: checks.length,
+      passed: checks.filter(c => c.status === 'pass').length,
+      failed: checks.filter(c => c.status === 'fail').length,
+      warned: checks.filter(c => c.status === 'warn').length,
+      skipped: checks.filter(c => c.status === 'skip').length,
+    };
+    return {
+      id: uuid(), at: startedAt, trigger, durationMs: Date.now() - t0,
+      ok: summary.failed === 0,
+      status: summary.failed > 0 ? 'fail' : (summary.warned > 0 ? 'warn' : 'pass'),
+      summary, leftoversCleaned: leftovers, checks,
+      security_snapshot: sec.snapshot,
+    };
+  } finally { running = false; }
 }
 
 const MAX_REPORTS = 40;
@@ -365,13 +359,16 @@ async function runAndStore({ trigger = 'manual' } = {}) {
 
 // --- scheduled run + alert-on-failure --------------------------------------
 
-const SWEEP_INTERVAL_MS = 2 * 24 * 60 * 60 * 1000;   // every 2 days
-const GATE_MS = SWEEP_INTERVAL_MS - 3 * 60 * 60 * 1000; // 47h, so a daily/2-day scheduler never double-fires
+const SWEEP_INTERVAL_MS = 2 * 60 * 60 * 1000;       // every 2 hours
+// GitHub Actions forces a sweep every 2 hours. The server's own timer is only a backup:
+// it runs a sweep when none has happened for 2h15m (e.g. GitHub isn't set up yet).
+const GATE_MS = SWEEP_INTERVAL_MS + 15 * 60 * 1000;
 
 // Email + notify the admins when a scheduled sweep finds a failure.
 async function alertFailure(report) {
   const failed = report.checks.filter(c => c.status === 'fail');
-  const title = `Clarke Mechanical Bot found ${failed.length} problem${failed.length === 1 ? '' : 's'}`;
+  const sec = failed.filter(c => c.group === 'Security').length;
+  const title = `Clarke Mechanical Bot: ${failed.length} problem${failed.length === 1 ? '' : 's'} need fixing${sec ? ` (${sec} security)` : ''}`;
   const body = failed.slice(0, 6).map(c => `${c.name} — ${c.detail}`).join(' · ');
 
   // In-app bell for admins.
@@ -389,7 +386,7 @@ async function alertFailure(report) {
       const html = `
         <div style="font-family:system-ui,Arial,sans-serif;max-width:620px;margin:0 auto">
           <h2 style="color:#b91c1c;margin:0 0 4px">⚠︎ ${title}</h2>
-          <p style="color:#475569;margin:0 0 16px">The automatic system sweep on ${new Date(report.at).toLocaleString('en-US')} completed with failures. Passed ${report.summary.passed}/${report.summary.total}; ${report.summary.failed} failed, ${report.summary.warned} warning(s).</p>
+          <p style="color:#475569;margin:0 0 16px">The 2-hour health check at ${new Date(report.at).toLocaleString('en-US', { timeZone: 'America/New_York' })} found problems. Passed ${report.summary.passed}/${report.summary.total}; ${report.summary.failed} failed, ${report.summary.warned} warning(s). You'll get this alert after every 2-hour check until it's fixed.</p>
           <table style="border-collapse:collapse;width:100%;font-size:14px"><thead><tr style="background:#f8fafc"><th style="text-align:left;padding:6px 10px">Area</th><th style="text-align:left;padding:6px 10px">Check</th><th style="text-align:left;padding:6px 10px">Detail</th></tr></thead><tbody>${rows}</tbody></table>
           <p style="color:#64748b;margin:16px 0 0;font-size:13px">Open the app → Clarke Mechanical Bot to run a fresh sweep and see everything.</p>
         </div>`;
@@ -401,8 +398,8 @@ async function alertFailure(report) {
   } catch (e) { console.error('[diagnostics] alert email failed:', e.message); }
 }
 
-// Run a scheduled sweep, but only if one hasn't run in the last ~2 days (unless
-// forced). Alerts admins on failure. Safe to call hourly — it self-gates.
+// Run a scheduled sweep, but only if one hasn't run in the last ~2 hours (unless
+// forced). Alerts admins on EVERY failing run. Safe to call often — it self-gates.
 async function runScheduledSweep({ force = false } = {}) {
   try {
     if (!force) {

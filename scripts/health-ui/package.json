@@ -1,0 +1,8 @@
+{
+  "name": "clarke-health-ui",
+  "private": true,
+  "type": "module",
+  "description": "Clarke Mechanical Bot — real-browser screen & button checks (run by GitHub Actions)",
+  "scripts": { "check": "node ui-health.mjs" },
+  "dependencies": { "playwright": "1.48.2" }
+}

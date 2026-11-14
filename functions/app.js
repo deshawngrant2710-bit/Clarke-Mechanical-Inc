@@ -16,6 +16,11 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// Security watch (probes, crashes, auth bursts) + the health bot's request guard.
+const security = require('./lib/security');
+app.use(security.monitor());
+app.use(require('./lib/diagContext').middleware(require('./middleware/auth').JWT_SECRET));
+
 // Dedupe offline sync retries (requests carrying an X-Op-Id header).
 app.use(require('./middleware/idempotency'));
 
@@ -63,6 +68,7 @@ app.use('/api/portal-links', require('./routes/portalLinks'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  security.recordCrash(err, req);
   res.status(500).json({ error: 'Internal server error' });
 });
 

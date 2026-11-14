@@ -124,6 +124,8 @@ router.delete('/:id/photos/:photoId', async (req, res) => {
   const insp = await getById('inspections', req.params.id);
   if (!insp) return res.status(404).json({ error: 'Inspection not found' });
   if (!canView(req.user, insp)) return res.status(403).json({ error: 'Forbidden' });
+  const photo = await getById('inspection_photos', req.params.photoId);
+  if (!photo || photo.inspection_id !== req.params.id) return res.status(404).json({ error: 'Photo not found on this inspection' });
   await db.collection('inspection_photos').doc(req.params.photoId).delete();
   res.json({ ok: true });
 });

@@ -25,6 +25,7 @@ function apptWhen(job) {
 // the office starts from the approved amount. Never creates a second invoice.
 async function maybeAutoInvoice(job, prevStatus) {
   try {
+    if (require('../lib/diagContext').isBotRecord(job)) return; // health-bot job: no invoices, points or customer notices
     if (!job || job.status !== 'completed' || prevStatus === 'completed') return;
     const existing = await findWhere('invoices', 'job_id', job.id);
     if (existing.length) return; // already has an invoice
@@ -61,6 +62,7 @@ async function maybeAutoInvoice(job, prevStatus) {
 // agent who originally generated this customer (if any). Deduped per job.
 async function maybeAwardLeadPoints(job, prevStatus) {
   try {
+    if (require('../lib/diagContext').isBotRecord(job)) return; // health-bot job: no invoices, points or customer notices
     if (!job || job.status !== 'completed' || prevStatus === 'completed' || !job.customer_id) return;
     const customer = await getById('customers', job.customer_id);
     if (!customer?.source_agent_id) return;
@@ -74,6 +76,7 @@ async function maybeAwardLeadPoints(job, prevStatus) {
 // Auto-email the customer when a job crosses into "scheduled" or "completed".
 async function notifyOnStatusChange(job, prevStatus) {
   try {
+    if (require('../lib/diagContext').isBotRecord(job)) return; // health-bot job: no invoices, points or customer notices
     if (!job.customer_id || job.status === prevStatus) return;
     const map = { scheduled: 'job_confirmation', completed: 'job_completed' };
     const type = map[job.status];
@@ -417,6 +420,8 @@ router.post('/:id/photos', async (req, res) => {
 
 // DELETE /jobs/:id/photos/:photoId — remove a job photo.
 router.delete('/:id/photos/:photoId', async (req, res) => {
+  const photo = await getById('job_photos', req.params.photoId);
+  if (!photo || photo.job_id !== req.params.id) return res.status(404).json({ error: 'Photo not found on this job' });
   await db.collection('job_photos').doc(req.params.photoId).delete();
   res.json({ ok: true });
 });
@@ -473,7 +478,8 @@ router.post('/:id/parts', async (req, res) => {
     created_at: new Date().toISOString(),
   });
   // Auto-deduct from inventory if the part matches a stock item (by name or SKU).
-  try {
+  // (Never for the health bot's test jobs — real stock counts stay untouched.)
+  if (!require('../lib/diagContext').isBotRecord(job)) try {
     const inv = await list('inventory');
     const match = inv.find(it =>
       (it.name && it.name.trim().toLowerCase() === name.toLowerCase()) ||
@@ -484,6 +490,8 @@ router.post('/:id/parts', async (req, res) => {
 });
 
 router.delete('/:id/parts/:partId', async (req, res) => {
+  const part = await getById('job_parts', req.params.partId);
+  if (!part || part.job_id !== req.params.id) return res.status(404).json({ error: 'Part not found on this job' });
   await db.collection('job_parts').doc(req.params.partId).delete();
   res.json({ ok: true });
 });

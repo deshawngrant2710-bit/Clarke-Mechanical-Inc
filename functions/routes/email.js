@@ -1,5 +1,5 @@
 const express = require('express');
-const { db, getById, findWhere } = require('../lib/db');
+const { db, getById, findWhere, list } = require('../lib/db');
 const { authMiddleware, requireStaff } = require('../middleware/auth');
 const { sendMail, render, isTemplate } = require('../lib/email');
 const { notifyCustomerBySms } = require('../lib/sms');
@@ -18,7 +18,7 @@ router.get('/log', async (req, res) => {
   const { customer_id, limit } = req.query;
   let rows;
   if (customer_id) rows = await findWhere('email_log', 'customer_id', customer_id);
-  else rows = (await db.collection('email_log').get()).docs.map(d => ({ id: d.id, ...d.data() }));
+  else rows = await list('email_log');
   rows.sort((a, b) => (b.sent_at || '').localeCompare(a.sent_at || ''));
   res.json(rows.slice(0, Math.min(Number(limit) || 100, 500)));
 });

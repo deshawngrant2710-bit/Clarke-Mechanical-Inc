@@ -36,6 +36,7 @@ function pushConfigured() {
 
 // tokens: array of APNs device-token strings. payload: { title, body, link, badge }
 async function sendPush(tokens, { title, body, link, badge } = {}) {
+  if (require('./diagContext').isDiagnostic()) return { sent: 0, skipped: 'health-bot' };
   const p = getProvider();
   if (!p || !Array.isArray(tokens) || !tokens.length) return { sent: 0 };
   const note = new apn.Notification();

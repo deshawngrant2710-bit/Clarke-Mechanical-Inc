@@ -20,11 +20,11 @@ app.listen(PORT, async () => {
   setTimeout(tick, 15_000);
   setInterval(tick, 60 * 60 * 1000);
 
-  // Clarke Mechanical Bot — automatic health sweep. The call self-gates to once
-  // every ~2 days, so checking every 6 hours just means it fires on schedule
-  // even if the process restarts in between. Alerts admins on any failure.
+  // Clarke Mechanical Bot — health sweep every 2 hours. GitHub Actions is the main
+  // trigger (it also wakes this free-tier server); this timer is a backup while the
+  // server is awake. The call self-gates, so checking every 15 minutes never doubles up.
   const { runScheduledSweep } = require('./lib/diagnostics');
   const sweepTick = () => runScheduledSweep().then(s => console.log('[health-sweep]', s)).catch(e => console.error('[health-sweep]', e.message));
-  setTimeout(sweepTick, 90_000);
-  setInterval(sweepTick, 6 * 60 * 60 * 1000);
+  setTimeout(sweepTick, 5 * 60_000);
+  setInterval(sweepTick, 15 * 60_000);
 });

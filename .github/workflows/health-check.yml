@@ -1,0 +1,84 @@
+# Clarke Mechanical Bot — runs every 2 hours.
+#  1. Wakes the API (Render's free plan sleeps when idle).
+#  2. Opens the live website in a real Chrome as every role, at phone + desktop
+#     sizes, and checks every screen and button (scripts/health-ui).
+#  3. Triggers the server's full sweep: job walkthrough (book → clock in → photo →
+#     close → cleanup), every portal, security / hacker scan, and the browser
+#     results above. Any failure → alert in the app + email to the admins.
+# If the app is completely down, this workflow fails and GitHub emails you too.
+#
+# Needs ONE repository secret: CRON_KEY (same value as on Render).
+# Optional: BOT_KEY secret, and API_URL / SITE_URL repository variables.
+# See "Health Bot Setup.md".
+name: Clarke Mechanical Bot
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'      # every 2 hours, on the hour (UTC)
+  workflow_dispatch:
+    inputs:
+      all_sizes:
+        description: 'Check all 5 screen sizes (320/375/390/430/desktop) this run'
+        type: boolean
+        default: false
+
+concurrency:
+  group: clarke-health-bot
+  cancel-in-progress: false
+
+env:
+  API_URL: ${{ vars.API_URL || 'https://clarke-mechanical-inc.onrender.com/api' }}
+  SITE_URL: ${{ vars.SITE_URL || 'https://clarkemechanicalinc.org' }}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: scripts/health-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wake the server
+        run: |
+          for i in $(seq 1 24); do
+            if curl -fsS -m 20 "$API_URL/health" > /dev/null; then echo "API is up"; exit 0; fi
+            echo "waiting for the API to wake up ($i)…"; sleep 10
+          done
+          echo "::error::The Clarke Mechanical API did not respond for 4 minutes — the app may be down."
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install the browser
+        id: pw
+        run: |
+          npm install --no-audit --no-fund
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: pwcache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        run: |
+          if [ "${{ steps.pwcache.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium; else npx playwright install --with-deps chromium; fi
+
+      - name: Check every screen and button
+        env:
+          BOT_KEY: ${{ secrets.BOT_KEY || secrets.CRON_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          UI_ALL_SIZES: ${{ inputs.all_sizes && '1' || '0' }}
+        run: node ui-health.mjs
+
+      - name: Run the full health sweep (walkthrough, portals, security) and alert
+        if: always()
+        env:
+          CRON_KEY: ${{ secrets.CRON_KEY }}
+        run: |
+          curl -fsS -m 60 -X POST -H "x-cron-key: $CRON_KEY" "$API_URL/cron/health-sweep?force=1&async=1"
