@@ -13,6 +13,7 @@ import { fileToProof } from '../lib/imageProof';
 import { useAuth } from '../context/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 import { printHtml } from '../lib/printDoc';
+import { discardItem } from '../lib/offlineSync';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
 const TIMELINE = ['pending', 'scheduled', 'in-progress', 'awaiting-signoff', 'completed'];
@@ -37,6 +38,7 @@ export default function JobDetail() {
   // Admin/office users flagged "also a technician" get the field-tech tools too.
   const canTech = isTech || !!user?.also_technician;
   const [job, setJob] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [editModal, setEditModal] = useState(false);
@@ -125,8 +127,14 @@ export default function JobDetail() {
   }
 
   function load() {
-    Promise.all([api.get(`/jobs/${id}`), api.get('/customers'), api.get('/employees')])
-      .then(([j, c, e]) => { setJob(j.data); setForm(j.data); setNotesDraft(''); setCustomers(c.data); setEmployees(e.data); });
+    setLoadError(null);
+    // The job itself is what matters; customers/employees are extras and must never
+    // block the screen (e.g. offline with only the job saved on the device).
+    api.get(`/jobs/${id}`)
+      .then(j => { setJob(j.data); setForm(j.data); setNotesDraft(''); })
+      .catch(e => setLoadError(e.offline ? 'You\'re offline and this job hasn\'t been saved on this device yet.' : (e.response?.data?.error || 'Could not load this job.')));
+    api.get('/customers').then(r => setCustomers(r.data)).catch(() => {});
+    api.get('/employees').then(r => setEmployees(r.data)).catch(() => {});
     api.get('/inspections').then(r => setJobInspections(r.data.filter(x => x.job_id === id))).catch(() => {});
   }
 
@@ -176,12 +184,17 @@ export default function JobDetail() {
     } catch (e) { toast.error(e.response?.data?.error || 'Could not start inspection'); }
   }
   useEffect(load, [id]);
+  // Queued work just reached the server → refresh so "waiting" badges clear.
+  useEffect(() => { const h = () => load(); window.addEventListener('cm-synced', h); return () => window.removeEventListener('cm-synced', h); }, [id]);
   useEffect(() => { api.get('/auth/public-info').then(r => { setBiz(r.data || {}); setBizPhone(r.data.business_phone || ''); }).catch(() => {}); }, []);
 
   async function handleSave() {
     setSaving(true);
     try {
-      await api.put(`/jobs/${id}`, form);
+      // Send only the job's own fields — never the attached photos/parts (that made
+      // every save re-upload all the pictures, which stalls on a weak signal).
+      const { photos: _ph, parts: _pt, inspections: _in, ...fields } = form || {};
+      await api.put(`/jobs/${id}`, fields);
       toast.success('Job updated');
       setEditModal(false); load();
     } catch { toast.error('Error updating job'); }
@@ -206,8 +219,8 @@ export default function JobDetail() {
     }
     setSaving(true);
     try {
-      await api.put(`/jobs/${id}`, { ...job, status: newStatus });
-      toast.success(`Marked ${TIMELINE_LABEL[newStatus]}`);
+      const r = await api.put(`/jobs/${id}`, { status: newStatus });
+      toast.success(r.queued ? `Marked ${TIMELINE_LABEL[newStatus]} — saved on this device, will sync when you're back online` : `Marked ${TIMELINE_LABEL[newStatus]}`);
       load();
     } catch { toast.error('Could not update status'); }
     finally { setSaving(false); }
@@ -242,7 +255,7 @@ export default function JobDetail() {
     const entries = noteEntries.map((e, i) => (i === idx ? { ...e, body: text } : e));
     setSavingNotes(true);
     try {
-      await api.put(`/jobs/${id}`, { ...job, notes: rebuildNotes(entries) });
+      await api.put(`/jobs/${id}`, { notes: rebuildNotes(entries) });
       toast.success('Note updated');
       setEditingNote(null); setEditNoteText(''); load();
     } catch { toast.error('Could not update note'); }
@@ -257,7 +270,7 @@ export default function JobDetail() {
     const updated = job.notes ? `${entry}\n\n---\n${job.notes}` : entry;
     setSavingNotes(true);
     try {
-      await api.put(`/jobs/${id}`, { ...job, notes: updated });
+      await api.put(`/jobs/${id}`, { notes: updated });
       toast.success('Note added');
       setNotesDraft('');
       load();
@@ -268,19 +281,24 @@ export default function JobDetail() {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
     if (!files.length) return;
-    let ok = 0, failed = 0;
+    let ok = 0, queued = 0;
+    const t = toast.loading(`Saving ${files.length} photo${files.length === 1 ? '' : 's'}…`);
     for (const file of files) {
       try {
         const { proof, proof_type } = await fileToProof(file);
-        await api.post(`/jobs/${id}/photos`, { proof, proof_type });
-        ok++;
-      } catch (err) { failed++; toast.error(`${file.name}: ${err.message || 'upload failed'}`); }
+        const r = await api.post(`/jobs/${id}/photos`, { proof, proof_type });
+        if (r.queued) queued++; else ok++;
+      } catch (err) { toast.error(`${file.name}: ${err.response?.data?.error || err.message || 'upload failed'}`, { duration: 8000 }); }
     }
+    toast.dismiss(t);
     if (ok) toast.success(`${ok} photo${ok === 1 ? '' : 's'} uploaded`);
+    if (queued) toast.success(`${queued} photo${queued === 1 ? '' : 's'} saved on this device — will upload automatically when you're back online`, { duration: 7000, icon: '📥' });
     load();
   }
   async function removePhoto(pid) {
     if (!confirm('Remove this photo?')) return;
+    // A photo still waiting to upload only exists on this device — drop it from the queue.
+    if (String(pid).startsWith('tmp-')) { await discardItem(String(pid).slice(4)); load(); return; }
     try { await api.delete(`/jobs/${id}/photos/${pid}`); load(); }
     catch { toast.error('Could not remove'); }
   }
@@ -461,6 +479,16 @@ export default function JobDetail() {
     finally { setEmailing(''); }
   }
   const f = v => setForm(prev => ({ ...prev, ...v }));
+  if (!job && loadError) return (
+    <div className="max-w-md mx-auto text-center py-16 px-4">
+      <p className="text-slate-700 font-medium mb-1">{loadError}</p>
+      <p className="text-sm text-slate-500 mb-4">Your saved work is safe. Try again when you have signal.</p>
+      <div className="flex justify-center gap-2">
+        <Btn variant="outline" onClick={() => navigate('/jobs')}><ArrowLeft size={15} /> Back to jobs</Btn>
+        <Btn onClick={load}>Try again</Btn>
+      </div>
+    </div>
+  );
   if (!job) return <Spinner />;
 
   const cancelled = job.status === 'cancelled';
@@ -837,6 +865,11 @@ export default function JobDetail() {
                         <a href={p.proof} target="_blank" rel="noreferrer" className="block">
                           <img src={p.proof} alt={p.caption || 'job photo'} className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-300" />
                         </a>
+                      )}
+                      {p._pending && (
+                        <span className={`absolute bottom-0 inset-x-0 text-[11px] font-semibold text-white text-center py-1 ${p._failed ? 'bg-red-600/90' : 'bg-amber-500/90'}`}>
+                          {p._failed ? 'Upload failed — will retry' : 'Saved on device · waiting to upload'}
+                        </span>
                       )}
                       <button onClick={() => removePhoto(p.id)} aria-label="Delete photo" className="absolute top-1 right-1 p-1.5 rounded-md bg-white/90 text-red-600 shadow-sm hover:bg-white"><Trash2 size={13} /></button>
                     </div>

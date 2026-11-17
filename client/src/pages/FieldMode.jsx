@@ -55,11 +55,17 @@ export default function FieldMode() {
     }).catch(() => setLoading(false));
   }
   useEffect(load, []);
+  useEffect(() => { window.addEventListener('cm-synced', load); return () => window.removeEventListener('cm-synced', load); }, []);
 
   async function patch(job, body, msg) {
     setBusy(true);
-    try { await api.put(`/jobs/${job.id}`, body); if (msg) toast.success(msg); load(); }
-    catch { toast.error('Could not update — will retry when back online'); }
+    try {
+      const r = await api.put(`/jobs/${job.id}`, body);
+      if (r.queued) toast.success(`${msg || 'Saved'} — saved on this device, will sync when you're back online`);
+      else if (msg) toast.success(msg);
+      load();
+    }
+    catch (e) { toast.error(e.response?.data?.error || 'Could not update — please try again'); }
     finally { setBusy(false); }
   }
   async function startTravel(job) {

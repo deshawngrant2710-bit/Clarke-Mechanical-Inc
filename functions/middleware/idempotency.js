@@ -9,6 +9,7 @@ module.exports = async function idempotency(req, res, next) {
   try {
     const key = req.headers['x-op-id'];
     if (!key || !['POST', 'PUT', 'DELETE'].includes(req.method)) return next();
+    if (require('../lib/diagContext').isDiagnostic()) return next();   // health-bot test traffic leaves no records behind
 
     const prior = await getById('idempotency_keys', String(key));
     if (prior && prior.body !== undefined) {

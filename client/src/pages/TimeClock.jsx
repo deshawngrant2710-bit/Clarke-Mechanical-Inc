@@ -37,6 +37,7 @@ export default function TimeClock() {
     }).catch(() => setLoading(false));
   }
   useEffect(() => { load(); }, []);
+  useEffect(() => { const h = () => load(); window.addEventListener('cm-synced', h); return () => window.removeEventListener('cm-synced', h); }, []);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
   async function viewProof(id) {
@@ -388,8 +389,8 @@ function ClockInModal({ open, onClose, onDone, jobs, requireJob }) {
     const t = toast.loading('Getting your location…');
     try {
       const location = await getLocation();
-      await api.post('/time/clock-in', { job_id: jobId || null, location });
-      toast.success(location ? 'Clocked in — location recorded' : 'Clocked in (location unavailable)', { id: t });
+      const r = await api.post('/time/clock-in', { job_id: jobId || null, location });
+      toast.success(r.queued ? 'Clocked in — saved on this device, will sync when you\'re back online' : location ? 'Clocked in — location recorded' : 'Clocked in (location unavailable)', { id: t });
       onClose(); onDone();
     } catch (e) { toast.error(e.response?.data?.error || 'Could not clock in', { id: t }); }
     finally { setBusy(false); }
@@ -435,10 +436,10 @@ function ClockOutModal({ open, onClose, onDone }) {
     const t = toast.loading('Getting your location…');
     try {
       const location = await getLocation();
-      await api.post('/time/clock-out', { ...proof, location });
-      toast.success('Clocked out — nice work!', { id: t });
+      const r = await api.post('/time/clock-out', { ...proof, location });
+      toast.success(r.queued ? 'Clocked out — photo saved on this device, will upload when you\'re back online' : 'Clocked out — nice work!', { id: t });
       onClose(); onDone();
-    } catch (e) { toast.error(e.response?.data?.error || 'Could not clock out', { id: t }); }
+    } catch (e) { toast.error(e.response?.data?.error || e.message || 'Could not clock out', { id: t }); }
     finally { setBusy(false); }
   }
 

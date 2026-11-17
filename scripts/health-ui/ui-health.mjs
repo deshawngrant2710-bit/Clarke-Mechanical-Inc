@@ -389,6 +389,27 @@ async function keyFlows(browser, site, vp, sessions, ids) {
     const btns = await t.getByRole('button', { name: /Start|On my way|Clock|In progress|Status/i }).count();
     return btns > 0 || 'no job action buttons found';
   });
+  // Offline photo: lose signal → take a photo → it must be kept on the device and
+  // upload by itself when signal returns. (Only on one screen size — once is enough.)
+  if (vp.primary) {
+    await step('Technician portal', 'Job detail', 'Photo taken with NO signal is kept and uploads when signal returns', async () => {
+      await t.goto(site + `/jobs/${ids.jobToday}`, { waitUntil: 'domcontentloaded' }); await t.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+      const input = t.locator('input[type="file"]').first();
+      if (!(await input.count())) return 'no photo upload control on the job';
+      await ctx.setOffline(true);
+      try {
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+        await input.setInputFiles({ name: 'bot-offline-photo.png', mimeType: 'image/png', buffer: png });
+        try { await t.getByText(/waiting to upload/i).first().waitFor({ timeout: 20000 }); }
+        catch { return 'photo taken offline was NOT kept on the device'; }
+      } finally { await ctx.setOffline(false); }
+      try { await t.getByText(/waiting to upload/i).first().waitFor({ state: 'detached', timeout: 45000 }); }
+      catch { return 'photo did not upload within 45s of signal returning'; }
+      await t.reload({ waitUntil: 'domcontentloaded' }); await t.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => {});
+      const saved = await t.locator('img[alt="job photo"]').count();
+      return saved > 0 || 'photo was not on the job after reloading';
+    });
+  }
   await t.close();
   await ctx.close();
 }

@@ -40,3 +40,17 @@ export const idbAll = (store) => run(store, 'readonly', os => os.getAll()).then(
 export const idbDel = (store, key) => run(store, 'readwrite', os => os.delete(key));
 export const idbSet = (store, key, val) =>
   run(store, 'readwrite', os => (store === 'queue' ? os.put(val) : os.put(val, key)));
+
+// Strict write: resolves only once the transaction has actually committed, and
+// REJECTS on any failure (e.g. the phone's storage is full). Used for the offline
+// queue, where "saved" must really mean saved.
+export function idbPutStrict(store, val, key) {
+  return open().then(db => new Promise((resolve, reject) => {
+    let tx;
+    try { tx = db.transaction(store, 'readwrite'); } catch (e) { return reject(e); }
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error || new Error('Device storage error'));
+    tx.onabort = () => reject(tx.error || new Error('Device storage full'));
+    try { store === 'queue' ? tx.objectStore(store).put(val) : tx.objectStore(store).put(val, key); } catch (e) { reject(e); }
+  }));
+}

@@ -16,6 +16,18 @@ router.get('/active', async (req, res) => {
   res.json(await openEntry(req.user.id));
 });
 
+// When an action was done offline and uploaded later, the app sends the moment it
+// really happened (X-Queued-At). Use it so hours are right — but only if it's sane:
+// not in the future, and no more than 7 days old.
+function happenedAt(req) {
+  const h = req.headers['x-queued-at'];
+  if (h) {
+    const t = new Date(String(h)).getTime(), now = Date.now();
+    if (Number.isFinite(t) && t <= now + 120000 && t >= now - 7 * 86400000) return new Date(Math.min(t, now)).toISOString();
+  }
+  return new Date().toISOString();
+}
+
 // Keep only {lat,lng,accuracy} from a location payload (or null).
 function cleanLoc(loc) {
   if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
@@ -43,7 +55,7 @@ router.post('/clock-in', async (req, res) => {
   const entry = await create('time_entries', uuid(), {
     technician_id: req.user.id, technician_name: req.user.name,
     job_id: job_id || null, job_title,
-    clock_in: new Date().toISOString(), clock_in_location: cleanLoc(location),
+    clock_in: happenedAt(req), clock_in_location: cleanLoc(location),
     clock_out: null, clock_out_location: null, proof: null, proof_type: null, hours: null,
     breaks: [], break_minutes: 0, approved: false,
   });
@@ -64,7 +76,8 @@ router.post('/clock-out', async (req, res) => {
   }
   const { proof, proof_type, location } = req.body;
   if (!proof) return res.status(400).json({ error: 'A photo of the work is required before clocking out' });
-  const clockOut = new Date().toISOString();
+  let clockOut = happenedAt(req);
+  if (new Date(clockOut) <= new Date(e.clock_in)) clockOut = new Date().toISOString();
   const breaks = closeOpenBreaks(e.breaks, clockOut);
   const gross = (new Date(clockOut) - new Date(e.clock_in)) / 3600000;
   const brkMin = breakMinutes(breaks);
@@ -83,7 +96,7 @@ router.post('/break/start', async (req, res) => {
   const e = await openEntry(req.user.id);
   if (!e) return res.status(400).json({ error: "You're not clocked in" });
   if (onBreak(e)) return res.status(409).json({ error: "You're already on a break" });
-  const breaks = [...(e.breaks || []), { start: new Date().toISOString(), end: null }];
+  const breaks = [...(e.breaks || []), { start: happenedAt(req), end: null }];
   const saved = await update('time_entries', e.id, { breaks });
   res.json({ ...saved, proof: undefined });
 });
@@ -91,7 +104,7 @@ router.post('/break/end', async (req, res) => {
   const e = await openEntry(req.user.id);
   if (!e) return res.status(400).json({ error: "You're not clocked in" });
   if (!onBreak(e)) return res.status(409).json({ error: "You're not on a break" });
-  const breaks = (e.breaks || []).map((b, i, arr) => (i === arr.length - 1 ? { ...b, end: new Date().toISOString() } : b));
+  const breaks = (e.breaks || []).map((b, i, arr) => (i === arr.length - 1 ? { ...b, end: happenedAt(req) } : b));
   const saved = await update('time_entries', e.id, { breaks });
   res.json({ ...saved, proof: undefined });
 });

@@ -4,7 +4,7 @@ import { RefreshCw, WifiOff, CheckCircle2, AlertTriangle, Clock, Trash2, UploadC
 
 function describe(it) {
   const u = it.url || '';
-  const d = it.data || {};
+  const d = (it.data && typeof it.data === 'object') ? it.data : {};
   const m = (it.method || '').toLowerCase();
   if (u === '/customers' && m === 'post') return `New customer${d.name ? `: ${d.name}` : ''}`;
   if (u === '/jobs' && m === 'post') return `New job${d.title ? `: ${d.title}` : ''}`;
@@ -20,6 +20,8 @@ function describe(it) {
     return 'Update job';
   }
   if (/\/inspections/.test(u)) return 'Inspection';
+  if (u === '/time/clock-in') return 'Clock in';
+  if (u === '/time/clock-out') return 'Clock out (with photo)';
   if (/\/time\//.test(u)) return 'Time entry';
   return `${it.method} ${u}`;
 }
@@ -99,7 +101,7 @@ export default function SyncQueue() {
                     ) : (
                       <>
                         <button onClick={o.retryFailed} className="text-xs font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg">Retry</button>
-                        <button onClick={() => o.discardItem(it.opId)} className="inline-flex items-center gap-1 text-xs font-medium text-red-600 border border-red-200 px-3 py-1.5 rounded-lg"><Trash2 size={13} /> Discard</button>
+                        <button onClick={() => { if (window.confirm('Discard this permanently? It only exists on this device — it has NOT reached the office.')) o.discardItem(it.opId); }} className="inline-flex items-center gap-1 text-xs font-medium text-red-600 border border-red-200 px-3 py-1.5 rounded-lg"><Trash2 size={13} /> Discard</button>
                       </>
                     )}
                   </div>

@@ -125,7 +125,7 @@ export default function Jobs() {
 
   async function assignTech(job, technician_id) {
     try {
-      await api.put(`/jobs/${job.id}`, { ...job, technician_id: technician_id || null });
+      await api.put(`/jobs/${job.id}`, { technician_id: technician_id || null });
       toast.success(technician_id ? 'Technician assigned' : 'Unassigned');
       load();
     } catch { toast.error('Could not assign technician'); }
