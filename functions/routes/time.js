@@ -18,12 +18,13 @@ router.get('/active', async (req, res) => {
 
 // When an action was done offline and uploaded later, the app sends the moment it
 // really happened (X-Queued-At). Use it so hours are right — but only if it's sane:
-// not in the future, and no more than 7 days old.
+// not in the future, and no more than 60 days old (work stranded on a phone by the
+// old sync bug can be a couple of weeks old and must keep its real time).
 function happenedAt(req) {
   const h = req.headers['x-queued-at'];
   if (h) {
     const t = new Date(String(h)).getTime(), now = Date.now();
-    if (Number.isFinite(t) && t <= now + 120000 && t >= now - 7 * 86400000) return new Date(Math.min(t, now)).toISOString();
+    if (Number.isFinite(t) && t <= now + 120000 && t >= now - 60 * 86400000) return new Date(Math.min(t, now)).toISOString();
   }
   return new Date().toISOString();
 }
