@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { getLocation } from '../lib/geo';
+import WorkDonePhoto from '../components/WorkDonePhoto';
 import {
   Navigation, MapPin, Phone, MessageSquare, Play, CheckCircle2, Clock, Camera,
   Wrench, ClipboardCheck, PenLine, FileText, ChevronRight, History, Timer, Flag,
@@ -37,6 +39,7 @@ export default function FieldMode() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [doneJob, setDoneJob] = useState(null);
 
   // live timer
   useEffect(() => { const iv = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(iv); }, []);
@@ -68,6 +71,24 @@ export default function FieldMode() {
     catch (e) { toast.error(e.response?.data?.error || 'Could not update — please try again'); }
     finally { setBusy(false); }
   }
+  // Starting the job puts you on the clock automatically (location is best-effort).
+  async function startJob(job) {
+    setBusy(true);
+    let clock_location = null;
+    try { clock_location = await getLocation(4000); } catch { /* optional */ }
+    setBusy(false);
+    return patch(job, { status: 'in-progress', work_started_at: new Date().toISOString(), clock_location }, 'Job started — you\'re on the clock');
+  }
+  // Mark work done: finished-work photo first (saved on the job), then the status.
+  async function finishJob(proof) {
+    const job = doneJob;
+    if (!job) return;
+    try {
+      if (proof) await api.post(`/jobs/${job.id}/photos`, { ...proof, caption: 'Completed work' });
+    } catch (e) { toast.error(e.response?.data?.error || e.message || 'Could not save the photo'); return; }
+    setDoneJob(null);
+    await patch(job, { status: 'awaiting-signoff', work_ended_at: new Date().toISOString() }, 'Marked work done');
+  }
   async function startTravel(job) {
     setBusy(true);
     try { await api.post(`/jobs/${job.id}/en-route`); toast.success('Customer notified you are on the way'); }
@@ -90,7 +111,7 @@ export default function FieldMode() {
       </div>
 
       {active ? <ActiveJob job={active} customer={custById[active.customer_id]} allJobs={allJobs}
-        tick={tick} busy={busy} navigate={navigate} patch={patch} startTravel={startTravel} />
+        tick={tick} busy={busy} navigate={navigate} startJob={startJob} markDone={setDoneJob} startTravel={startTravel} />
         : jobs.length > 0 ? (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
             <CheckCircle2 className="mx-auto text-emerald-600 mb-2" size={32} />
@@ -126,11 +147,12 @@ export default function FieldMode() {
           </div>
         </div>
       )}
+      <WorkDonePhoto open={!!doneJob} jobTitle={doneJob?.title} onClose={() => setDoneJob(null)} onConfirm={finishJob} allowSkip={user?.role !== 'technician'} />
     </div>
   );
 }
 
-function ActiveJob({ job, customer, allJobs, tick, busy, navigate, patch, startTravel }) {
+function ActiveJob({ job, customer, allJobs, tick, busy, navigate, startJob, markDone, startTravel }) {
   const address = fullAddress(job, customer);
   const phone = customer?.phone || job.customer_phone;
   const problem = job.description;
@@ -188,14 +210,14 @@ function ActiveJob({ job, customer, allJobs, tick, busy, navigate, patch, startT
               className="flex items-center justify-center gap-2 py-3.5 rounded-xl bg-slate-800 text-white font-semibold disabled:opacity-50">
               <Navigation size={18} /> Start travel
             </button>
-            <button disabled={busy} onClick={() => patch(job, { status: 'in-progress', work_started_at: new Date().toISOString() }, 'Job started')}
+            <button disabled={busy} onClick={() => startJob(job)}
               className="flex items-center justify-center gap-2 py-3.5 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50">
               <Flag size={18} /> Arrived
             </button>
           </div>
         )}
         {job.status === 'in-progress' && (
-          <button disabled={busy} onClick={() => patch(job, { status: 'awaiting-signoff', work_ended_at: new Date().toISOString() }, 'Marked work done')}
+          <button disabled={busy} onClick={() => markDone(job)}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-teal-600 text-white font-semibold disabled:opacity-50">
             <CheckCircle2 size={18} /> Mark work done
           </button>

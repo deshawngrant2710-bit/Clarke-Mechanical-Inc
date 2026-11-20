@@ -39,7 +39,7 @@ export default function AdminAssistant() {
     <div className="animate-fade-in">
       <PageHeader title="Assistant" subtitle="Ask about pricing, snap a part photo to price it, or create jobs, estimates, invoices, and more" icon={<Sparkles size={20} />} />
       <Card className="overflow-hidden max-w-3xl">
-        <div className="flex flex-col h-[32rem] bg-slate-50/60">
+        <div className="flex flex-col h-[calc(100dvh-13rem)] min-h-[30rem] sm:h-[36rem] bg-slate-50/60">
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && (
               <div className="text-center mt-8 px-4">
@@ -48,7 +48,7 @@ export default function AdminAssistant() {
                 <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">I can create jobs, estimates, invoices, and customers — just describe it in plain English.</p>
                 <div className="flex flex-wrap justify-center gap-2 mt-4">
                   {SUGGESTIONS.map(s => (
-                    <button key={s} onClick={() => send(s)} disabled={sending} className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-medium text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors disabled:opacity-50">{s}</button>
+                    <button key={s} onClick={() => send(s)} disabled={sending} className="px-4 min-h-[44px] rounded-2xl border border-slate-200 bg-white text-sm font-medium text-slate-600 hover:border-blue-300 hover:text-blue-600 active:bg-blue-50 transition-colors disabled:opacity-50 text-left">{s}</button>
                   ))}
                 </div>
               </div>
@@ -61,7 +61,7 @@ export default function AdminAssistant() {
                   <div className="max-w-[80%]">
                     <div className={`px-3.5 py-2.5 rounded-2xl text-sm whitespace-pre-wrap shadow-sm ${isUser ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-slate-700 border border-slate-100 rounded-bl-md'}`}>{m.text}</div>
                     {m.action && (
-                      <button onClick={() => navigate(m.action.to)} className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                      <button onClick={() => navigate(m.action.to)} className="mt-1.5 inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100">
                         <ExternalLink size={12} /> Open {m.action.type} {m.action.label}
                       </button>
                     )}
@@ -84,15 +84,17 @@ export default function AdminAssistant() {
             <div ref={endRef} />
           </div>
           <div className="border-t border-slate-100 bg-white p-3">
-            <div className="flex items-center gap-2 bg-slate-100 rounded-full pl-1.5 pr-1.5 py-1 focus-within:ring-2 focus-within:ring-blue-500/30">
-              <AiPartPricer iconOnly
-                onApply={({ description, unit_price }) => setMessages(m => [...m, { role: 'assistant', text: `🔧 ${description} — estimated $${(Number(unit_price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (AI estimate — confirm before quoting).` }])}
-                triggerClassName="flex items-center justify-center w-9 h-9 rounded-full bg-white text-blue-600 border border-slate-200 hover:bg-blue-50 shrink-0" />
+            {/* Big, thumb-sized button — replaces the tiny icon that was hard to hit. */}
+            <div className="mb-2.5">
+              <AiPartPricer variant="big" label="Price a part from a photo" hint="Take a picture or choose one — AI identifies and prices it"
+                onApply={({ description, unit_price }) => setMessages(m => [...m, { role: 'assistant', text: `🔧 ${description} — estimated $${(Number(unit_price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (AI estimate — confirm before quoting).` }])} />
+            </div>
+            <div className="flex items-center gap-2 bg-slate-100 rounded-full pl-4 pr-1.5 py-1 focus-within:ring-2 focus-within:ring-blue-500/30">
               <input value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder="e.g. Create an invoice for Jane Doe: 2 hours labor at $110"
-                className="flex-1 bg-transparent text-sm outline-none py-1.5" />
-              <button onClick={() => send()} disabled={!input.trim() || sending} className="flex items-center justify-center w-9 h-9 rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"><Send size={16} /></button>
+                placeholder="Ask, or describe what to create…" aria-label="Message the assistant"
+                className="flex-1 min-w-0 bg-transparent text-base sm:text-sm outline-none py-2" />
+              <button onClick={() => send()} disabled={!input.trim() || sending} aria-label="Send" className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"><Send size={20} /></button>
             </div>
             <p className="text-[10px] text-slate-400 text-center mt-2">Creates drafts you can review and edit. Double-check details before sending anything to customers.</p>
           </div>

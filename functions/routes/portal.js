@@ -488,6 +488,7 @@ router.post('/jobs/:id/signoff', async (req, res) => {
     status: 'completed', completed_date: job.completed_date || new Date().toISOString().slice(0, 10),
   });
   const saved = await getById('jobs', req.params.id);
+  await require('../lib/jobClock').onJobStatus(saved, job.status, { req });   // customer sign-off completes the job → clock out
   notify({ type: 'signoff', title: 'Job signed off', body: `${saved.signed_by} signed off "${job.title}"`, link: `/jobs/${job.id}` });
   res.json({ id: saved.id, signed_by: saved.signed_by, signed_at: saved.signed_at });
 });
@@ -545,6 +546,7 @@ router.post('/jobs/:id/cancel', async (req, res) => {
   if (!job || !ids.includes(job.customer_id)) return res.status(404).json({ error: 'Service not found' });
   if (!['pending', 'scheduled'].includes(job.status)) return res.status(400).json({ error: 'This service can no longer be cancelled' });
   const saved = await update('jobs', req.params.id, { status: 'cancelled' });
+  await require('../lib/jobClock').onJobStatus(saved, job.status, { req });
   notify({ type: 'cancel', title: 'Appointment cancelled', body: `A customer cancelled "${job.title}"`, link: '/dispatch' });
   res.json(saved);
 });

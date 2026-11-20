@@ -14,6 +14,8 @@ import { useAuth } from '../context/AuthContext';
 import SignaturePad from '../components/SignaturePad';
 import { printHtml } from '../lib/printDoc';
 import { discardItem } from '../lib/offlineSync';
+import { getLocation } from '../lib/geo';
+import WorkDonePhoto from '../components/WorkDonePhoto';
 
 const JOB_TYPES = ['AC Repair', 'AC Installation', 'Heating Repair', 'Heating Installation', 'Maintenance', 'Inspection', 'Ductwork', 'Ventilation', 'Emergency', 'Other'];
 const TIMELINE = ['pending', 'scheduled', 'in-progress', 'awaiting-signoff', 'completed'];
@@ -39,6 +41,7 @@ export default function JobDetail() {
   const canTech = isTech || !!user?.also_technician;
   const [job, setJob] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [donePhotoOpen, setDonePhotoOpen] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [editModal, setEditModal] = useState(false);
@@ -205,24 +208,27 @@ export default function JobDetail() {
     await api.delete(`/jobs/${id}`);
     toast.success('Deleted'); navigate('/jobs');
   }
-  async function updateStatus(newStatus) {
-    // Technicians must be clocked in before starting a job.
-    if (canTech && newStatus === 'in-progress') {
-      try {
-        const { data: active } = await api.get('/time/active');
-        if (!active) {
-          toast.error('Please clock in before starting the job.');
-          if (window.confirm('You need to clock in first. Go to the Time Clock now?')) navigate('/time-clock');
-          return;
-        }
-      } catch { /* if the check fails, fall through and let them proceed */ }
-    }
+  // The job runs the time clock: starting it clocks you in, closing it clocks you out.
+  async function updateStatus(newStatus, proof) {
+    // Mark work done → ask for the finished-work photo first.
+    if (newStatus === 'awaiting-signoff' && proof === undefined) { setDonePhotoOpen(true); return; }
     setSaving(true);
     try {
-      const r = await api.put(`/jobs/${id}`, { status: newStatus });
-      toast.success(r.queued ? `Marked ${TIMELINE_LABEL[newStatus]} — saved on this device, will sync when you're back online` : `Marked ${TIMELINE_LABEL[newStatus]}`);
+      const body = { status: newStatus };
+      if (newStatus === 'in-progress') {
+        if (!job.work_started_at) body.work_started_at = new Date().toISOString();
+        try { body.clock_location = await getLocation(4000); } catch { /* optional */ }
+      }
+      if (newStatus === 'awaiting-signoff') {
+        if (proof) await api.post(`/jobs/${id}/photos`, { ...proof, caption: 'Completed work' });
+        if (!job.work_ended_at) body.work_ended_at = new Date().toISOString();
+      }
+      const r = await api.put(`/jobs/${id}`, body);
+      setDonePhotoOpen(false);
+      const label = newStatus === 'in-progress' ? 'Job started — time is running' : `Marked ${TIMELINE_LABEL[newStatus]}`;
+      toast.success(r.queued ? `${label} — saved on this device, will sync when you're back online` : label);
       load();
-    } catch { toast.error('Could not update status'); }
+    } catch (e) { toast.error(e.response?.data?.error || e.message || 'Could not update status'); }
     finally { setSaving(false); }
   }
   async function enRoute() {
@@ -1026,6 +1032,8 @@ export default function JobDetail() {
           </div>
         </div>
       </Modal>
+      <WorkDonePhoto open={donePhotoOpen} jobTitle={job.title} onClose={() => setDonePhotoOpen(false)}
+        onConfirm={(proof) => updateStatus('awaiting-signoff', proof)} allowSkip={user?.role !== 'technician'} />
     </div>
   );
 }

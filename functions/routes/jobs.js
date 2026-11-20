@@ -7,6 +7,7 @@ const { notifyCustomerBySms } = require('../lib/sms');
 const { runAppointmentReminders } = require('../lib/reminders');
 const settings = require('../lib/settings');
 
+const jobClock = require('../lib/jobClock');
 const router = express.Router();
 router.use(authMiddleware, requireStaff);
 
@@ -240,6 +241,8 @@ router.put('/:id', async (req, res) => {
     delete patch.additional_technician_ids;
   }
   const saved = await update('jobs', req.params.id, patch);
+  // The job runs the time clock: starting it clocks the crew in, completing it clocks them out.
+  await jobClock.onJobStatus(saved, existing.status, { actor: req.user, req, location: req.body?.clock_location });
   res.json(saved);
   notifyOnStatusChange(saved, existing.status); // best-effort, after response
   maybeAutoInvoice(saved, existing.status);     // auto-draft invoice when completed
@@ -296,6 +299,7 @@ router.post('/:id/decline-booking', async (req, res) => {
   const job = await getById('jobs', req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   const saved = await update('jobs', req.params.id, { status: 'cancelled' });
+  await jobClock.onJobStatus(saved, job.status, { actor: req.user, req });
   try {
     if (saved.customer_id) {
       const customer = await getById('customers', saved.customer_id);
@@ -387,6 +391,7 @@ router.post('/:id/signoff', async (req, res) => {
     signoff_type: type, signature: signature || null, signed_by: signerName,
     signed_at: new Date().toISOString(), ...extra,
   });
+  await jobClock.onJobStatus(saved, job.status, { actor: req.user, req });   // sign-off completes the job → clock out
   res.json(saved);
   maybeAutoInvoice(saved, job.status); // best-effort, after response
 });

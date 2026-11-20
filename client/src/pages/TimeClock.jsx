@@ -24,8 +24,6 @@ export default function TimeClock() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [clockInOpen, setClockInOpen] = useState(false);
-  const [clockOutOpen, setClockOutOpen] = useState(false);
   const [proofView, setProofView] = useState(null);
   const [editEntry, setEditEntry] = useState(null);
 
@@ -58,22 +56,13 @@ export default function TimeClock() {
   const [correctEntry, setCorrectEntry] = useState(null);
   const activeBreaks = active?.breaks || [];
   const onBreakNow = activeBreaks.length > 0 && !activeBreaks[activeBreaks.length - 1].end;
+  const activeJobTitle = active?.job_id ? (jobs.find(j => j.id === active.job_id)?.title || null) : null;
 
   async function startBreak() { try { await api.post('/time/break/start'); load(); } catch (e) { toast.error(e.response?.data?.error || 'Could not start break'); } }
   async function endBreak() { try { await api.post('/time/break/end'); load(); } catch (e) { toast.error(e.response?.data?.error || 'Could not end break'); } }
   async function approveEntry(e) { try { await api.post(`/time/${e.id}/approve`, { approved: !e.approved }); load(); } catch { toast.error('Could not update approval'); } }
   async function resolveCorrection(e, approve) { try { await api.post(`/time/${e.id}/resolve-correction`, { approve }); toast.success(approve ? 'Correction applied' : 'Correction denied'); load(); } catch (err) { toast.error(err.response?.data?.error || 'Could not resolve'); } }
 
-  // Block clocking out until the job you're clocked into is finished.
-  function tryClockOut() {
-    if (active?.job_id) {
-      const j = jobs.find(x => x.id === active.job_id);
-      if (j && !['awaiting-signoff', 'completed', 'cancelled'].includes(j.status)) {
-        return toast.error(`Finish "${j.title}" (mark the work done) before clocking out.`);
-      }
-    }
-    setClockOutOpen(true);
-  }
 
   if (loading) return <SkeletonPage stats={3} rows={5} />;
 
@@ -105,7 +94,7 @@ export default function TimeClock() {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader title="Time Clock" subtitle="Clock in and out of your shifts" icon={<Clock size={20} />} />
+      <PageHeader title="Time Clock" subtitle="Your hours are tracked automatically from your jobs" icon={<Clock size={20} />} />
 
       {/* Clock status */}
       <Card className="p-6 mb-6">
@@ -114,14 +103,14 @@ export default function TimeClock() {
             <div className="flex items-center gap-4">
               <span className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center animate-[pulse-ring_2s_infinite]"><Timer size={24} /></span>
               <div>
-                <p className="text-sm text-slate-500">Clocked in at {fmtTime(active.clock_in)}{active.job_title ? <> · <span className="text-slate-700 font-medium">{active.job_title}</span></> : ''}</p>
+                <p className="text-sm text-slate-500">On the clock since {fmtTime(active.clock_in)}{(active.job_title || activeJobTitle) ? <> · <span className="text-slate-700 font-medium">{active.job_title || activeJobTitle}</span></> : ''}</p>
                 <p className="text-2xl font-bold text-slate-800 tabular-nums">{elapsed(active.clock_in, now)}</p>
                 {onBreakNow && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 mt-1"><Coffee size={12} /> On break</span>}
+                <p className="text-xs text-slate-500 mt-1">Your time stops by itself when this job is closed.</p>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <Btn variant="outline" size="lg" onClick={onBreakNow ? endBreak : startBreak}><Coffee size={16} /> {onBreakNow ? 'End break' : 'Start break'}</Btn>
-              <Btn variant="danger" size="lg" onClick={tryClockOut}><LogOut size={18} /> Clock Out</Btn>
             </div>
           </div>
         ) : (
@@ -129,11 +118,11 @@ export default function TimeClock() {
             <div className="flex items-center gap-4">
               <span className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center"><Clock size={24} /></span>
               <div>
-                <p className="text-sm text-slate-500">You're currently clocked out</p>
-                <p className="text-lg font-semibold text-slate-700">Ready to start your shift</p>
+                <p className="text-sm text-slate-500">You're off the clock</p>
+                <p className="text-lg font-semibold text-slate-700">Nothing to do here — just start your job</p>
+                <p className="text-xs text-slate-500 mt-0.5">Starting a job clocks you in. Closing it clocks you out.</p>
               </div>
             </div>
-            <Btn size="lg" onClick={() => setClockInOpen(true)}><LogIn size={18} /> Clock In</Btn>
           </div>
         )}
       </Card>
@@ -142,7 +131,7 @@ export default function TimeClock() {
       {missed && (
         <div className="mb-6 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
           <AlertTriangle size={16} className="shrink-0" />
-          <span><span className="font-semibold">Missed clock-out.</span> A shift from {fmtDate(missed.clock_in)} is still open. {isManager ? 'Edit the entry to set the correct clock-out time.' : 'Ask your manager to correct it, or submit a correction request.'}</span>
+          <span><span className="font-semibold">Shift still open.</span> A shift from {fmtDate(missed.clock_in)} is still running because its job hasn't been closed. {isManager ? 'Close the job, or edit the entry to set the correct end time.' : 'Close the job, or ask your manager to correct it.'}</span>
         </div>
       )}
 
@@ -197,7 +186,7 @@ export default function TimeClock() {
       <Card>
         <CardHeader title={isAdmin ? 'All Timesheets' : 'My Timesheet'} icon={<CalendarClock size={16} />} />
         {entries.length === 0 ? (
-          <Empty icon={<Clock size={24} />} title="No shifts yet" message="Clock in to start tracking your time." />
+          <Empty icon={<Clock size={24} />} title="No shifts yet" message="Start a job and your time is tracked automatically." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -242,6 +231,7 @@ export default function TimeClock() {
                     <td className="px-5 py-3 text-right font-medium text-slate-800">{e.hours != null ? `${e.hours.toFixed(2)}` : '—'}</td>
                     <td className="px-5 py-3 text-right">
                       <div className="inline-flex items-center gap-2.5 justify-end">
+                        {e.needs_review && <span title={e.review_reason || ''} className="text-[10px] font-semibold text-red-700 bg-red-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">Check times</span>}
                         {e.correction?.status === 'pending' && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">Fix pending</span>}
                         {e.has_proof ? (
                           <button onClick={() => viewProof(e.id)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-xs font-medium">
@@ -265,8 +255,6 @@ export default function TimeClock() {
         )}
       </Card>
 
-      <ClockInModal open={clockInOpen} onClose={() => setClockInOpen(false)} onDone={load} jobs={jobs} requireJob={user?.role === 'technician'} />
-      <ClockOutModal open={clockOutOpen} onClose={() => setClockOutOpen(false)} onDone={load} />
 
       <EditTimeModal entry={editEntry} onClose={() => setEditEntry(null)} onDone={load} />
       <CorrectionModal entry={correctEntry} onClose={() => setCorrectEntry(null)} onDone={load} />
@@ -375,98 +363,6 @@ function EditTimeModal({ entry, onClose, onDone }) {
           </div>
         </div>
       )}
-    </Modal>
-  );
-}
-
-function ClockInModal({ open, onClose, onDone, jobs, requireJob }) {
-  const [jobId, setJobId] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) setJobId(''); }, [open]);
-  async function submit() {
-    if (requireJob && !jobId) return toast.error('Please select the job you\'re clocking in for');
-    setBusy(true);
-    const t = toast.loading('Getting your location…');
-    try {
-      const location = await getLocation();
-      const r = await api.post('/time/clock-in', { job_id: jobId || null, location });
-      toast.success(r.queued ? 'Clocked in — saved on this device, will sync when you\'re back online' : location ? 'Clocked in — location recorded' : 'Clocked in (location unavailable)', { id: t });
-      onClose(); onDone();
-    } catch (e) { toast.error(e.response?.data?.error || 'Could not clock in', { id: t }); }
-    finally { setBusy(false); }
-  }
-  return (
-    <Modal open={open} onClose={onClose} title="Clock In" subtitle="Start your shift" size="sm">
-      <div className="space-y-4">
-        <Select label={`Job${requireJob ? ' *' : ' (optional)'}`} value={jobId} onChange={e => setJobId(e.target.value)}>
-          <option value="">{requireJob ? 'Select a job…' : 'No specific job'}</option>
-          {jobs.map(j => <option key={j.id} value={j.id}>{j.title}{j.customer_name ? ` — ${j.customer_name}` : ''}</option>)}
-        </Select>
-        <p className="text-xs text-slate-500 flex items-center gap-1.5"><MapPin size={13} /> Your location will be recorded at clock-in. Please allow location access if prompted.</p>
-        <div className="flex justify-end gap-2">
-          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={submit} loading={busy}>{busy ? 'Clocking in…' : 'Clock In'}</Btn>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function ClockOutModal({ open, onClose, onDone }) {
-  const [preview, setPreview] = useState(null);
-  const [proof, setProof] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef(null);
-
-  useEffect(() => { if (!open) { setPreview(null); setProof(null); } }, [open]);
-
-  async function onFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const result = await fileToProof(file);
-      setProof(result);
-      setPreview(result.proof_type === 'pdf' ? { pdf: true, name: file.name } : { img: result.proof });
-    } catch (err) { toast.error(err.message); }
-  }
-
-  async function submit() {
-    if (!proof) return toast.error('A photo of the work is required to clock out');
-    setBusy(true);
-    const t = toast.loading('Getting your location…');
-    try {
-      const location = await getLocation();
-      const r = await api.post('/time/clock-out', { ...proof, location });
-      toast.success(r.queued ? 'Clocked out — photo saved on this device, will upload when you\'re back online' : 'Clocked out — nice work!', { id: t });
-      onClose(); onDone();
-    } catch (e) { toast.error(e.response?.data?.error || e.message || 'Could not clock out', { id: t }); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="Clock Out" subtitle="A photo of the completed work is required">
-      <div className="space-y-4">
-        <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={onFile} />
-        {!preview ? (
-          <button onClick={() => fileRef.current?.click()}
-            className="w-full flex flex-col items-center justify-center gap-2 py-10 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:bg-blue-50/40 transition-colors">
-            <Camera size={28} />
-            <span className="text-sm font-medium">Take / upload a photo of the work</span>
-            <span className="text-xs text-slate-400">Photo or PDF (under ~600KB)</span>
-          </button>
-        ) : (
-          <div className="space-y-2">
-            {preview.img
-              ? <img src={preview.img} alt="work proof" className="w-full max-h-72 object-contain rounded-xl border border-slate-200 bg-slate-50" />
-              : <div className="flex items-center gap-2 p-4 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-600"><FileText size={18} /> {preview.name}</div>}
-            <button onClick={() => fileRef.current?.click()} className="text-xs text-blue-600 hover:text-blue-700">Replace</button>
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-          <Btn variant="danger" onClick={submit} loading={busy} disabled={!proof}>{busy ? 'Clocking out…' : 'Confirm Clock Out'}</Btn>
-        </div>
-      </div>
     </Modal>
   );
 }

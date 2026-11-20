@@ -16,18 +16,7 @@ router.get('/active', async (req, res) => {
   res.json(await openEntry(req.user.id));
 });
 
-// When an action was done offline and uploaded later, the app sends the moment it
-// really happened (X-Queued-At). Use it so hours are right — but only if it's sane:
-// not in the future, and no more than 60 days old (work stranded on a phone by the
-// old sync bug can be a couple of weeks old and must keep its real time).
-function happenedAt(req) {
-  const h = req.headers['x-queued-at'];
-  if (h) {
-    const t = new Date(String(h)).getTime(), now = Date.now();
-    if (Number.isFinite(t) && t <= now + 120000 && t >= now - 60 * 86400000) return new Date(Math.min(t, now)).toISOString();
-  }
-  return new Date().toISOString();
-}
+const { happenedAt } = require('../lib/jobClock');
 
 // Keep only {lat,lng,accuracy} from a location payload (or null).
 function cleanLoc(loc) {
@@ -167,7 +156,9 @@ router.get('/', async (req, res) => {
     id: e.id, technician_id: e.technician_id, technician_name: e.technician_name,
     job_id: e.job_id || null, job_title: e.job_title || null,
     clock_in: e.clock_in, clock_out: e.clock_out, hours: e.hours, gross_hours: e.gross_hours ?? null,
-    break_minutes: e.break_minutes || 0, proof_type: e.proof_type, has_proof: !!e.proof,
+    break_minutes: e.break_minutes || 0, proof_type: e.proof_type, has_proof: !!(e.proof || e.proof_photo_id),
+    auto: !!(e.auto_clock_in || e.auto_clock_out), clock_out_reason: e.clock_out_reason || null,
+    needs_review: !!e.needs_review, review_reason: e.review_reason || null,
     clock_in_location: e.clock_in_location || null, clock_out_location: e.clock_out_location || null,
     approved: !!e.approved, approved_by: e.approved_by || null, correction: e.correction || null,
   })));
@@ -185,6 +176,7 @@ router.put('/:id', async (req, res) => {
   const clockOut = patch.clock_out !== undefined ? patch.clock_out : e.clock_out;
   if (clockOut && new Date(clockOut) <= new Date(clockIn)) return res.status(400).json({ error: 'Clock-out must be after clock-in' });
   patch.hours = clockOut ? Math.round(((new Date(clockOut) - new Date(clockIn)) / 3600000) * 100) / 100 : null;
+  patch.needs_review = false; patch.review_reason = null;   // a manager has now looked at it
   const saved = await update('time_entries', req.params.id, patch);
   res.json({ ...saved, proof: undefined });
 });
@@ -201,6 +193,11 @@ router.get('/:id/proof', async (req, res) => {
   const e = await getById('time_entries', req.params.id);
   if (!e) return res.status(404).json({ error: 'Not found' });
   if (req.user.role !== 'admin' && e.technician_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  // Automatic clock-outs point at the job's "completed work" photo instead of storing a copy.
+  if (!e.proof && e.proof_photo_id) {
+    const p = await getById('job_photos', e.proof_photo_id);
+    return res.json({ proof: p?.proof || null, proof_type: p?.proof_type || e.proof_type || null });
+  }
   res.json({ proof: e.proof || null, proof_type: e.proof_type || null });
 });
 

@@ -143,17 +143,17 @@ async function journey() {
     const r = await call('technician', 'GET', `/api/jobs/${jobId}`);
     return { status: r.status === 200 ? 'pass' : 'fail', detail: r.status === 200 ? 'job details load' : `HTTP ${r.status}`, ms: r.ms };
   });
-  await step('Technician clocks in to the job', async () => {
-    const r = await call('technician', 'POST', '/api/time/clock-in', { job_id: jobId, location: null });
-    entryId = r.data?.id || null;
-    return { status: r.status === 201 ? 'pass' : 'fail', detail: r.status === 201 ? 'clocked in' : `HTTP ${r.status} ${r.data?.error || ''}`, ms: r.ms };
-  });
   await step('Technician starts work (status → in progress)', async () => {
     const r = await call('technician', 'PUT', `/api/jobs/${jobId}`, { status: 'in-progress', work_started_at: new Date().toISOString() });
     return { status: r.status === 200 && r.data?.status === 'in-progress' ? 'pass' : 'fail', detail: r.status === 200 ? `status saved as "${r.data?.status}"` : `HTTP ${r.status}`, ms: r.ms };
   });
-  await step('Technician uploads a job photo', async () => {
-    const r = await call('technician', 'POST', `/api/jobs/${jobId}/photos`, { proof: TINY_PNG, proof_type: 'image', caption: 'bot health check' });
+  await step('Starting the job clocked the technician in automatically', async () => {
+    const r = await call('technician', 'GET', '/api/time/active');
+    entryId = r.data?.job_id === jobId ? r.data.id : null;
+    return { status: entryId ? 'pass' : 'fail', detail: entryId ? 'on the clock for this job — no manual clock-in needed' : `not clocked in after starting the job (HTTP ${r.status})`, ms: r.ms };
+  });
+  await step('Technician takes the finished-work photo', async () => {
+    const r = await call('technician', 'POST', `/api/jobs/${jobId}/photos`, { proof: TINY_PNG, proof_type: 'image', caption: 'Completed work' });
     photoId = r.data?.id || null;
     return { status: r.status === 201 && photoId ? 'pass' : 'fail', detail: photoId ? 'photo accepted' : `HTTP ${r.status} ${r.data?.error || ''}`, ms: r.ms };
   });
@@ -171,18 +171,20 @@ async function journey() {
     const r = await call('technician', 'PUT', `/api/jobs/${jobId}`, { status: 'awaiting-signoff', work_ended_at: new Date().toISOString() });
     return { status: r.data?.status === 'awaiting-signoff' ? 'pass' : 'fail', detail: r.status === 200 ? `status "${r.data?.status}"` : `HTTP ${r.status}`, ms: r.ms };
   });
-  await step('Technician clocks out with a proof photo', async () => {
-    const r = await call('technician', 'POST', '/api/time/clock-out', { proof: TINY_PNG, proof_type: 'image', location: null });
-    return { status: r.status === 200 && r.data?.clock_out ? 'pass' : 'fail', detail: r.status === 200 ? `clocked out (${r.data?.hours ?? 0}h)` : `HTTP ${r.status} ${r.data?.error || ''}`, ms: r.ms };
-  });
-  await step('Timesheet entry saved with its photo', async () => {
+  await step('Still on the clock until the job is closed', async () => {
     const e = entryId ? await getById('time_entries', entryId) : null;
-    const ok = !!(e && e.clock_out && e.proof === TINY_PNG);
-    return { status: ok ? 'pass' : 'fail', detail: ok ? 'clock-in, clock-out and proof photo all saved' : 'timesheet entry incomplete' };
+    return { status: e && !e.clock_out ? 'pass' : 'fail', detail: e && !e.clock_out ? 'clock keeps running while awaiting sign-off' : 'clocked out too early' };
   });
   await step('Office closes the job', async () => {
     const r = await call('office', 'POST', `/api/jobs/${jobId}/signoff`, { signoff_type: 'management' });
     return { status: r.data?.status === 'completed' ? 'pass' : 'fail', detail: r.status === 200 ? `status "${r.data?.status}"` : `HTTP ${r.status} ${r.data?.error || ''}`, ms: r.ms };
+  });
+  await step('Closing the job clocked the technician out automatically', async () => {
+    const e = entryId ? await getById('time_entries', entryId) : null;
+    const ok = !!(e && e.clock_out && typeof e.hours === 'number' && e.proof_photo_id === photoId);
+    if (!ok) return { status: 'fail', detail: !e ? 'no timesheet entry' : !e.clock_out ? 'still clocked in after the job was closed' : 'clocked out, but the finished-work photo is not attached' };
+    const p = await call('technician', 'GET', `/api/time/${entryId}/proof`);
+    return { status: p.data?.proof === TINY_PNG ? 'pass' : 'fail', detail: p.data?.proof === TINY_PNG ? `clocked out (${e.hours}h) with the finished-work photo as proof` : 'proof photo could not be opened from the timesheet', ms: p.ms };
   });
   await step('Closing the bot job created no real invoice', async () => {
     await sleep(800); // auto-invoicing runs just after the response

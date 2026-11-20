@@ -130,7 +130,7 @@ function isQueueable(cfg) {
   if (isCreate(cfg)) return true;
   if (m === 'put' && /^\/jobs\/[^/]+$/.test(url)) {
     // only field edits offline — never scheduling / customer / assignment changes
-    const allowed = ['status', 'notes', 'description', 'work_started_at', 'work_ended_at'];
+    const allowed = ['status', 'notes', 'description', 'work_started_at', 'work_ended_at', 'clock_location'];
     const body = bodyOf(cfg.data);
     const keys = body && typeof body === 'object' ? Object.keys(body) : [];
     return keys.length > 0 && keys.every(k => allowed.includes(k));
@@ -222,15 +222,26 @@ function overlayPending(url, data) {
       return { ...data, photos, parts };
     }
     if (u === '/time/active') {
+      // Replay everything still waiting to upload, in order, over the server's answer.
+      // The job runs the clock: starting a job clocks in, completing it clocks out.
       let active = data && typeof data === 'object' ? data : null;
-      for (const it of queuedFor(/^\/time\/(clock-in|clock-out|break\/start|break\/end)$/)) {
-        const d = bodyOf(it.data) || {};
-        const at = it.createdAt;
-        if (it.url === '/time/clock-in') { if (!active) active = { id: 'tmp-' + it.opId, technician_id: it.technician, job_id: d.job_id || null, clock_in: at, clock_out: null, breaks: [], _pending: true }; }
+      for (const it of state.items) {
+        if (it.status === 'conflict') continue;
+        const m = (it.method || '').toLowerCase(), url = it.url || '', d = bodyOf(it.data) || {}, at = it.createdAt;
+        const jm2 = url.match(/^\/jobs\/([^/]+)$/);
+        if (m === 'put' && jm2) {
+          if (d.status === 'in-progress' && active?.job_id !== jm2[1]) active = { id: 'tmp-' + it.opId, technician_id: it.technician, job_id: jm2[1], job_title: null, clock_in: at, clock_out: null, breaks: [], _pending: true };
+          else if ((d.status === 'completed' || d.status === 'cancelled') && active?.job_id === jm2[1]) active = null;
+          continue;
+        }
+        const sm = url.match(/^\/jobs\/([^/]+)\/signoff$/);
+        if (m === 'post' && sm) { if (active?.job_id === sm[1]) active = null; continue; }
+        if (m !== 'post') continue;
+        if (url === '/time/clock-in') { if (!active) active = { id: 'tmp-' + it.opId, technician_id: it.technician, job_id: d.job_id || null, clock_in: at, clock_out: null, breaks: [], _pending: true }; }
         else if (!active) continue;
-        else if (it.url === '/time/clock-out') active = null;
-        else if (it.url === '/time/break/start') active = { ...active, breaks: [...(active.breaks || []), { start: at, end: null }], _pending: true };
-        else if (it.url === '/time/break/end') active = { ...active, breaks: (active.breaks || []).map((b, i, a) => (i === a.length - 1 && !b.end ? { ...b, end: at } : b)), _pending: true };
+        else if (url === '/time/clock-out') active = null;
+        else if (url === '/time/break/start') active = { ...active, breaks: [...(active.breaks || []), { start: at, end: null }], _pending: true };
+        else if (url === '/time/break/end') active = { ...active, breaks: (active.breaks || []).map((b, i, a) => (i === a.length - 1 && !b.end ? { ...b, end: at } : b)), _pending: true };
       }
       return active;
     }
